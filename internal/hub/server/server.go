@@ -236,7 +236,9 @@ func Listen(ctx context.Context, opts Options) (_ *Server, err error) {
 	if s.accounts, err = account.New(s.db, account.Options{MasterKey: cfg.MasterKey, Now: opts.Now, Argon2: opts.Argon2}); err != nil {
 		return nil, err
 	}
-	s.nodes = node.New(s.db, node.Options{Now: opts.Now})
+	s.nodes = node.New(s.db, node.Options{Now: opts.Now, Removed: func(n node.Node) any {
+		return hubapi.ControlNodeRemoved{Type: hubapi.ControlNodeRemovedTypeNodeRemoved, Node: hubapi.NodeRef{Id: n.ID, Name: n.Name}}
+	}})
 	s.relay = relay.New(opts.Streams)
 	if s.docs, err = docsync.New(s.db, docsync.Options{MasterKey: cfg.MasterKey, Now: opts.Now}); err != nil {
 		return nil, err

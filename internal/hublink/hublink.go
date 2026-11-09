@@ -74,6 +74,13 @@ type Options struct {
 	// Outbox is the docs' changes the link pushes to the hub while
 	// connected; nil pushes none.
 	Outbox Outbox
+	// NodeRemoved, when not nil, is given each node the hub says was
+	// removed from the account, and AccountNodes the account's nodes as the
+	// hub lists them after each welcome, this one among them, so that the
+	// node also learns of those removed while it was not connected. Either
+	// may be called again with what it was given before.
+	NodeRemoved  func(ctx context.Context, n NodeRef)
+	AccountNodes func(ctx context.Context, nodes []NodeRef)
 	// WrapNodes, when not nil, wraps the transport to the node endpoint:
 	// tests lose the hub's answers with it.
 	WrapNodes func(http.RoundTripper) http.RoundTripper

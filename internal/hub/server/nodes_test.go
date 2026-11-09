@@ -474,6 +474,48 @@ func TestRevokedNodeCutOffAndRefused(t *testing.T) {
 	}
 }
 
+// A node removed, by another or by logging out, is told to the user's other
+// nodes connected: not to itself, which is cut off, nor to another user's.
+func TestNodeRemovedToldToTheOthers(t *testing.T) {
+	t.Parallel()
+	h := hubtest.Start(t)
+	desktop, laptop, phone := h.NewNode(h.User, "desktop"), h.NewNode(h.User, "laptop"), h.NewNode(h.User, "phone")
+	bob := h.AddUser("bob")
+	bobsDesktop, bobsLaptop := h.NewNode(bob, "desktop"), h.NewNode(bob, "laptop")
+	controls := map[string]control{}
+	for _, n := range []hubtest.Node{desktop, laptop, phone, bobsDesktop} {
+		controls[n.ID] = connect(t, h, n, "1")
+		controls[n.ID].want("welcome")
+	}
+	wantRemoved := func(c control, n hubtest.Node) {
+		t.Helper()
+		m := c.want("node_removed")
+		if node, _ := m["node"].(map[string]any); node["id"] != n.ID || node["name"] != n.Name {
+			t.Fatalf("node_removed %v, want %s", m, n.Name)
+		}
+	}
+
+	h.RemoveNode(desktop, "laptop")
+	wantRemoved(controls[desktop.ID], laptop)
+	wantRemoved(controls[phone.ID], laptop)
+	for {
+		typ, m := controls[laptop.ID].read()
+		if typ == "node_removed" {
+			t.Fatalf("the removed node was told of itself: %v", m)
+		}
+		if typ == "bye" {
+			break
+		}
+	}
+
+	h.RemoveNode(phone, "id:"+phone.ID) // a logout
+	wantRemoved(controls[desktop.ID], phone)
+
+	// Bob's desktop was told nothing: the first it hears is a stream asked.
+	streamOpened(t, h, bobsLaptop, bobsDesktop)
+	controls[bobsDesktop.ID].want("stream_waiting")
+}
+
 // admin calls the hub's admin socket.
 func admin(t *testing.T, h *hubtest.Hub) *hubapi.ClientWithResponses {
 	t.Helper()

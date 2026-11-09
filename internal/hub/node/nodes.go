@@ -134,9 +134,11 @@ func (s *Store) node(ctx context.Context, q sqlite.Querier, userID, ref string) 
 	return n, err
 }
 
-// Remove revokes the node of userID that ref names, as Node finds it, and
-// cuts its connections off: it can never connect again, and its name is free.
-// Removed by itself, as wdx hub logout does, it is recorded as logged out.
+// Remove revokes the node of userID that ref names, as Node finds it, cuts
+// its connections off and tells the user's other nodes connected, with the
+// message Options.Removed makes: it can never connect again, and its name is
+// free. Removed by itself, as wdx hub logout does, it is recorded as logged
+// out.
 func (s *Store) Remove(ctx context.Context, by By, userID, ref string) (Node, error) {
 	var n Node
 	err := s.inTx(ctx, func(tx *sql.Tx) error {
@@ -159,6 +161,10 @@ func (s *Store) Remove(ctx context.Context, by By, userID, ref string) (Node, er
 	}
 	logging.FromContext(ctx).Info("node revoked", "node_id", n.ID, "user_id", userID, "by_node_id", by.NodeID)
 	s.cutOff(ctx, ReasonRevoked, func(c *Conn) bool { return c.NodeID == n.ID })
+	if s.removed != nil {
+		told := s.registry.SendUser(userID, n.ID, s.removed(n))
+		logging.FromContext(ctx).Info("nodes told of the removal", "node_id", n.ID, "user_id", userID, "told", told)
+	}
 	return n, nil
 }
 

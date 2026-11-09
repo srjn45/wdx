@@ -387,6 +387,8 @@ func Listen(ctx context.Context, opts Options) (_ *Daemon, err error) {
 	// It lives until the daemon closes it, and connects in the background.
 	hubOpts := opts.Hub.link()
 	hubOpts.Outbox = hubOutbox{d.outbox}
+	gone := newNodesGone()
+	hubOpts.NodeRemoved, hubOpts.AccountNodes = gone.removed, gone.listed
 	if d.hub, err = hublink.Open(context.WithoutCancel(logged), opts.Home, hubOpts); err != nil {
 		return nil, err
 	}
@@ -412,6 +414,7 @@ func Listen(ctx context.Context, opts Options) (_ *Daemon, err error) {
 	}); err != nil {
 		return nil, err
 	}
+	gone.start(d.remote)
 	d.hubStreams = serveHubStreams(context.WithoutCancel(logged), d.hub, d.remote)
 	sendHubState(logged, d.hub, d.access)
 	d.startTracker()

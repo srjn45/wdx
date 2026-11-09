@@ -222,6 +222,62 @@ func (r *Remote) CloseAll(ctx context.Context) ([]Session, error) {
 	return closed, err
 }
 
+// NodeGone closes every session with the node nodeID, both ways, for
+// ReasonNodeRemoved, and forgets the key pinned for it: the hub removed it
+// from the account, so it never connects again under its id, and nothing
+// can tell it the sessions closed. Repeated, it does nothing.
+func (r *Remote) NodeGone(ctx context.Context, nodeID string) error {
+	log := logging.FromContext(ctx)
+	log.Info("node removed from the account", "node_id", nodeID)
+	if _, err := r.closeWhere(ctx, ReasonNodeRemoved, "node_id = ?", nodeID); err != nil {
+		return err
+	}
+	n, err := sqlite.Exec(ctx, r.opts.DB, "DELETE FROM hub_known_nodes WHERE node_id = ?", nodeID)
+	if err != nil {
+		return err
+	}
+	if n > 0 {
+		log.Info("node key forgotten", "node_id", nodeID)
+	}
+	return nil
+}
+
+// AccountNodes takes the account's nodes as the hub lists them now, and
+// calls NodeGone for every node with a session open or a key pinned that is
+// not among them: one removed while this node heard nothing of it.
+func (r *Remote) AccountNodes(ctx context.Context, nodes []hublink.NodeRef) error {
+	listed := map[string]bool{}
+	for _, n := range nodes {
+		listed[n.ID] = true
+	}
+	rows, err := r.opts.DB.QueryContext(ctx, "SELECT node_id FROM hub_sessions WHERE closed_at IS NULL UNION SELECT node_id FROM hub_known_nodes")
+	if err != nil {
+		return err
+	}
+	var gone []string
+	for rows.Next() {
+		var id string
+		if err := rows.Scan(&id); err != nil {
+			rows.Close()
+			return err
+		}
+		if !listed[id] {
+			gone = append(gone, id)
+		}
+	}
+	rows.Close()
+	if err := rows.Err(); err != nil {
+		return err
+	}
+	logging.FromContext(ctx).Info("account nodes checked", "nodes", len(nodes), "gone", len(gone))
+	for _, id := range gone {
+		if err := r.NodeGone(ctx, id); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
 // knownKey is the key pinned for nodeID, nil when none is.
 func (r *Remote) knownKey(ctx context.Context, nodeID string) (ed25519.PublicKey, error) {
 	var key []byte

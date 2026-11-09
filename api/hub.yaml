@@ -368,8 +368,9 @@ paths:
         ControlCertificate when two thirds of the node's certificate's life
         have passed, at the welcome and daily, which the node answers with
         ControlCertificateSaved once it wrote it, ControlStreamWaiting when
-        another node asks for a stream to it, and ControlBye before it
-        closes the connection. The node sends ControlState at each connect
+        another node asks for a stream to it, ControlNodeRemoved when
+        another node of the account is removed from it, and ControlBye
+        before it closes the connection. The node sends ControlState at each connect
         and whenever it changes. WebSocket pings keep it alive.
 
         Errors: node_revoked, account_disabled, as on every request of this
@@ -821,6 +822,18 @@ components:
       properties:
         type: { type: string, enum: [stream_waiting] }
         stream: { type: string, description: "The stream's id." }
+        node: { $ref: "#/components/schemas/NodeRef" }
+
+    ControlNodeRemoved:
+      type: object
+      description: |
+        Another node of the account was removed from it, by logout or by
+        another node, and can never connect again: this node closes its
+        sessions with it and forgets its key. A node that was not connected
+        then learns it from GET /v1/nodes after its next welcome.
+      required: [type, node]
+      properties:
+        type: { type: string, enum: [node_removed] }
         node: { $ref: "#/components/schemas/NodeRef" }
 
     ControlState:

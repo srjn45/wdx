@@ -92,6 +92,10 @@ const (
 type Options struct {
 	// Now is the store's clock; time.Now when nil.
 	Now func() time.Time
+	// Removed, when not nil, is the message the other nodes of a node's
+	// user are sent once it is removed, which the server writes in the
+	// hub's API: they close their sessions with it.
+	Removed func(Node) any
 }
 
 // Store keeps the nodes and their logins in the hub's database, and the
@@ -99,12 +103,13 @@ type Options struct {
 type Store struct {
 	db       *sql.DB
 	now      func() time.Time
+	removed  func(Node) any
 	registry *Registry
 }
 
 // New returns the store of the nodes in db, the hub's database.
 func New(db *sql.DB, opts Options) *Store {
-	s := &Store{db: db, now: opts.Now, registry: newRegistry()}
+	s := &Store{db: db, now: opts.Now, removed: opts.Removed, registry: newRegistry()}
 	if s.now == nil {
 		s.now = time.Now
 	}

@@ -575,3 +575,26 @@ func TestRenewedAndSeen(t *testing.T) {
 		t.Errorf("audit %v", got)
 	}
 }
+
+func TestSendUser(t *testing.T) {
+	t.Parallel()
+	r := newRegistry()
+	var got []string
+	add := func(nodeID, userID string) {
+		r.Add(nodeID, userID, func(Reason) {}, func(v any) bool { got = append(got, nodeID+":"+v.(string)); return true })
+	}
+	add("desktop", "alice")
+	add("desktop", "alice") // the newest of two takes it, once
+	add("laptop", "alice")
+	add("phone", "alice")
+	add("tower", "bob")
+	sent := r.SendUser("alice", "laptop", "m")
+	slices.Sort(sent)
+	slices.Sort(got)
+	if want := []string{"desktop", "phone"}; !slices.Equal(sent, want) {
+		t.Errorf("sent to %v, want %v", sent, want)
+	}
+	if want := []string{"desktop:m", "phone:m"}; !slices.Equal(got, want) {
+		t.Errorf("handed %v, want %v", got, want)
+	}
+}

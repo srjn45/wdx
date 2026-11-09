@@ -72,6 +72,8 @@ const (
 	ReasonRestart         Reason = "restart"
 	ReasonRemoteAccessOff Reason = "remote_access_off"
 	ReasonLoggedOut       Reason = "logged_out"
+	// ReasonNodeRemoved is the other node removed from the account.
+	ReasonNodeRemoved Reason = "node_removed"
 )
 
 // The waits after a wrong code: the first, doubled at each wrong code after

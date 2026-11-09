@@ -22,6 +22,50 @@ func sendHubState(ctx context.Context, link *hublink.Link, access *hubAccess) {
 	link.SendState(hublink.State{RemoteAccess: access.remoteAccess.Load(), CodeSetup: access.codeSetUp(ctx)})
 }
 
+// nodesGone hands the remote sessions what the link hears of nodes removed
+// from the account, once the daemon made them: the link is opened first,
+// and may hear it before.
+type nodesGone struct {
+	ready  chan struct{}
+	remote *remote.Remote // set before ready closes
+}
+
+func newNodesGone() *nodesGone { return &nodesGone{ready: make(chan struct{})} }
+
+// start hands r what is heard from now on, and what waited for it.
+func (g *nodesGone) start(r *remote.Remote) {
+	g.remote = r
+	close(g.ready)
+}
+
+// wait is the remote sessions once started, nil when ctx ends first.
+func (g *nodesGone) wait(ctx context.Context) *remote.Remote {
+	select {
+	case <-g.ready:
+		return g.remote
+	case <-ctx.Done():
+		return nil
+	}
+}
+
+// removed closes the sessions with n, which the hub says was removed.
+func (g *nodesGone) removed(ctx context.Context, n hublink.NodeRef) {
+	if r := g.wait(ctx); r != nil {
+		if err := r.NodeGone(ctx, n.ID); err != nil {
+			logging.FromContext(ctx).Error("sessions with a removed node not closed", "node_id", n.ID, "err", err)
+		}
+	}
+}
+
+// listed closes the sessions with every node not among the account's.
+func (g *nodesGone) listed(ctx context.Context, nodes []hublink.NodeRef) {
+	if r := g.wait(ctx); r != nil {
+		if err := r.AccountNodes(ctx, nodes); err != nil {
+			logging.FromContext(ctx).Error("sessions with removed nodes not closed", "err", err)
+		}
+	}
+}
+
 // hubStreams answers the streams other nodes ask the hub for, each with the
 // remote sessions, until stop; wait waits for those being answered.
 type hubStreams struct {

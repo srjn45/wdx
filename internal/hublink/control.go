@@ -173,6 +173,9 @@ func (l *Link) connectOnce(ctx context.Context, c *credentials, client *http.Cli
 		}
 	})
 	running.Go(func() { l.ping(life, conn) })
+	// What the hub says of other nodes is logged without this node's id,
+	// which their own lines name.
+	others := logging.NewContext(life, logging.FromContext(l.ctx))
 
 	if err := write(life, conn, hubapi.ControlHello{Type: hubapi.ControlHelloTypeHello, ApiVersion: apiVersion(), WdxVersion: identity.Version, Os: osName()}); err != nil {
 		return false, err
@@ -199,6 +202,9 @@ func (l *Link) connectOnce(ctx context.Context, c *credentials, client *http.Cli
 			in := true
 			log.Info("control connected", "hub_version", w.HubVersion, "api_version", w.ApiVersion)
 			l.update(c, func() { l.conn, l.hub, l.inRange, l.behind = Connected, w.HubVersion, &in, "" })
+			if l.opts.AccountNodes != nil {
+				running.Go(func() { l.catchUp(others, c, client) })
+			}
 			if !pushing {
 				pushing = true
 				running.Go(func() { l.keepPushing(life, c, client) })
@@ -221,6 +227,17 @@ func (l *Link) connectOnce(ctx context.Context, c *credentials, client *http.Cli
 			// and ends with the link.
 			answering := logging.NewContext(l.ctx, log)
 			l.finished.Go(func() { l.answer(answering, c, sw) })
+		case string(hubapi.ControlNodeRemovedTypeNodeRemoved):
+			var nr hubapi.ControlNodeRemoved
+			if err := json.Unmarshal(b, &nr); err != nil {
+				log.Info("control message ignored", "type", m.Type, "err", err)
+				continue
+			}
+			log.Info("control node removed", "removed_node_id", nr.Node.Id, "removed_node_name", nr.Node.Name)
+			if l.opts.NodeRemoved != nil {
+				// Lost with the connection, it is caught up at the next welcome.
+				running.Go(func() { l.opts.NodeRemoved(others, NodeRef{ID: nr.Node.Id, Name: nr.Node.Name}) })
+			}
 		case string(hubapi.ControlByeTypeBye):
 			var by hubapi.ControlBye
 			if err := json.Unmarshal(b, &by); err != nil {
@@ -234,6 +251,33 @@ func (l *Link) connectOnce(ctx context.Context, c *credentials, client *http.Cli
 			log.Info("control message ignored", "type", m.Type)
 		}
 	}
+}
+
+// catchUp gives Options.AccountNodes the account's nodes as the hub lists
+// them, once per welcome: a node removed while this one was not connected
+// is not among them.
+func (l *Link) catchUp(ctx context.Context, c *credentials, client *http.Client) {
+	log := logging.FromContext(ctx)
+	hc, err := hubapi.NewClientWithResponses(c.NodesURL, hubapi.WithHTTPClient(client), hubapi.WithRequestEditorFn(versionHeader))
+	if err != nil {
+		log.Error("account nodes not listed", "err", err)
+		return
+	}
+	r, err := hc.ListNodesWithResponse(ctx)
+	if err != nil {
+		log.Info("account nodes not listed", "err", &UnreachableError{URL: c.NodesURL, Err: err})
+		return
+	}
+	if r.JSON200 == nil {
+		log.Info("account nodes not listed", "err", refused(c.NodesURL, r.StatusCode(), r.ApplicationproblemJSONDefault))
+		return
+	}
+	nodes := make([]NodeRef, 0, len(r.JSON200.Nodes))
+	for _, n := range r.JSON200.Nodes {
+		nodes = append(nodes, NodeRef{ID: n.Id, Name: n.Name})
+	}
+	log.Info("account nodes listed", "count", len(nodes))
+	l.opts.AccountNodes(ctx, nodes)
 }
 
 // closedWith is what a control connection that ended with err after bye

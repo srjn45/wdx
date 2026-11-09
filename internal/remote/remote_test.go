@@ -822,3 +822,71 @@ func TestAuditChainChanged(t *testing.T) {
 		t.Fatalf("verify %+v %v, want the second row broken", v, err)
 	}
 }
+
+// keyKnown reports whether the node has a key pinned for other.
+func (n *node) keyKnown(other *node) bool {
+	n.t.Helper()
+	known, err := n.remote.KeyKnown(n.ctx, other.ref.ID)
+	if err != nil {
+		n.t.Fatal(err)
+	}
+	return known
+}
+
+func TestNodeGone(t *testing.T) {
+	t.Parallel()
+	w := newWorld(t)
+	var changes atomic.Int64
+	desktop := w.newNode(w.hub.User, "desktop")
+	laptop := w.newNode(w.hub.User, "laptop", func(o *Options) { o.Changed = func() { changes.Add(1) } })
+	phone := w.newNode(w.hub.User, "phone")
+	desktop.setUp()
+	laptop.setUp()
+	out := laptop.mustOpen(desktop)
+	w.clock.Advance(authcode.Period)
+	in := desktop.mustOpen(laptop)
+	w.clock.Advance(authcode.Period)
+	kept := phone.mustOpen(laptop)
+
+	before, audited := changes.Load(), len(laptop.audited())
+	if err := laptop.remote.NodeGone(laptop.ctx, desktop.ref.ID); err != nil {
+		t.Fatal(err)
+	}
+	for way, s := range map[string]Session{"outgoing": out, "incoming": in} {
+		if got := laptop.closedReason(s.ID); got != ReasonNodeRemoved {
+			t.Errorf("the %s session closed %q, want node_removed", way, got)
+		}
+	}
+	if got := laptop.closedReason(kept.ID); got != "" {
+		t.Errorf("the phone's session closed %q", got)
+	}
+	if laptop.keyKnown(desktop) || !laptop.keyKnown(phone) {
+		t.Error("want the desktop's key forgotten, the phone's kept")
+	}
+	if got := laptop.audited(); len(got) != audited+1 || got[len(got)-1] != nodeaudit.ActionSessionClosed {
+		t.Errorf("audit chain %v, want the incoming session's close after %d", got, audited)
+	}
+	if changes.Load() == before {
+		t.Error("Changed was not called")
+	}
+
+	// Again, as a second message or the catch-up would: nothing.
+	before, audited = changes.Load(), len(laptop.audited())
+	if err := laptop.remote.NodeGone(laptop.ctx, desktop.ref.ID); err != nil {
+		t.Fatal(err)
+	}
+	if err := laptop.remote.AccountNodes(laptop.ctx, []hublink.NodeRef{laptop.ref, phone.ref}); err != nil {
+		t.Fatal(err)
+	}
+	if changes.Load() != before || len(laptop.audited()) != audited || laptop.closedReason(kept.ID) != "" {
+		t.Errorf("repeated: %d changes, audit %v", changes.Load()-before, laptop.audited())
+	}
+
+	// The catch-up: the phone is not among the account's nodes any more.
+	if err := laptop.remote.AccountNodes(laptop.ctx, []hublink.NodeRef{laptop.ref}); err != nil {
+		t.Fatal(err)
+	}
+	if got := laptop.closedReason(kept.ID); got != ReasonNodeRemoved || laptop.keyKnown(phone) {
+		t.Errorf("the phone's session closed %q, key known %v; want node_removed and forgotten", got, laptop.keyKnown(phone))
+	}
+}

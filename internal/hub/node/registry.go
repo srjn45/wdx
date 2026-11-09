@@ -83,6 +83,31 @@ func (r *Registry) Send(nodeID string, v any) bool {
 	return newest != nil && newest.send != nil && newest.send(v)
 }
 
+// SendUser hands v to the newest control connection of each node of userID
+// but except, as Send does for one, and returns the nodes it was handed to.
+func (r *Registry) SendUser(userID, except string, v any) []string {
+	r.mu.Lock()
+	newest := map[string]*Conn{}
+	for nodeID, set := range r.conns {
+		if nodeID == except {
+			continue
+		}
+		for c := range set {
+			if c.UserID == userID && (newest[nodeID] == nil || c.seq > newest[nodeID].seq) {
+				newest[nodeID] = c
+			}
+		}
+	}
+	r.mu.Unlock()
+	var sent []string
+	for nodeID, c := range newest {
+		if c.send != nil && c.send(v) {
+			sent = append(sent, nodeID)
+		}
+	}
+	return sent
+}
+
 // CloseAll closes every connection with reason, as the hub does when it
 // stops.
 func (r *Registry) CloseAll(reason Reason) {

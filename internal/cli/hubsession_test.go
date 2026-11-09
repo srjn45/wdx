@@ -180,6 +180,64 @@ func TestHubLogoutClosesSessionsOnHosts(t *testing.T) {
 	}
 }
 
+// waitNoSessions waits for hh to have no session open, and for the one it
+// had with node to have closed for node_removed, as its log says.
+func (hh *hubHome) waitNoSessions(node string) {
+	hh.t.Helper()
+	var last []api.HubSession
+	if !eventually(hh.t, func() bool {
+		v, _ := hh.sessionJSON("hub", "session", "list")
+		last = v.Sessions
+		return len(last) == 0
+	}) {
+		hh.t.Fatalf("sessions open still: %+v", last)
+	}
+	if lineOf(logLines(hh.t, hh.home, ""), "session closed", map[string]any{"reason": "node_removed", "node_id": node}) == nil {
+		hh.t.Errorf("no session closed with node_removed logged")
+	}
+}
+
+// A node removed from the account by another has its sessions closed on the
+// account's other nodes, which the hub tells.
+func TestHubNodeRemovedClosesSessions(t *testing.T) {
+	t.Parallel()
+	p := openPair(t)
+	v, _ := p.desktop.sessionJSON("hub", "session", "list")
+	if len(v.Sessions) != 1 {
+		t.Fatalf("the desktop's sessions before: %+v", v.Sessions)
+	}
+	if v, exit := p.desktop.hubJSON(nil, "hub", "node", "remove", "--name", "laptop", "--yes"); exit != clikit.ExitOK || v.Result != string(api.ResultRemoved) {
+		t.Fatalf("remove: exit %d, %+v", exit, v)
+	}
+	p.desktop.waitNoSessions(v.Sessions[0].Node.Id)
+}
+
+// A node not connected when another was removed closes its sessions with it
+// once it connects again.
+func TestHubNodeRemovedCaughtUp(t *testing.T) {
+	t.Parallel()
+	p := openPair(t)
+	v, _ := p.desktop.sessionJSON("hub", "session", "list")
+	if len(v.Sessions) != 1 {
+		t.Fatalf("the desktop's sessions before: %+v", v.Sessions)
+	}
+	laptop := v.Sessions[0].Node.Id
+	phone := p.hub.NewNode(p.hub.User, "phone")
+	// Restarted, the hub has no connection: both links wait on the clock to
+	// connect again, so the hub tells nobody of the removal.
+	p.hub.Restart()
+	p.desktop.waitConnection(api.HubConnectionOffline)
+	p.hub.RemoveNode(phone, "id:"+laptop)
+	if !eventually(t, func() bool {
+		p.clock.Advance(time.Second)
+		s, _ := p.desktop.hubJSON(nil, "hub", "status")
+		return s.Hub != nil && s.Hub.Connection == api.HubConnectionConnected
+	}) {
+		t.Fatal("the desktop did not connect again")
+	}
+	p.desktop.waitNoSessions(laptop)
+}
+
 func TestHubSessionOpenRefused(t *testing.T) {
 	t.Parallel()
 	p := newHubPair(t)
