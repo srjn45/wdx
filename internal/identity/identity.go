@@ -19,6 +19,11 @@ var (
 	Commit = "none"
 )
 
+// CentralHub is the hub wdx's users share, which wdx hub login logs in to
+// without --url. Fly's domain for the app until wdx needs one of its own
+// (the wdx doc HUB_CENTRAL).
+const CentralHub = "https://wdx-hub.fly.dev"
+
 // Env returns the environment variable name for key, e.g. Env("HOME") == "WDX_HOME".
 func Env(key string) string {
 	return strings.ToUpper(strings.ReplaceAll(Name, "-", "_")) + "_" + key

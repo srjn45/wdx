@@ -8,6 +8,7 @@ import (
 
 	"github.com/srjn45/wdx/internal/cli"
 	"github.com/srjn45/wdx/internal/config"
+	"github.com/srjn45/wdx/internal/identity"
 	"github.com/srjn45/wdx/internal/service"
 )
 
@@ -17,6 +18,7 @@ func main() {
 		// The conventions of terminals, not settings of wdx: https://no-color.org
 		NoColor:    os.Getenv("NO_COLOR") != "" || os.Getenv("TERM") == "dumb",
 		Environ:    os.Environ(),
+		CentralHub: identity.CentralHub,
 		ShellEnv:   cli.ShellEnv(os.Environ()),
 		CallerTerm: cli.CallerTerm(os.Environ()),
 		// Set where an agent wdx runs runs wdx: it cannot use --node.

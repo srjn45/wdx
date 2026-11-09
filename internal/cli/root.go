@@ -44,6 +44,9 @@ type Env struct {
 	// ObservePortCheck replaces trying a port of the stack before starting
 	// it, for tests whose fake runtime listens on nothing.
 	ObservePortCheck func(port int) error
+	// CentralHub is the url wdx hub login logs in to without --url: main
+	// sets it to identity.CentralHub, a test to the hub it serves.
+	CentralHub string
 	// NoColor is true when the terminal asks for no color: NO_COLOR is set
 	// or TERM is dumb. It turns off color mode auto only.
 	NoColor bool
