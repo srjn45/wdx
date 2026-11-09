@@ -74,10 +74,16 @@ func New(opts Options) *Client {
 		},
 	}
 	if opts.Dial != nil {
-		// One stream at a time: a request waits for the one in use rather
-		// than open another, each costing a handshake between the nodes.
-		transport = &http.Transport{MaxConnsPerHost: 1, IdleConnTimeout: nodeIdleConn,
+		// A request that finds every stream busy opens another: a stream of
+		// events holds its own for as long as it is followed, as TIDE's does.
+		// One kept idle serves the next request without a handshake between
+		// the nodes. Streams open one at a time, so that a dial that opens
+		// the session, asking for the code, does it once for all of them.
+		var dialing sync.Mutex
+		transport = &http.Transport{MaxIdleConnsPerHost: 1, IdleConnTimeout: nodeIdleConn,
 			DialContext: func(ctx context.Context, _, _ string) (net.Conn, error) {
+				dialing.Lock()
+				defer dialing.Unlock()
 				conn, err := opts.Dial(ctx)
 				if err != nil {
 					return nil, &dialError{err}

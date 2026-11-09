@@ -11,6 +11,7 @@ import (
 
 	"github.com/srjn45/wdx/internal/api"
 	"github.com/srjn45/wdx/internal/logging"
+	"github.com/srjn45/wdx/internal/waittest"
 )
 
 // nodeOf is a client of a node whose daemon handler is, each connection
@@ -89,6 +90,34 @@ func TestNodeStreamCutIsSessionClosed(t *testing.T) {
 	_, err := c.Version(context.Background())
 	if p, ok := errors.AsType[*ProblemError](err); !ok || p.Problem.Code != api.ErrorCodeSessionClosed {
 		t.Fatalf("%v, want session_closed", err)
+	}
+}
+
+// A stream of events holds its stream to the node for as long as it is
+// followed, as remote TIDE's does: another request opens a stream of its own
+// rather than wait for that one.
+func TestNodeRequestBesideOpenStream(t *testing.T) {
+	t.Parallel()
+	c := nodeOf(t, func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/v1/version" {
+			answer(w, strconv.Itoa(api.CurrentVersion), http.StatusOK, api.Version{Name: "wdx", Version: "1.2.3"})
+			return
+		}
+		w.Header().Set(api.APIVersionHeader, strconv.Itoa(api.CurrentVersion))
+		w.Header().Set("Content-Type", "text/event-stream")
+		w.WriteHeader(http.StatusOK)
+		w.(http.Flusher).Flush()
+		<-r.Context().Done()
+	})
+	ctx, cancel := context.WithDeadline(context.Background(), waittest.Deadline(t))
+	defer cancel()
+	stream, err := c.ProjectEvents(ctx, "app")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer stream.Close()
+	if v, err := c.Version(ctx); err != nil || v.Version != "1.2.3" {
+		t.Fatalf("version %+v, %v, with a stream of events open: want it answered", v, err)
 	}
 }
 
