@@ -232,6 +232,11 @@ func (sessionAddr) String() string  { return "wdx-session" }
 // with it: remote.Options.ServeStream. The server reads one end of a pipe
 // copied to conn rather than conn: it interrupts its reads with a deadline
 // past, which would close the WebSocket under conn rather than interrupt it.
+//
+// Only the copy to conn closes conn, once it has passed on all the server
+// wrote: the pipe hands bytes over before they reach conn, so closing conn as
+// the server closes its end would lose its last answer, such as the
+// session_closed it closes the stream after.
 func (l *sessionStreams) serve(ctx context.Context, conn net.Conn, session remote.Session) {
 	served, pipe := net.Pipe()
 	c := &sessionConn{Conn: served, session: session, done: make(chan struct{})}
@@ -245,7 +250,9 @@ func (l *sessionStreams) serve(ctx context.Context, conn net.Conn, session remot
 	}
 	copying.Go(func() {
 		_, _ = io.Copy(pipe, conn)
-		end()
+		// The client left, or the server: the server reads the end, and
+		// the copy to conn ends with it.
+		pipe.Close()
 	})
 	copying.Go(func() {
 		_, _ = io.Copy(conn, pipe)
@@ -262,7 +269,7 @@ func (l *sessionStreams) serve(ctx context.Context, conn net.Conn, session remot
 		return
 	}
 	<-c.done
-	end()
+	logging.FromContext(ctx).Info("session stream ended", "reason", "the session server closed it")
 }
 
 // sessionConn is a stream of a session, which the session server's
