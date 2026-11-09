@@ -83,6 +83,7 @@ func (m *Model) infoRows(a api.Agent) []valueRow {
 		{key: "exit_code", values: present(a.ExitCode, strconv.Itoa)},
 		{key: "error", values: present(a.Error, identical)},
 		{key: "activity", values: present(a.Activity, func(v api.AgentActivity) string { return string(v) })},
+		{key: "limited", values: present(a.Limited, func(l api.AgentLimited) string { return api.LimitedText(a.Aca, l, m.now()) }), paint: m.st.Failure},
 	}
 	rows = append(rows, promptRows(a)...)
 	return append(rows,

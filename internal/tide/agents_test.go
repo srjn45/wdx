@@ -869,12 +869,53 @@ func TestAgentRowActivity(t *testing.T) {
 		{"no status", agentListRow{agent: api.Agent{Name: "helper", State: api.AgentStateRunning}}, 40, "  ● helper                              "},
 		{"a parent hiding a waiting agent", agentListRow{agent: doing(api.AgentActivityIdle), below: 2, waiting: 1}, 40, "  ● helper                    1 waiting "},
 		{"a parent hiding none", agentListRow{agent: doing(api.AgentActivityWorking), below: 2}, 40, "  ● helper                      2 below "},
+		{"limited and idle", agentListRow{agent: limited(doing(api.AgentActivityIdle))}, 40, "  ● helper                      limited "},
+		{"limited and unknown", agentListRow{agent: limited(doing(api.AgentActivityUnknown))}, 40, "  ● helper                      limited "},
+		{"limited and waiting", agentListRow{agent: limited(doing(api.AgentActivityWaiting))}, 40, "  ? helper                      limited "},
+		{"limited on a prompt", agentListRow{agent: limited(asking(api.AgentPromptKindDecision))}, 40, "  ? helper                      limited "},
+		{"limited and working", agentListRow{agent: limited(doing(api.AgentActivityWorking))}, 40, "  ● helper                      working "},
+		{"a parent hiding a limited agent", agentListRow{agent: doing(api.AgentActivityIdle), below: 2, waiting: 1}, 40, "  ● helper                    1 waiting "},
 	}
 	for _, tt := range tests {
 		if got := agentRow(st, newContextThresholds(0, 0), tt.row, rowLook{}, tt.width); got != tt.want {
 			t.Errorf("%s: %q, want %q", tt.name, got, tt.want)
 		}
 	}
+}
+
+// limited is a as the daemon sends it while a bucket its model draws on is limited.
+func limited(a api.Agent) api.Agent {
+	a.Limited = &api.AgentLimited{Bucket: "3p"}
+	return a
+}
+
+// TestAgentRowLimited: a limited agent's row says so in the failure style.
+func TestAgentRowLimited(t *testing.T) {
+	t.Parallel()
+	st, idle := style.New(true), api.AgentActivityIdle
+	r := agentListRow{agent: limited(api.Agent{Name: "helper", State: api.AgentStateRunning, Activity: &idle})}
+	if got := agentRow(st, newContextThresholds(0, 0), r, rowLook{}, 40); !strings.Contains(got, st.Failure("limited")) {
+		t.Errorf("not in the failure style: %q", got)
+	}
+}
+
+// TestAgentsFoldedLimited: a parent folded over a limited agent counts it as
+// waiting, one limited but working not; and a plan whose agent is limited needs
+// the person.
+func TestAgentsFoldedLimited(t *testing.T) {
+	t.Parallel()
+	idle, working := api.AgentActivityIdle, api.AgentActivityWorking
+	deep := limited(api.Agent{Id: "agent-deep", Name: "deep", State: api.AgentStateRunning, Activity: &idle})
+	busy := limited(api.Agent{Id: "agent-busy", Name: "busy", State: api.AgentStateRunning, Activity: &working})
+	top := api.Agent{Id: "agent-top", Name: "top", State: api.AgentStateRunning, Activity: &idle, Children: &[]api.Agent{deep, busy}}
+	m := newAgentsModel(128, 41, top)
+	wantRow(t, m, "deep", "limited")
+	keys(m, "left")
+	wantRow(t, m, "top", "1 waiting")
+
+	m = newAgentsModel(128, 41, onTask(limited(running("lead")), "sso", "a"))
+	setPlans(m, aPlan("doc-sso", "sso", 1, 1))
+	wantText(t, m, "sso draft 1 task needs you")
 }
 
 // TestAgentsFoldedWaiting: folding a parent over an agent that is waiting says so,

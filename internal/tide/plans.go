@@ -261,7 +261,7 @@ func (m *Model) planNeedsYou(p api.Plan) bool {
 		})
 	}
 	return slices.ContainsFunc(m.agents(), func(a api.Agent) bool {
-		return a.Task != nil && strings.EqualFold(a.Task.Plan, p.Name) && agentWaiting(a)
+		return a.Task != nil && strings.EqualFold(a.Task.Plan, p.Name) && agentNeedsYou(a)
 	})
 }
 

@@ -1443,10 +1443,23 @@ func agentWaiting(a api.Agent) bool {
 	return a.Activity != nil && *a.Activity == api.AgentActivityWaiting
 }
 
+// agentLimited reports whether a row says a is limited: a running agent whose
+// account has a bucket its model draws on limited, unless it is working, as a turn
+// under way goes on (the wdx doc AGENT_LIMITED).
+func agentLimited(a api.Agent) bool {
+	working := a.Activity != nil && *a.Activity == api.AgentActivityWorking
+	return a.State == api.AgentStateRunning && a.Limited != nil && !working
+}
+
+// agentNeedsYou reports whether a person looks for a: one waiting, or one limited,
+// which a person looks for as for one waiting.
+func agentNeedsYou(a api.Agent) bool { return agentWaiting(a) || agentLimited(a) }
+
+// waitingAgents counts the agents of list that need the person.
 func waitingAgents(list []api.Agent) int {
 	n := 0
 	for _, a := range list {
-		if agentWaiting(a) {
+		if agentNeedsYou(a) {
 			n++
 		}
 	}
@@ -1454,8 +1467,11 @@ func waitingAgents(list []api.Agent) int {
 }
 
 // agentDetailStyle is detail, what r says beside its mark, as what it says calls
-// for: an agent waiting is what a human looks for.
+// for: an agent waiting is what a human looks for, and one limited a failure.
 func agentDetailStyle(st style.Style, r agentListRow, detail string) string {
+	if r.waiting == 0 && r.below == 0 && agentLimited(r.agent) {
+		return st.Failure(detail)
+	}
 	if r.waiting > 0 || (r.below == 0 && agentWaiting(r.agent)) {
 		return st.Warning(detail)
 	}
@@ -1464,8 +1480,8 @@ func agentDetailStyle(st style.Style, r agentListRow, detail string) string {
 
 // agentDetail is what the row says beside its mark: how many agents a folded
 // parent hides, or how many of them are waiting, or what its state does not tell:
-// of a running agent, that it is working or waiting, and what kind of prompt it
-// waits on when that is read.
+// of a running agent, that it is limited, working or waiting, and what kind of
+// prompt it waits on when that is read.
 func agentDetail(r agentListRow) string {
 	a := r.agent
 	switch {
@@ -1473,6 +1489,8 @@ func agentDetail(r agentListRow) string {
 		return fmt.Sprintf("%d waiting", r.waiting)
 	case r.below > 0:
 		return fmt.Sprintf("%d below", r.below)
+	case agentLimited(a):
+		return "limited"
 	case a.State == api.AgentStateRunning && a.Held > 0:
 		return fmt.Sprintf("%d held", a.Held)
 	case a.State == api.AgentStateRunning && a.Prompt != nil:

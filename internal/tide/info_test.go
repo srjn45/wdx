@@ -4,12 +4,14 @@ import (
 	"slices"
 	"strings"
 	"testing"
+	"time"
 
 	tea "charm.land/bubbletea/v2"
 	uv "github.com/charmbracelet/ultraviolet"
 
 	"github.com/srjn45/wdx/internal/api"
 	"github.com/srjn45/wdx/internal/client"
+	"github.com/srjn45/wdx/internal/style"
 )
 
 // infoModel returns a window with demoAgents' swift-falcon's agent tab current
@@ -204,6 +206,41 @@ func TestInfoShowsThePrompt(t *testing.T) {
 	if got := text(m); strings.Contains(got, "prompt:") || strings.Contains(got, "question:") || strings.Contains(got, "options:") {
 		t.Errorf("without a prompt, its rows show:\n%s", got)
 	}
+}
+
+// TestInfoShowsTheLimit: the limited row names the bucket by its label and when it
+// resets, or only when for the bucket every model draws on; — when not limited.
+func TestInfoShowsTheLimit(t *testing.T) {
+	t.Parallel()
+	now := time.Date(2026, 11, 9, 12, 0, 0, 0, time.UTC)
+	resets := now.Add(2 * time.Hour)
+	idle := api.AgentActivityIdle
+	agent := func(bucket string) api.Agent {
+		return api.Agent{Name: "lead", State: api.AgentStateRunning, Aca: "antigravity", ProjectName: "demo", Activity: &idle,
+			Permissions: api.AgentPermissionsAsk, Limited: &api.AgentLimited{Bucket: bucket, ResetsAt: &resets}}
+	}
+	for _, tt := range []struct {
+		agent api.Agent
+		want  string
+	}{
+		{agent("3p"), "limited:            Claude and GPT models, resets in 2 h"},
+		{agent(""), "limited:            resets in 2 h"},
+		{running("lead"), "limited:            —"},
+	} {
+		m := newAgentsModel(120, 41, tt.agent)
+		m.now = func() time.Time { return now }
+		m.layout.setFocus(project)
+		keys(m, "i")
+		if got := text(m); !strings.Contains(got, tt.want) {
+			t.Errorf("no %q in:\n%s", tt.want, got)
+		}
+	}
+
+	m := newAgentsModel(120, 41, agent("3p"))
+	m.st = style.New(true)
+	m.layout.setFocus(project)
+	keys(m, "i")
+	wantColored(t, m, red, "Claude and GPT models")
 }
 
 func TestInfoIsLive(t *testing.T) {
