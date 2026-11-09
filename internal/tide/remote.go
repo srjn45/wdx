@@ -88,10 +88,13 @@ type remoteState struct {
 // sessionEnded is the message that replaces the window: why the session
 // ended, and the code that opens another.
 type sessionEnded struct {
-	why     string
-	code    string
-	busy    bool
-	failure string
+	why string
+	// reasonKnown is true when why is the reason the host gave, not every
+	// reason a session ends for.
+	reasonKnown bool
+	code        string
+	busy        bool
+	failure     string
 }
 
 // watchLink waits for the next stream's outcome.
@@ -127,7 +130,15 @@ func (m *Model) linkWasChanged(msg linkChanged) tea.Cmd {
 		r.lostSince, r.lostErr, r.ended = time.Time{}, nil, nil // the wait under way ends nothing
 		return watch
 	case p.Code == api.ErrorCodeSessionClosed:
-		m.sessionEnded(closedWhy(m.node, p))
+		why, known := closedWhy(m.node, p)
+		// Of the streams that met the session closed, only the first the
+		// host refused knows why; the others may come first.
+		if r.ended != nil && known && !r.ended.reasonKnown {
+			m.log.Info("session ended, the reason known", "node", m.node, "why", why)
+			r.ended.why, r.ended.reasonKnown = why, true
+			return watch
+		}
+		m.sessionEnded(why, known)
 		return watch
 	case p.Code == api.ErrorCodeNodeOffline || p.Code == api.ErrorCodeHubUnreachable:
 		r.lostErr = msg.err
@@ -154,41 +165,42 @@ func (m *Model) sessionLostWaited(msg sessionLostFor) {
 	if r.lostErr != nil {
 		why += ": " + r.lostErr.Error()
 	}
-	m.sessionEnded(why)
+	m.sessionEnded(why, true)
 }
 
 // sessionEnded replaces the window with the message, unless it shows.
-func (m *Model) sessionEnded(why string) {
+// reasonKnown says why is the reason, not a list of the possible ones.
+func (m *Model) sessionEnded(why string, reasonKnown bool) {
 	r := &m.remote
 	if r.ended != nil {
 		return
 	}
 	m.log.Info("session ended", "node", m.node, "why", why)
-	r.ended = &sessionEnded{why: why}
+	r.ended = &sessionEnded{why: why, reasonKnown: reasonKnown}
 	m.closeMenu()
 	m.sel = nil
 }
 
 // closedWhy says why the session p reports closed did, as the host said
-// when it did.
-func closedWhy(node string, p api.Problem) string {
+// when it did, and whether the host said it.
+func closedWhy(node string, p api.Problem) (string, bool) {
 	reason := ""
 	if p.Details != nil {
 		reason, _ = (*p.Details)["reason"].(string)
 	}
 	switch reason {
 	case "closed":
-		return "it was closed, on " + node + " or here"
+		return "it was closed, on " + node + " or here", true
 	case "idle":
-		return "it was idle for too long"
+		return "it was idle for too long", true
 	case "restart":
-		return "the daemon on " + node + " restarted"
+		return "the daemon on " + node + " restarted", true
 	case "remote_access_off":
-		return "remote access was turned off"
+		return "remote access was turned off", true
 	case "logged_out":
-		return "a node logged out of the hub"
+		return "a node logged out of the hub", true
 	}
-	return "it was closed on " + node + " or here, the daemon on " + node + " restarted, it was idle for too long, remote access was turned off, or the network failed"
+	return "it was closed on " + node + " or here, the daemon on " + node + " restarted, it was idle for too long, remote access was turned off, or the network failed", false
 }
 
 // endedInput gives the message what the person does while it shows: keys

@@ -276,6 +276,24 @@ func TestRemoteSessionClosed(t *testing.T) {
 	}
 }
 
+// TestRemoteSessionClosedReasonLater: of the streams that met the session
+// closed, the one that knows the host's reason may come after one that does
+// not, and its reason replaces the list of every possible one; a stream
+// that knows none after it changes nothing.
+func TestRemoteSessionClosedReasonLater(t *testing.T) {
+	t.Parallel()
+	m, _ := remoteModel(style.New(false), noSession)
+	m.Update(linkChanged{err: problem(api.ErrorCodeSessionClosed, nil)})
+	if got := text(m); !strings.Contains(got, "or the network failed") {
+		t.Fatalf("no reason known:\n%s", got)
+	}
+	m.Update(linkChanged{err: problem(api.ErrorCodeSessionClosed, map[string]any{"reason": "closed"})})
+	m.Update(linkChanged{err: problem(api.ErrorCodeSessionClosed, nil)})
+	if got := text(m); !strings.Contains(got, "it was closed, on desktop or here") || strings.Contains(got, "or the network failed") {
+		t.Fatalf("the host's reason does not show:\n%s", got)
+	}
+}
+
 // TestRemoteNodeOffline: the node unreachable shows reconnecting on the bar,
 // then the message once it stayed so for the wait; a stream opened between
 // ends the wait.
