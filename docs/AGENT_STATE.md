@@ -209,7 +209,7 @@ ALTER TABLE agents ADD COLUMN draft INTEGER;
 
 - **Columns in `agents`,** decided by the human on 2026-11-01, over one JSON column of `Status` and over a table of their own. These are facts wdx's own logic will build on, so they keep a typed place, and adding one is a line that only adds. A table of their own gains nothing from how often they change: SQLite has one writer for the whole database, none of them is indexed, and the row is small. What a change costs is every open stream reading its project again, which neither would change. Revisit when a value is large or nested, as a prompt's text and options, or when history is wanted: those go in a table of their own, leaving these here.
 - **Additive,** so `wdx update --rollback` keeps the data. An older daemon skips the frame, as its reader takes only `exited`.
-- **No `CHECK` on `activity`.** Adding `limited` would rebuild the table, and a running holder can be newer than its daemon. The daemon turns a value it does not know into `unknown`.
+- **No `CHECK` on `activity`.** A running holder can be newer than its daemon, so the daemon turns a value it does not know into `unknown`. `limited` became no activity at all but a field of its own, derived by the daemon (see Limited by its account).
 - **Never stale.** The agents query returns both only when the terminal's state is `running`, so exit, stop and lost need no code of their own. On a launch, and on adopting a terminal still `starting`, what `Hello` says is written before the terminal is marked `running`. Each dial writes it: the launch, `Reconcile` and the redial in `follow`.
 - **`updated_at` is untouched.** It says when `state` last changed.
 - **`draft` is public:** in the API and `wdx agent get --json`, true or false, never the text. The holder's sender goes on reading it locally.
@@ -253,7 +253,7 @@ A folded parent says `1 waiting` in place of `2 below` while an agent it hides i
 
 Known limits at the end of this step:
 
-- An agent at a token limit probably shows `idle`, since its turn ended and its input box is back. Not recorded yet, and `limited` is the next step's.
+- An agent at a token limit probably shows `idle`, since its turn ended and its input box is back. Not recorded yet; the account's limit is shown beside the activity since (see Limited by its account).
 - Claude rewording its footer gives `unknown`, not a wrong activity, until a wdx release fixes the parser.
 
 ## Step 2 decisions
@@ -366,6 +366,16 @@ Known wrong answers, none of which matters for display:
 
 - **`/model` changes the default of every later agent.** Enter in the menu and `/model <name>` both write `"model"` to Claude's settings (`saved as your default for new sessions`), only `s` in the menu does not. So an agent's `/model` reaches the next agent started.
 - **`/clear` starts a new session,** a transcript of its own, and `--resume` of the old id goes back to the conversation before it. An agent's `session_id` now follows it through a hook, so a relaunch goes on from the latest conversation (docs/AGENT_RESUME.md).
+
+## Limited by its account
+
+Built by the plan agent-limited (the wdx doc AGENT_LIMITED, 2026-11-09). `limited` is not an `activity`: the activity is what the screen says, read by the holder; a limit is what the account says, read by the daemon from the usage rows (docs/AGENT.md, Usage), as often as not from another agent's status file. So `Agent.limited` is a field of its own, `{bucket, resets_at}` or null, beside `activity`, and the holder knows nothing of it.
+
+- **Which buckets an agent draws on:** `""` where its ACA has it, every model's, plus the named ones `ModelBuckets(requested_model, model)` gives, the id matched first, then the shown name (docs/ACA.md). It is limited while one of them is not available (`api.UsageBuckets`, a window past its reset no longer limited), and `limited` names the one that resets last.
+- **An unknown model** (no id given and no name shown yet, or a family wdx has no row for) is limited only while every bucket of its ACA is, so it never shows a limit that is not its own.
+- **Never limited:** an agent not running, or whose ACA has told no usage.
+- **Derived, never stored:** worked out from `aca_usage` each time agents are listed, got or sent on the project stream, and null in the result of a change. A timer in the daemon (`limitResets`, `internal/daemon/limited.go`) tells the streams at the earliest reset among the limited buckets, set at start and again whenever a status read changed something, so a limit ends on tide with no usage told.
+- **Shown, never acted on:** `wdx agent list`'s ACTIVITY reads `limited` in the failure style in place of `idle`, `waiting` or `unknown`, but `working` stays, as a turn under way goes on; `wdx agent get` adds `limited  Claude and GPT models, resets in 2 h` (`api.LimitedText`: the bucket's label, none for `""`). tide's row says the same as the list, its mark staying the activity's, and its info tab has a `limited` row; a folded parent's and a plan's `N waiting` count a limited agent. Nothing is typed, resumed, switched or refused, and `agent create` is not warned.
 
 ## Why it is waiting
 

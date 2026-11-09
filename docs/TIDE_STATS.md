@@ -31,6 +31,10 @@ A tab of the right pane showing machine-wide facts about the AI coding agents, i
 - A minute timer runs while the tab shows (`statsMinute`), so that `resets in 2 h 10 min` counts down; it stops when the tab is left.
 - An error reading says `stats could not be read: …` until the next read.
 
+## Agents
+
+- The tab shows the account; an agent's own row says whether a bucket its model draws on is limited, `limited` in the failure style, and its info tab names the bucket and its reset (docs/TIDE_INFO.md, docs/AGENT_STATE.md, Limited by its account; the wdx doc AGENT_LIMITED). Both are derived from the same rows the tab reads, so they end with the window's reset as the tab's line does.
+
 ## Limits
 
 - The Fable weekly of Claude Code's `/usage` screen is not in the status line JSON, so it is not shown yet (the wdx doc USAGE, step 5).

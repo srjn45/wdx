@@ -25,6 +25,7 @@ A tab of the right pane showing what is known about an agent, as `key: value` ro
    exit_code:          —
    error:              —
    activity:           working
+   limited:            —
    draft:              no
    queued:             2
   held:               0
@@ -36,6 +37,7 @@ A tab of the right pane showing what is known about an agent, as `key: value` ro
 - The fields for now are the ones above. More come later, as needed.
 - Keys are the API's names, so the pane reads as `--json` does. `children` lists the names of the direct children, one per line.
 - Every row always shows, with `—` when empty, so that rows do not jump when the state changes.
+- `limited` is the usage bucket the agent's model draws on that is limited now, by its label, and when it resets (`Claude and GPT models, resets in 2 h`, or `resets in 2 h` for the bucket every model draws on), in the failure style, from the API's `limited` (`api.LimitedText`, as `wdx agent get`); `—` when none is. It shows even while the agent is working, as the fact it is; the row in the list reads `limited` only when not (docs/AGENT_STATE.md, Limited by its account).
 - `context` is how full the agent's context is, out of its window when the ACA tells it (`70k` alone otherwise), colored as its row's size in the list is (`docs/TIDE_B4.md`).
 - Long values wrap. A pane too short for the rows scrolls.
 - The values come from the project's stream. Nothing is attached.

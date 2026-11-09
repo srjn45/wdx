@@ -4,6 +4,7 @@ description: The Agents list and what each row says, talking to an agent and ans
 sidebar:
   label: Agents
 ---
+import Since from '../../../../components/Since.astro';
 import TideScreen from '../../../../components/TideScreen.astro';
 
 The Agents section lists the project's agents, children under their parents and a running plan's agents under the plan, each saying what it is doing. Enter shows one live in the agent pane, where you talk to it as in its own terminal. The CLI side is in the [Agents guide](/wdx/docs/guides/agents/).
@@ -14,6 +15,7 @@ The Agents section lists the project's agents, children under their parents and 
 
 - **The mark** before the name: `●` running, `?` waiting for you, `○` exited, `✕` failed.
 - **What it is doing**, after the name: `working`, nothing when idle, or `yes/no` and `decision` when TIDE can read the question it asks (Claude Code for now), else `waiting`.
+- **`limited`** <Since v="0.5.0" />, in red, in place of what it is doing when a usage limit its model draws on is reached and it is not working; its info tab says which and when it resets, and a folded parent counts it in `N waiting`. It goes by itself at the reset. See [Agents](/wdx/docs/guides/agents/) for which limits are an agent's.
 - **Its context size** at the end, `82k` or `1.5M`: green, then yellow from `context.threshold.warning` and red from `context.threshold.critical`.
 - **The active row**, the one shown on the right, starts with a green `▌`; the cursor's row is blue.
 - **Children** are indented under their parent with `└`. A parent folds with `←` and opens with `→`; folded, it says how many below it wait for you.
