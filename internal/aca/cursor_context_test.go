@@ -60,9 +60,15 @@ func cursorAgentStatusLine(t *testing.T, l aca.Launch) map[string]any {
 }
 
 // cursorStatusLine runs the status line of the settings Command writes as Cursor runs
-// it: split as Cursor splits it, no shell, with what it shows on its input. It returns
-// what that printed.
+// it, in a directory that is no repository. It returns what that printed.
 func cursorStatusLine(t *testing.T, l aca.Launch, input []byte) string {
+	t.Helper()
+	return cursorStatusLineIn(t, l, t.TempDir(), input)
+}
+
+// cursorStatusLineIn runs the status line as Cursor runs it, in the agent's directory
+// dir: split as Cursor splits it, no shell, with what it shows on its input.
+func cursorStatusLineIn(t *testing.T, l aca.Launch, dir string, input []byte) string {
 	t.Helper()
 	command, _ := cursorAgentStatusLine(t, l)["command"].(string)
 	args := cursorArgv(t, command)
@@ -70,6 +76,7 @@ func cursorStatusLine(t *testing.T, l aca.Launch, input []byte) string {
 		t.Fatalf("status line command %q", command)
 	}
 	cmd := exec.Command(args[0], args[1:]...)
+	cmd.Dir = dir
 	cmd.Stdin = strings.NewReader(string(input))
 	out, err := cmd.Output()
 	if err != nil {
@@ -107,9 +114,7 @@ func TestCursorContextSize(t *testing.T) {
 		{"after-clear.json", aca.ContextSize{}},
 	} {
 		l := cursorLaunch(t)
-		if out := cursorStatusLine(t, l, cursorStatusInput(t, tc.file)); out != "" {
-			t.Errorf("%s: status line printed %q", tc.file, out)
-		}
+		cursorStatusLine(t, l, cursorStatusInput(t, tc.file))
 		got, follow, err := aca.Cursor{}.ContextSize(l)
 		if err != nil || got != tc.want || follow != nil {
 			t.Errorf("%s: context size = %+v, %v, following %q; want %+v and nothing to follow", tc.file, got, err, follow, tc.want)
@@ -151,8 +156,8 @@ func writeCursorUserSettings(t *testing.T, home, settings string) {
 }
 
 // TestCursorStatusLineRunsTheUsers: the agent's statusLine replaces the user's own, so
-// theirs runs after wdx's on the same input, through the script, and what it prints is
-// what shows; their padding, updateIntervalMs and timeoutMs are kept. A command of
+// theirs runs after wdx's on the same input, through the script, and what it prints
+// shows under Cursor's footer; their padding, updateIntervalMs and timeoutMs are kept. A command of
 // several, ending in a comment, with a quote of each kind, runs whole. The script's
 // path is given as Cursor splits it: in double quotes when it has a space and a
 // single quote, in single quotes when it has a double quote.
@@ -173,7 +178,7 @@ func TestCursorStatusLineRunsTheUsers(t *testing.T) {
 			}
 			writeCursorUserSettings(t, l.UserHome, string(settings))
 			input := cursorStatusInput(t, "mid-session.json")
-			if out := cursorStatusLine(t, l, input); out != "their line quoted\n" {
+			if out := cursorStatusLine(t, l, input); out != "Grok 4.5 High · 4.7%\n/work\ntheir line quoted\n" {
 				t.Errorf("status line printed %q", out)
 			}
 			if got, err := os.ReadFile(theirs); err != nil || string(got) != string(input) {
@@ -196,7 +201,8 @@ func TestCursorStatusLineRunsTheUsers(t *testing.T) {
 }
 
 // TestCursorStatusLineWithoutTheUsers: a user with no status line, or one that is not
-// a command, gets wdx's alone, type and command, and nothing of theirs kept.
+// a command, gets wdx's alone, type and command, and nothing of theirs kept: Cursor's
+// footer and nothing under it.
 func TestCursorStatusLineWithoutTheUsers(t *testing.T) {
 	t.Parallel()
 	for name, settings := range map[string]string{
@@ -209,7 +215,7 @@ func TestCursorStatusLineWithoutTheUsers(t *testing.T) {
 			t.Parallel()
 			l := cursorLaunch(t)
 			writeCursorUserSettings(t, l.UserHome, settings)
-			if out := cursorStatusLine(t, l, cursorStatusInput(t, "mid-session.json")); out != "" {
+			if out := cursorStatusLine(t, l, cursorStatusInput(t, "mid-session.json")); out != "Grok 4.5 High · 4.7%\n/work\n" {
 				t.Errorf("status line printed %q", out)
 			}
 			line := cursorAgentStatusLine(t, l)

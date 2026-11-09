@@ -24,7 +24,7 @@ const antigravityStatusFile = "antigravity-status.json"
 func antigravityStatusLine(ctx context.Context, l Launch) map[string]any {
 	theirs, kept := antigravityUserStatusLine(ctx, l.UserHome)
 	line := map[string]any{
-		"command":            statusLineCommand(filepath.Join(l.BackupDir, antigravityStatusFile), theirs),
+		"command":            statusLineCommand(filepath.Join(l.BackupDir, antigravityStatusFile), "", theirs),
 		"stack_with_default": true,
 	}
 	for _, key := range []string{"padding", "timeout_ms"} {

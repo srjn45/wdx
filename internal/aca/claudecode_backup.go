@@ -78,7 +78,7 @@ func claudeCodeWriteSettings(ctx context.Context, l Launch) (string, error) {
 // given with --settings replaces the user's own, so theirs then runs after it on the
 // same input (checked on 2.1.319).
 func claudeCodeStatusLine(ctx context.Context, l Launch) string {
-	return statusLineCommand(filepath.Join(l.BackupDir, claudeCodeStatusFile), claudeCodeUserStatusLine(ctx, l.UserHome))
+	return statusLineCommand(filepath.Join(l.BackupDir, claudeCodeStatusFile), "", claudeCodeUserStatusLine(ctx, l.UserHome))
 }
 
 // claudeCodeUserStatusLine is the command of the user's own status line, in their

@@ -14,11 +14,15 @@ import (
 
 // statusLineCommand is a status line's command for a shell: it writes what the ACA
 // gives it to statusFile whole, through a file of its own renamed into place, so that
-// a read never sees half of one and two runs at once do not mix. Then theirs, the
-// user's own command, runs on the same input, in braces, which take any command a
-// shell does; "" is none. Claude Code and Cursor give their status lines the same JSON.
-func statusLineCommand(statusFile, theirs string) string {
+// a read never sees half of one and two runs at once do not mix. Then ours, wdx's own
+// lines read from "$f", and theirs, the user's own command, runs on the same input, in
+// braces, which take any command a shell does; "" is none of either. Claude Code and
+// Cursor give their status lines the same JSON.
+func statusLineCommand(statusFile, ours, theirs string) string {
 	command := "f=" + shellQuote(statusFile) + `; cat > "$f.$$" && mv "$f.$$" "$f"`
+	if ours != "" {
+		command += "\n" + ours
+	}
 	if theirs != "" {
 		command += "; {\n" + theirs + "\n} < \"$f\""
 	}
