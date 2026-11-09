@@ -126,6 +126,7 @@ closed 1 sessions
 - **A code opens one session,** and is never logged. Without `--code` it is asked for; `--json` needs it. With a session into that node open already, nothing is asked: `unchanged`.
 - **Wrong codes slow down** at the host, per node and in total: after one, the next is refused unread for 1 second, doubling up to 5 minutes, until a right one. Remote access is never turned off by wrong codes alone.
 - **A session ends** when closed, on either node; when unused for the host's `hub.session_idle_timeout`; when the host's daemon restarts; when `hub.remote_access` goes off there; at `wdx hub logout`, which also forgets the keys pinned; and when the other node is removed from your account, or logs out, which the hub tells your other nodes. The daemon logs the reason of a session ended so as `node_removed`. The other node finds out at its next use, as `session_closed`.
+- **Not into this machine:** a node named that is this one, by name or by id, is a `usage` error, before any code is asked.
 - **Refused** with `remote_access_off` or `code_not_set_up` on the host, `code_wrong`, `node_offline` when the node is not connected, `node_not_found`, `too_many_streams`, or `node_version_unsupported` when the two speak no version in common.
 
 ## Commands on another node
@@ -149,6 +150,7 @@ daemon 0.5.1 (5e6f7a8), API 1
 - **In text,** `on node desk` comes first on stderr, so that you see where it ran. With `--json`, stdout holds only the node's answer.
 - **Paths the node's daemon receives** (`project open --local`, `project create --path`) must be absolute, and are that node's: a relative one is a `usage` error. **Files wdx reads or writes itself** (`--path` of `doc create`, `doc update`, `plan create` and `plan update`, `--out` of `doc get` and `plan get`) stay this machine's, so `--out spec.md` writes here.
 - **The project** cannot come from the working directory, which is this machine's: pass `--project-id` or `--project-name`, or `--all` where a list takes it.
+- **Not this machine:** `--node` naming this one, by name or by id, is a `usage` error before any code is asked: run the command without `--node`.
 - **Not for agents:** where `WDX_AGENT_ID` is set, as it is for an agent wdx runs, `--node` fails with `remote_not_for_agents`, before anything is asked. It guards against an accident, not against the agent.
 - **The host's rules:** it serves only what a person at another node should reach. The hub's routes, the settings, stopping or reloading the daemon and TIDE's state are refused with `route_not_allowed`, as an operation the node does not have yet is: update it.
 - **Versions:** the two nodes need not run the same release, only an API version both speak: `node_version_unsupported` says which to update. `wdx version --node` shows the node's release and API version, and no warning is given that its daemon runs another release.

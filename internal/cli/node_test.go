@@ -425,3 +425,45 @@ func TestNodeHints(t *testing.T) {
 		}
 	}
 }
+
+// TestNodeThisMachine names this machine with --node: refused as a usage
+// error before any code is asked, by a command, by hub session open and by
+// TIDE, by name in any case or by id.
+func TestNodeThisMachine(t *testing.T) {
+	t.Parallel()
+	hh := newHubHome(t)
+	hh.loggedIn("laptop")
+	s, _ := hh.hubJSON(nil, "hub", "status")
+	if s.Hub == nil || s.Hub.Node == nil {
+		t.Fatalf("hub status names no node: %+v", s)
+	}
+	for _, args := range [][]string{
+		{"project", "list", "--node", "laptop"},
+		{"project", "list", "--node", "LAPTOP", "--json"},
+		{"project", "list", "--node", "id:" + s.Hub.Node.Id, "--json"},
+		{"hub", "session", "open", "--node", "laptop"},
+		{"hub", "session", "open", "--node", "laptop", "--code", "123456", "--json"},
+	} {
+		// A code typed on a terminal, which nothing must ask for.
+		out := wdxWith(t, hh.home, hh.env(answering(t, "123456")), args...)
+		if out.Exit != clikit.ExitUsage || !strings.Contains(out.Stdout+out.Stderr, " is this machine: ") || strings.Contains(out.Stderr, "code for") {
+			t.Errorf("%v: %+v, want a usage error saying it is this machine, with nothing asked", args, out)
+		}
+		if slices.Contains(args, "--json") {
+			var v jsonOutput
+			_ = json.Unmarshal(clikittest.JSON(t, args, out, codes), &v)
+			wantError(t, v, out.Exit, api.ErrorCodeUsage, clikit.ExitUsage)
+		}
+	}
+	out := wdxWith(t, hh.home, hh.env(nil), "project", "list", "--node", "laptop")
+	if !strings.Contains(out.Stderr, "laptop is this machine: run the command without --node") {
+		t.Errorf("stderr %q, want what to do", out.Stderr)
+	}
+
+	run := startInTerminalWith(t, hh.home, "", 80, 24, []string{"tide", "--node", "laptop"}, hh.env(func(env *Env) {
+		env.Stdin, _ = env.TTY() // the code would be asked on the terminal TIDE runs in
+	}))
+	if out := run.waitText(); out.Exit != clikit.ExitUsage || !strings.Contains(out.Stderr, "laptop is this machine: run the command without --node") {
+		t.Errorf("tide: %+v", out)
+	}
+}

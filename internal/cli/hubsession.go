@@ -59,6 +59,9 @@ func newHubSessionOpenCmd() *cobra.Command {
 		},
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			c := clientOf(cmd)
+			if err := notThisNode(cmd.Context(), c, node, "a session opens into another node of your account"); err != nil {
+				return err
+			}
 			if !cmd.Flags().Changed(clikit.CodeFlag) {
 				if open, ok, err := openSessionInto(cmd, node); err != nil || ok {
 					if err != nil {

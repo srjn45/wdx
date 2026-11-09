@@ -173,6 +173,9 @@ func dialNode(ctx context.Context, cmd *cobra.Command, local *client.Client, nod
 		p.Details = &details
 		return nil, &client.ProblemError{Problem: p}
 	}
+	if err := notThisNode(ctx, local, node, "run the command without --node"); err != nil {
+		return nil, err
+	}
 	if clikit.InvocationOf(cmd).Quiet || !clikit.CanPrompt(cmd) {
 		if !clikit.InvocationOf(cmd).Quiet {
 			clikit.LogUnanswered(cmd, "code for "+node)
@@ -188,6 +191,23 @@ func dialNode(ctx context.Context, cmd *cobra.Command, local *client.Client, nod
 		return nil, sessionHint(err, node)
 	}
 	return local.Connect(ctx, node)
+}
+
+// notThisNode fails with a usage error when node names this machine, as
+// the daemon's hub status names it: no session opens into the node itself,
+// so no code is asked for one. what says what to do instead. When the
+// status cannot be read, the request that follows says why.
+func notThisNode(ctx context.Context, local *client.Client, node, what string) error {
+	h, err := local.Hub(ctx)
+	if err != nil || h.Hub.Node == nil {
+		return nil
+	}
+	this := h.Hub.Node
+	if !strings.EqualFold(this.Name, node) && "id:"+this.Id != node {
+		return nil
+	}
+	logging.FromContext(ctx).Info("node refused", "reason", "it is this machine", "node", node, "node_id", this.Id)
+	return &clikit.UsageError{Err: fmt.Errorf("%s is this machine: %s", node, what)}
 }
 
 // daemonPath makes path absolute for the daemon that receives it: against
