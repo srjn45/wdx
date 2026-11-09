@@ -1,0 +1,48 @@
+# wdx-hub on Fly.io, built from Dockerfile beside it. It names no app and no
+# region, which are the admin's: every command takes --app. The wdx doc
+# HUB_FLY designs it; make hub-fly-deploy APP=<name> deploys a release tag.
+# A test in internal/hub/hubcli keeps the ports, the mount and the health
+# check in line with the hub's defaults.
+
+# Always on: nodes hold a control connection open, which a stopped machine
+# drops, and the volume ties the app to one machine anyway.
+[http_service]
+  internal_port = 8080
+  force_https = true
+  auto_stop_machines = "off"
+  auto_start_machines = true
+  min_machines_running = 1
+
+  # Fly's default hard limit, 25, is less than one user's 32 streams.
+  [http_service.concurrency]
+    type = "connections"
+    hard_limit = 500
+
+  [[http_service.checks]]
+    method = "GET"
+    path = "/v1/version"
+    interval = "30s"
+    timeout = "5s"
+    grace_period = "10s"
+
+# The node endpoint is raw TCP with no handlers, so the bytes pass untouched:
+# nodes present their own certificates, and the hub terminates their TLS
+# itself. It needs the app's dedicated IPv4, which the shared one lacks.
+[[services]]
+  protocol = "tcp"
+  internal_port = 8443
+  auto_stop_machines = "off"
+  auto_start_machines = true
+  min_machines_running = 1
+
+  [[services.ports]]
+    port = 8443
+
+  [services.concurrency]
+    type = "connections"
+    hard_limit = 500
+
+[mounts]
+  source = "wdx_hub_data"
+  destination = "/data"
+  initial_size = "1gb"

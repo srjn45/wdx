@@ -22,7 +22,7 @@ RANGE ?= origin/main..HEAD
 IDENTITY := github.com/srjn45/wdx/internal/identity
 LDFLAGS  := -s -w -X $(IDENTITY).Version=$(VERSION) -X $(IDENTITY).Commit=$(COMMIT)
 
-.PHONY: build generate test test-stress test-contention test-changed test-update test-hub-install cover lint check tools notices vt-sync dist install uninstall release release-dev changelog site site-dev site-ref clean
+.PHONY: build generate test test-stress test-contention test-changed test-update test-hub-install hub-fly-deploy cover lint check tools notices vt-sync dist install uninstall release release-dev changelog site site-dev site-ref clean
 
 # Build wdx and wdx-hub for this machine only.
 build:
@@ -76,6 +76,11 @@ test-update:
 # back and uninstall it. Needs root through sudo and systemd: in CI only.
 test-hub-install:
 	scripts/test-hub-install.sh
+
+# Deploy wdx-hub on Fly.io from a clean checkout of a release tag: make
+# hub-fly-deploy APP=<name>. Needs flyctl and a Fly account: never in CI.
+hub-fly-deploy:
+	APP="$(APP)" scripts/hub-fly-deploy.sh
 
 # Run the tests once with coverage: bin/cover.out, bin/cover.html and the
 # per-package summary.
