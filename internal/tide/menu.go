@@ -325,6 +325,12 @@ func (m *Model) globalPart() menuPart {
 			return nil
 		}})
 	}
+	if m.sessionsOffered() {
+		items = append(items, menuItem{sessionsKey, "sessions into this node", "sessions", func() tea.Cmd {
+			m.openSessionsBox("menu")
+			return nil
+		}})
+	}
 	if m.statsOffered() {
 		items = append(items, menuItem{statsKey, "stats", "stats", func() tea.Cmd {
 			m.switcher, m.opening = nil, nil

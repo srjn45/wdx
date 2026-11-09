@@ -75,6 +75,18 @@ When the session ends, closed on either node, by the node's daemon restarting, i
 
 A TIDE on this machine <Since v="0.5.0" /> shows when another node has a session into it: the status line turns cyan and starts with `remote:` and the nodes, `remote: laptop · app · project`, or `remote: laptop, work` for two, for as long as any is open. It follows them as they open and close, never on a timer. `wdx hub session list` says the same from the CLI, and `wdx hub session close` ends one.
 
+**The Sessions dialog** <Since v="0.5.0" />, `C-q H` or a click on the status line's `remote:`, lists those sessions, one row per session in the order they opened: the node, when it opened, when it was last used, and when it closes unused. It follows them as the status line does, and closes itself when the last one ends. Each key asks first, `y` to go on, `n` or `Esc` to keep things as they are:
+
+| Key | What it does |
+|---|---|
+| `x` | close the session under the cursor, as `wdx hub session close --id` does: whoever is connected from that node is cut off at once, attaches included, and needs the code again to come back |
+| `X` | close every session into this node; this node's own sessions into others stay open |
+| `D` | remove the node under the cursor from your account, as `wdx hub node remove` does: the hub cuts it off from all your nodes and its sessions close everywhere; it logs in anew to come back |
+| `↑` `↓` | move the cursor |
+| `Esc` | close the dialog |
+
+What was done shows on the status line, `closed the session with laptop` or `removed laptop from the account`, and a failure stays in the dialog. To let no one in, turn `hub.remote_access` off in the [settings tab](/wdx/docs/tide/settings/), which closes every session into this node. The dialog is not in a TIDE opened with `--node`: the host's sessions are not reached through a session.
+
 ## Commands
 
 <Commands />

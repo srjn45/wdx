@@ -27,11 +27,12 @@ type sessionStream interface {
 
 // incoming is the sessions into this node, as their stream last said.
 type incoming struct {
-	gen    int // which stream this is: the messages of an older one are dropped
-	cancel context.CancelFunc
-	stream sessionStream
-	nodes  []string      // the nodes of the sessions open, by when they opened
-	wait   time.Duration // before a broken stream is opened again
+	gen      int // which stream this is: the messages of an older one are dropped
+	cancel   context.CancelFunc
+	stream   sessionStream
+	sessions []api.HubSession // those open, by when they opened
+	nodes    []string         // the nodes of the sessions open, by when they opened
+	wait     time.Duration    // before a broken stream is opened again
 }
 
 // Messages of the sessions' stream, each of the stream gen.
@@ -136,7 +137,8 @@ func (m *Model) sessionsEvent(msg sessionsEvent) tea.Cmd {
 	if !slices.Equal(nodes, in.nodes) {
 		m.log.Info("sessions into this node changed", "nodes", nodes)
 	}
-	in.nodes, in.wait = nodes, 0
+	in.sessions, in.nodes, in.wait = msg.sessions, nodes, 0
+	m.sessionsChanged()
 	return m.nextSessions()
 }
 
@@ -150,7 +152,8 @@ func (m *Model) sessionsBroke(err error) tea.Cmd {
 		in.stream.Close()
 		in.stream = nil
 	}
-	in.nodes = nil
+	in.sessions, in.nodes = nil, nil
+	m.sessionsChanged()
 	if _, ok := errors.AsType[*client.ProblemError](err); ok {
 		m.log.Info("sessions not followed", "err", err)
 		return nil

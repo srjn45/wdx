@@ -88,6 +88,7 @@ type Model struct {
 	editorClose    *editorCloseBox       // what closing an editor's tab asks, while it does
 	editorKeys     map[string]string     // what to type into an editor once its tab attaches, by terminal id
 	land           *landBox              // what L asks, while it is open
+	sessionsBox    *sessionsBox          // the Sessions dialog, C-q H, while it is open
 	confirm        *confirmBox           // the confirmation of C-q x, while it is open
 	taskBox        *taskAnswers          // the answers to a plan's task that cannot go on, while open
 	terminalNotice string                // why the last terminal request failed, until the next key
@@ -434,6 +435,8 @@ func (m *Model) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, m.sessionsEvent(msg)
 	case reopenSessions:
 		return m, m.reopenSessions(msg)
+	case sessionsAnswered:
+		m.sessionsAnsweredMsg(msg)
 	case reopenStream:
 		if _, ok := m.current(msg.gen); ok {
 			return m, m.open()
@@ -482,7 +485,7 @@ func (m *Model) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			f.paste(msg.Content)
 			return m, nil
 		}
-		if !m.popupOpen() && !m.menu && m.confirm == nil {
+		if !m.popupOpen() && !m.menu && m.confirm == nil && m.sessionsBox == nil {
 			return m, m.paneInput(m.layout.focus, msg)
 		}
 	default:
@@ -649,6 +652,9 @@ func (m *Model) key(msg tea.KeyPressMsg) tea.Cmd {
 	if m.land != nil {
 		return m.landBoxKey(msg)
 	}
+	if m.sessionsBox != nil {
+		return m.sessionsBoxKey(msg)
+	}
 	if m.comment != nil {
 		return m.commentBoxKey(msg)
 	}
@@ -750,7 +756,11 @@ func (m *Model) switchTab(d direction) {
 // program in the terminal pane when it asked for the mouse.
 func (m *Model) click(msg tea.MouseClickMsg) tea.Cmd {
 	mouse := msg.Mouse()
-	if m.menu || m.popupOpen() || m.agentForm != nil || m.commit != nil || m.comment != nil || m.land != nil || m.editorClose != nil {
+	if m.menu || m.popupOpen() || m.agentForm != nil || m.commit != nil || m.comment != nil || m.land != nil || m.editorClose != nil || m.sessionsBox != nil {
+		return nil
+	}
+	if m.confirm == nil && mouse.Button == tea.MouseLeft && m.barRemoteClicked(mouse.X, mouse.Y) {
+		m.openSessionsBox("clicked")
 		return nil
 	}
 	if m.confirm == nil {

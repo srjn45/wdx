@@ -86,6 +86,9 @@ func (m *Model) paint(highlight bool) (uv.ScreenBuffer, bool) {
 	if m.land != nil {
 		m.drawPopup(buf, m.landPopup())
 	}
+	if m.sessionsBox != nil {
+		m.drawPopup(buf, m.sessionsPopup())
+	}
 	if m.comment != nil {
 		m.drawPopup(buf, m.commentPopup())
 	}
@@ -524,6 +527,9 @@ func (m *Model) statusLine() string {
 	case m.land != nil:
 		state = style.StatusPrefix
 		right = "landing: answer the box"
+	case m.sessionsBox != nil:
+		state = style.StatusPrefix
+		right = m.sessionsHint()
 	case m.comment != nil:
 		state = style.StatusPrefix
 		right = "comment: type it  Enter save  Esc cancel"
