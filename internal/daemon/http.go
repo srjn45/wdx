@@ -35,7 +35,7 @@ import (
 // anything.
 func (d *Daemon) handlers() (local, remote http.Handler) {
 	validate, router := validation()
-	s := &server{projects: d.projects, terminals: d.terminals, agents: d.agents, docs: d.docs, outbox: d.outbox, plans: d.plans, tabs: d.tabs, gitCopy: d.gitCopy, self: d.Info(), notices: d.notices, stopping: d.stopping, reload: d.reload, settings: d.opts.SettingStore, tracker: d.tracker, marks: d.marks, comments: d.comments, lander: d.lander, pullRequests: d.pullRequests, runner: d.runner, planParallel: func() int { return int(d.planParallel.Load()) }, ghProgram: d.opts.GH, hub: d.hub, hubLogins: &d.hubLogins, access: d.access, remote: d.remote, nodeStreams: d.nodeStreams}
+	s := &server{projects: d.projects, terminals: d.terminals, agents: d.agents, docs: d.docs, outbox: d.outbox, plans: d.plans, tabs: d.tabs, gitCopy: d.gitCopy, self: d.Info(), notices: d.notices, stopping: d.stopping, reload: d.reload, settings: d.opts.SettingStore, tracker: d.tracker, marks: d.marks, comments: d.comments, lander: d.lander, pullRequests: d.pullRequests, runner: d.runner, planParallel: func() int { return int(d.planParallel.Load()) }, ghProgram: d.opts.GH, hub: d.hub, hubLogins: &d.hubLogins, access: d.access, remote: d.remote, nodeStreams: d.nodeStreams, clock: d.clock}
 	strict := api.NewStrictHandlerWithOptions(s, nil, api.StrictHTTPServerOptions{
 		RequestErrorHandlerFunc:  badRequest,
 		ResponseErrorHandlerFunc: failed,
@@ -96,7 +96,16 @@ func isHubPath(path string) bool {
 	return path == hubPath || strings.HasPrefix(path, hubPath+"/")
 }
 
+// isAttachPath reports whether path is a terminal's attach, a stream that
+// changes nothing.
+func isAttachPath(path string) bool {
+	terminal, rest, ok := strings.Cut(strings.TrimPrefix(path, terminalsPath), "/")
+	return strings.HasPrefix(path, terminalsPath) && ok && terminal != "" && rest == attachPathEnd
+}
+
 const (
+	terminalsPath   = "/v1/terminals/"
+	attachPathEnd   = "attach"
 	hubPath         = "/v1/hub"
 	tideViewPath    = "/v1/tide/view"
 	projectsPath    = "/v1/projects/"
@@ -120,10 +129,10 @@ func (d *Daemon) oneChangeAtATime(next http.Handler) http.Handler {
 		defer cancel()
 		defer context.AfterFunc(d.abort, cancel)()
 		r = r.WithContext(ctx)
-		// A reload, a setting, a refresh, a view or the hub touches nothing the
-		// changes use, and should not wait minutes for a clone to end; nor
-		// should a change wait on the hub.
-		if r.URL.Path != reloadPath && !isHubPath(r.URL.Path) && !strings.HasPrefix(r.URL.Path, settingsPath) && !strings.HasSuffix(r.URL.Path, refreshPathEnds) && !isViewPath(r.URL.Path) {
+		// A reload, a setting, a refresh, a view, the hub or an attach touches
+		// nothing the changes use, and should not wait minutes for a clone to
+		// end; nor should a change wait on the hub.
+		if r.URL.Path != reloadPath && !isHubPath(r.URL.Path) && !strings.HasPrefix(r.URL.Path, settingsPath) && !strings.HasSuffix(r.URL.Path, refreshPathEnds) && !isViewPath(r.URL.Path) && !isAttachPath(r.URL.Path) {
 			d.changes.Lock()
 			defer d.changes.Unlock()
 			defer d.notices.notify() // the streams send what changed

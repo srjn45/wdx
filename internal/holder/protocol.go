@@ -13,7 +13,7 @@ import (
 // Version is the protocol version this binary speaks. A holder keeps
 // running the binary it was started from, so a daemon must speak the
 // previous version too.
-const Version = 4
+const Version = 5
 
 // inboxVersion is the first version whose holder takes frameSend. An older
 // one would ignore the frame, so the daemon does not send it.
@@ -24,6 +24,11 @@ const inboxVersion = 3
 // no look at the screen.
 const agentInboxVersion = 4
 
+// remoteVersion is the first version whose holder knows a client relayed
+// from another node, which its hello says. An older one would take the relay
+// for a client on this machine, so the relay refuses it.
+const remoteVersion = 5
+
 // drives reports whether this daemon can drive a holder speaking version v.
 // A version up to 2 leaves the daemon's frames as they are, and later ones
 // only add to them, so a daemon rolled back from the release that brings one
@@ -31,7 +36,7 @@ const agentInboxVersion = 4
 // own for that, in a release before the one that brings them; docs/ATTACH.md,
 // docs/SEND.md.
 func drives(v int) bool {
-	return v >= 1 && v <= 4
+	return v >= 1 && v <= 5
 }
 
 // A frame is one byte of type, the payload's length as 4 bytes big-endian,
@@ -75,8 +80,12 @@ const maxPayload = 1 << 20
 // Hello is what each side says first: the connecting side its version and
 // role, the holder the rest.
 type Hello struct {
-	Version    int    `json:"version"`
-	Role       string `json:"role,omitempty"`
+	Version int    `json:"version"`
+	Role    string `json:"role,omitempty"`
+	// Remote says the client is on another node, whose name is Node: the
+	// daemon relays its bytes, so the socket's peer is the daemon.
+	Remote     bool   `json:"remote,omitempty"`
+	Node       string `json:"node,omitempty"`
 	TerminalID string `json:"terminal_id,omitempty"`
 	PID        int    `json:"pid,omitempty"` // the shell's
 	HolderPID  int    `json:"holder_pid,omitempty"`

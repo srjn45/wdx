@@ -738,7 +738,7 @@ func (h *holder) handle(ctx context.Context, c *net.UnixConn) {
 	}
 	_ = c.SetReadDeadline(time.Time{})
 	if hello.Role == roleClient {
-		h.serveClient(c)
+		h.serveClient(c, hello)
 		return
 	}
 

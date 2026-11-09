@@ -12,6 +12,7 @@ import (
 	"github.com/srjn45/wdx/internal/doc"
 	"github.com/srjn45/wdx/internal/gh"
 	"github.com/srjn45/wdx/internal/git"
+	"github.com/srjn45/wdx/internal/holder"
 	"github.com/srjn45/wdx/internal/plan"
 	"github.com/srjn45/wdx/internal/project"
 	"github.com/srjn45/wdx/internal/terminal"
@@ -202,6 +203,12 @@ func classify(err error) (api.ErrorCode, map[string]any) {
 	}
 	if e, ok := errors.AsType[*terminal.NotRunningError](err); ok {
 		return api.ErrorCodeTerminalNotRunning, map[string]any{"terminal": terminalView(e.Terminal)}
+	}
+	if e, ok := errors.AsType[*terminal.RelayError](err); ok {
+		if errors.Is(e.Err, holder.ErrHolderVersionUnsupported) {
+			return api.ErrorCodeHolderVersionUnsupported, map[string]any{"terminal": terminalView(e.Terminal)}
+		}
+		return api.ErrorCodeConnectionLost, map[string]any{"terminal": terminalView(e.Terminal)}
 	}
 	if e, ok := errors.AsType[*terminal.SendError](err); ok {
 		return api.ErrorCodeSendFailed, map[string]any{"terminal": terminalView(e.Terminal)}

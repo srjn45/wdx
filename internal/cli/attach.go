@@ -59,10 +59,7 @@ func newTerminalAttachCmd() *cobra.Command {
 				`With --json: {"result": "detached" or "exited", "terminal": {...}}`,
 			clikit.Results: clikit.Annotation("detached", "exited"),
 			clikit.Errors: clikit.CodeList(api.ErrorCodeNotFound, api.ErrorCodeTerminalNotRunning, api.ErrorCodeAttachUnsupported,
-				api.ErrorCodeConnectionLost, api.ErrorCodeDaemonUnavailable),
-
-			// It dials the holder's socket itself, which another node's is not.
-			noNode: "attach with --node comes with remote tide",
+				api.ErrorCodeConnectionLost, api.ErrorCodeDaemonUnavailable, api.ErrorCodeHolderVersionUnsupported),
 		},
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			key, err := parsePrefixKey(prefix)
@@ -278,23 +275,24 @@ func attach(cmd *cobra.Command, find func(context.Context) (attachTarget, error)
 	}
 	size.Rows-- // the status line's
 
-	session, err := holder.Attach(holder.WithLimits(ctx, env.Timeouts.Holder), identity.HolderSocket(env.Config.Home, t.holderID), t.holderID, size, 0)
-	if errors.Is(err, holder.ErrAttachUnsupported) {
-		return &attachUnsupportedError{t}
-	}
+	session, err := attachHolder(cmd, t, size)
 	if err != nil {
-		return &connectionLostError{t, err}
+		return err
 	}
 	defer session.Close()
 	log.Info("attached", "terminal_id", t.holderID, "cols", size.Cols, "rows", size.Rows,
-		"history_lines", session.Snapshot.HistoryLines, "pos", session.Snapshot.Pos)
+		"history_lines", session.Snapshot.HistoryLines, "pos", session.Snapshot.Pos, "node", nodeOf(cmd))
 
 	fetch := func(from int64, count int) (termview.History, error) {
 		h, err := t.history(ctx, from, count)
 		return termview.History{From: h.History.From, First: h.History.First, Lines: h.History.Lines}, err
 	}
 	view := newAttachView(termview.New(session, fetch), t, prefix, viewStyle(cmd))
-	view.ctx, view.versionOf = ctx, daemonVersionCheck(cmd)
+	view.ctx = ctx
+	if nodeOf(cmd) == "" {
+		// Through a session, the API version is what the nodes agree on.
+		view.versionOf = daemonVersionCheck(cmd)
+	}
 	defer view.pane.Close()
 	// A signal detaches, giving the window back as it was; the command ends
 	// as after C-\ d.
@@ -312,6 +310,37 @@ func attach(cmd *cobra.Command, find func(context.Context) (attachTarget, error)
 		t = got
 	}
 	return clikit.PrintResult(cmd, attachResult{Result: ended, target: t})
+}
+
+// attachHolder attaches to t's holder at size: through its socket, or with
+// --node through a stream the host's daemon relays to it.
+func attachHolder(cmd *cobra.Command, t attachTarget, size holder.Size) (*holder.Session, error) {
+	ctx := cmd.Context()
+	env := envOf(cmd)
+	limited := holder.WithLimits(ctx, env.Timeouts.Holder)
+	if nodeOf(cmd) == "" {
+		session, err := holder.Attach(limited, identity.HolderSocket(env.Config.Home, t.holderID), t.holderID, size, 0)
+		if errors.Is(err, holder.ErrAttachUnsupported) {
+			return nil, &attachUnsupportedError{t}
+		}
+		if err != nil {
+			return nil, &connectionLostError{t, err}
+		}
+		return session, nil
+	}
+	conn, err := clientOf(cmd).AttachStream(ctx, t.holderID)
+	if problemCode(err) == api.ErrorCodeHolderVersionUnsupported {
+		return nil, &clikit.Hinted{Err: err, Hint: "restart its shell on " + nodeOf(cmd) + ": close and open its project there, or remove the terminal and create it again"}
+	}
+	if err != nil {
+		// The host's problem, as not running any more, or the session gone.
+		return nil, err
+	}
+	session, err := holder.AttachConn(limited, conn, t.holderID, size, 0)
+	if err != nil {
+		return nil, &connectionLostError{t, err}
+	}
+	return session, nil
 }
 
 // viewStyle styles the attach view, which is on a terminal whatever stdout

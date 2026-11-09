@@ -396,7 +396,7 @@ func TestDialVersions(t *testing.T) {
 	for _, tc := range []struct {
 		version int
 		drives  bool
-	}{{0, false}, {1, true}, {2, true}, {3, true}, {4, true}, {5, false}} {
+	}{{0, false}, {1, true}, {2, true}, {3, true}, {4, true}, {5, true}, {6, false}} {
 		f := newFixture(t)
 		socket := filepath.Join(f.home, "holder.sock")
 		l, err := net.Listen("unix", socket)

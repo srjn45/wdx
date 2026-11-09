@@ -46,6 +46,7 @@ type server struct {
 	access       *hubAccess
 	remote       *remote.Remote
 	nodeStreams  *nodeStreams
+	clock        hublink.Clock
 }
 
 var _ api.StrictServerInterface = (*server)(nil)

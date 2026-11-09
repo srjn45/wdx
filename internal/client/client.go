@@ -187,11 +187,18 @@ func (d *doer) doNode(req *http.Request, start time.Time) (*http.Response, error
 	if version < api.OldestCompatible {
 		resp.Body.Close()
 		log.Warn("node api version unsupported", "node", node, "api_version", version, "oldest_compatible", api.OldestCompatible)
-		p := api.NewProblem(api.ErrorCodeNodeVersionUnsupported, fmt.Sprintf("node %s speaks API version %d, older than %d, the oldest this wdx speaks: update wdx on %s", node, version, api.OldestCompatible, node))
-		p.Details = &map[string]any{"update": "host", "node": node, "host_version": version, "oldest_compatible": api.OldestCompatible}
-		return nil, &ProblemError{Problem: p}
+		return nil, d.hostTooOld(version)
 	}
 	return resp, nil
+}
+
+// hostTooOld is the problem of a host that speaks API version, older than
+// the oldest this build speaks.
+func (d *doer) hostTooOld(version int) error {
+	node := d.opts.Node
+	p := api.NewProblem(api.ErrorCodeNodeVersionUnsupported, fmt.Sprintf("node %s speaks API version %d, older than %d, the oldest this wdx speaks: update wdx on %s", node, version, api.OldestCompatible, node))
+	p.Details = &map[string]any{"update": "host", "node": node, "host_version": version, "oldest_compatible": api.OldestCompatible}
+	return &ProblemError{Problem: p}
 }
 
 // recordAPIVersion keeps the API version resp says, 0 when it says none,

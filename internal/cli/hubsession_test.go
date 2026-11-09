@@ -45,9 +45,15 @@ type hubPair struct {
 
 func newHubPair(t *testing.T) *hubPair {
 	t.Helper()
+	return newHubPairShell(t, testShell)
+}
+
+// newHubPairShell is newHubPair whose desktop's terminals run script.
+func newHubPairShell(t *testing.T, script string) *hubPair {
+	t.Helper()
 	h := hubtest.Start(t)
 	clock := newHubClock(h)
-	p := &hubPair{hub: h, clock: clock, desktop: newHubHomeOn(t, h, clock), laptop: newHubHomeOn(t, h, clock)}
+	p := &hubPair{hub: h, clock: clock, desktop: newHubHomeShell(t, h, clock, script), laptop: newHubHomeOn(t, h, clock)}
 	p.desktop.loggedIn("desktop")
 	p.laptop.loggedIn("laptop")
 	p.desktop.waitConnection(api.HubConnectionConnected)

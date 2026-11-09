@@ -143,8 +143,14 @@ func newHubHome(t *testing.T) *hubHome {
 // on one hub are as many machines.
 func newHubHomeOn(t *testing.T, h *hubtest.Hub, clock *hubClock) *hubHome {
 	t.Helper()
+	return newHubHomeShell(t, h, clock, testShell)
+}
+
+// newHubHomeShell is newHubHomeOn whose terminals run script.
+func newHubHomeShell(t *testing.T, h *hubtest.Hub, clock *hubClock, script string) *hubHome {
+	t.Helper()
 	hh := &hubHome{t: t, hub: h, clock: clock}
-	hh.home = newHomeOpts(t, testShell, nil, func(o *daemon.Options) {
+	hh.home = newHomeOpts(t, script, nil, func(o *daemon.Options) {
 		// Here, between the home made and the daemon served: so they run
 		// once the daemon stopped, and before the home is removed.
 		t.Cleanup(hh.wantNoSecrets)

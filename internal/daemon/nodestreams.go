@@ -68,11 +68,24 @@ type connectResponse struct {
 }
 
 func (c connectResponse) VisitConnectHubNodeResponse(w http.ResponseWriter) error {
+	conn, in, ok := switchToStream(w, c.log)
+	if !ok {
+		c.stream.Close()
+		return nil
+	}
+	c.streams.copy(c.log, conn, in, c.stream, nil)
+	return nil
+}
+
+// switchToStream answers 101 and takes the connection over, which what the
+// client sends next is read from through in. false is a client gone before it
+// switched, which is logged.
+func switchToStream(w http.ResponseWriter, log *slog.Logger) (net.Conn, io.Reader, bool) {
 	header := w.Header().Clone()
 	conn, rw, err := http.NewResponseController(w).Hijack()
 	if err != nil {
-		c.stream.Close()
-		return err
+		log.Info("stream closed", "reason", "the connection could not be taken over", "err", err)
+		return nil, nil, false
 	}
 	// The server's deadlines were for the request; the stream has none.
 	_ = conn.SetDeadline(time.Time{})
@@ -90,13 +103,11 @@ func (c connectResponse) VisitConnectHubNodeResponse(w http.ResponseWriter) erro
 	}
 	if err != nil {
 		// The client is gone: the 101 is logged, and the stream closed.
-		c.log.Info("stream closed", "reason", "the client left before it switched", "err", err)
+		log.Info("stream closed", "reason", "the client left before it switched", "err", err)
 		conn.Close()
-		c.stream.Close()
-		return nil
+		return nil, nil, false
 	}
-	c.streams.copy(c.log, conn, rw.Reader, c.stream)
-	return nil
+	return conn, rw.Reader, true
 }
 
 // nodeStreams are the connections switched to a stream to another node,
@@ -114,7 +125,8 @@ func newNodeStreams() *nodeStreams {
 
 // copy copies bytes between the CLI's connection, read through in, and
 // stream until either ends, then closes both and logs the bytes counted.
-func (n *nodeStreams) copy(log *slog.Logger, conn net.Conn, in io.Reader, stream net.Conn) {
+// active, when not nil, is called before bytes are passed on either way.
+func (n *nodeStreams) copy(log *slog.Logger, conn net.Conn, in io.Reader, stream net.Conn, active func()) {
 	n.mu.Lock()
 	if n.closed {
 		n.mu.Unlock()
@@ -126,6 +138,10 @@ func (n *nodeStreams) copy(log *slog.Logger, conn net.Conn, in io.Reader, stream
 	n.copying.Add(1)
 	n.mu.Unlock()
 	start := time.Now()
+	var to, from io.Writer = stream, conn
+	if active != nil {
+		to, from = activeWriter{stream, active}, activeWriter{conn, active}
+	}
 	go func() {
 		defer n.copying.Done()
 		var sent, received int64 // read once both copies ended
@@ -138,11 +154,11 @@ func (n *nodeStreams) copy(log *slog.Logger, conn net.Conn, in io.Reader, stream
 		}
 		var both sync.WaitGroup
 		both.Go(func() {
-			sent, _ = io.Copy(stream, in)
+			sent, _ = io.Copy(to, in)
 			end()
 		})
 		both.Go(func() {
-			received, _ = io.Copy(conn, stream)
+			received, _ = io.Copy(from, stream)
 			end()
 		})
 		both.Wait()
@@ -151,6 +167,17 @@ func (n *nodeStreams) copy(log *slog.Logger, conn net.Conn, in io.Reader, stream
 		n.mu.Unlock()
 		log.Info("stream closed", "bytes_sent", sent, "bytes_received", received, logging.Duration(start))
 	}()
+}
+
+// activeWriter calls active before each write.
+type activeWriter struct {
+	w      io.Writer
+	active func()
+}
+
+func (a activeWriter) Write(p []byte) (int, error) {
+	a.active()
+	return a.w.Write(p)
 }
 
 // close closes every stream and waits for their copies to end.
@@ -400,6 +427,7 @@ var remoteOperations = map[string]remoteRule{
 	"startTerminal":      allowed,
 	"sendTerminal":       allowed,
 	"getTerminalHistory": allowed,
+	"attachTerminal":     allowed,
 
 	"listAgents":         allowed,
 	"createAgent":        allowed,

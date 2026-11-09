@@ -1,7 +1,7 @@
 ---
 title: Hub
-description: Make your machines nodes of your account on a hub, see which are online, remove one you lost, push a project's docs to it, set up the code that lets your other nodes into one, open sessions between them, and run commands on another node with --node.
-commands: [hub login, hub logout, hub status, hub node list, hub node get, hub node remove, project sync, hub code setup, hub code recover, hub audit verify, hub session open, hub session list, hub session close]
+description: Make your machines nodes of your account on a hub, see which are online, remove one you lost, push a project's docs to it, set up the code that lets your other nodes into one, open sessions between them, and run commands on another node with --node, attaching to its terminals and agents too.
+commands: [hub login, hub logout, hub status, hub node list, hub node get, hub node remove, project sync, hub code setup, hub code recover, hub audit verify, hub session open, hub session list, hub session close, terminal attach, agent attach]
 since: 0.5.0
 ---
 import Commands from '../../../../components/Commands.astro';
@@ -134,7 +134,7 @@ wdx 0.5.0 (1a2b3c4), API 1
 daemon 0.5.1 (5e6f7a8), API 1
 ```
 
-- **Where it is:** on the commands of `agent`, `terminal`, `project`, `doc`, `plan`, `worktree` and `message`, and on `version`. Not on the commands that manage this machine (`daemon`, `setting`, `update`, `observe`, `deps`, `hub`), nor yet on `tide`, `terminal attach` and `agent attach`, which refuse it with `usage` for now.
+- **Where it is:** on the commands of `agent`, `terminal`, `project`, `doc`, `plan`, `worktree` and `message`, `terminal attach` and `agent attach` among them ([below](#attaching-on-another-node)), and on `version`. Not on the commands that manage this machine (`daemon`, `setting`, `update`, `observe`, `deps`, `hub`), nor yet on `tide`.
 - **The code is asked for** when no session into the node is open, on a terminal, then the command goes on. With `--json` or `--no-input`, or without a terminal, it fails with `session_required` instead: open one first with `wdx hub session open --node desk --code <code>`. A session that ends while the command runs fails it with `session_closed`.
 - **In text,** `on node desk` comes first on stderr, so that you see where it ran. With `--json`, stdout holds only the node's answer.
 - **Paths the node's daemon receives** (`project open --local`, `project create --path`) must be absolute, and are that node's: a relative one is a `usage` error. **Files wdx reads or writes itself** (`--path` of `doc create`, `doc update`, `plan create` and `plan update`, `--out` of `doc get` and `plan get`) stay this machine's, so `--out spec.md` writes here.
@@ -145,6 +145,24 @@ daemon 0.5.1 (5e6f7a8), API 1
 - **Completions** on a command line with `--node` ask that node, through a session open into it; with none, they offer nothing, and never ask for the code. `--node` itself completes with your account's nodes.
 
 Each command's errors with `--node` are listed in its reference, under **With --node**.
+
+## Attaching on another node
+
+`wdx terminal attach --node` and `wdx agent attach --node` show a terminal or an agent of the other node full-window, as attaching here does: what you type goes to its shell or its AI CLI, and its output comes back, through the session.
+
+```console
+$ wdx terminal attach --node desk --project-name app --name server
+on node desk
+(the terminal, full-window, until C-\ d)
+detached from terminal server in app
+```
+
+- **Everything else is as attaching here:** the keys, the status line, scrolling through history, several clients on one terminal, the last to attach or resize setting its size ([Terminals](/wdx/docs/guides/terminals/)).
+- **The other node's daemon relays it:** a terminal's own program, its holder, is reached only through its socket on that machine, so the daemon there passes the bytes between the session and the socket. The holder logs that the client is remote, and from which node. Neither daemon logs what passes, only how many bytes.
+- **Typing keeps the session open:** the bytes either way count as use, so a session you are typing in does not close for `hub.session_idle_timeout`.
+- **Attaching here** still goes straight to the holder's socket, without the daemon: a session outlives a daemon restart, as before.
+- **A terminal started by an older wdx** cannot be attached to from another node: `holder_version_unsupported`. Restart its shell there, by closing and opening its project, or removing the terminal and creating it again.
+- **A session that ends** while attached ends the attach with `connection_lost`; run it again, which asks for the code.
 
 ## Commands
 

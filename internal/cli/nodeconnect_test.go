@@ -157,7 +157,13 @@ var currentVersion = strconv.Itoa(api.CurrentVersion)
 // openPair is a pair with a session open from the laptop into the desktop.
 func openPair(t *testing.T) *hubPair {
 	t.Helper()
-	p := newHubPair(t)
+	return openPairShell(t, testShell)
+}
+
+// openPairShell is openPair whose desktop's terminals run script.
+func openPairShell(t *testing.T, script string) *hubPair {
+	t.Helper()
+	p := newHubPairShell(t, script)
 	p.setUp()
 	p.remoteAccess(true)
 	if v, exit := p.laptop.sessionJSON("hub", "session", "open", "--node", "desktop", "--code", p.code()); exit != clikit.ExitOK {

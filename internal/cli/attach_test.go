@@ -67,6 +67,12 @@ func startAttachSized(t *testing.T, home, dir string, cols, rows int, args ...st
 // startInTerminal runs args in a cols × rows terminal of their own.
 func startInTerminal(t *testing.T, home, dir string, cols, rows int, args []string) *attachRun {
 	t.Helper()
+	return startInTerminalWith(t, home, dir, cols, rows, args, nil)
+}
+
+// startInTerminalWith is startInTerminal in an environment adjust changes.
+func startInTerminalWith(t *testing.T, home, dir string, cols, rows int, args []string, adjust func(*Env)) *attachRun {
+	t.Helper()
 	master, tty, err := pty.Open()
 	if err != nil {
 		t.Fatal(err)
@@ -83,6 +89,9 @@ func startInTerminal(t *testing.T, home, dir string, cols, rows int, args []stri
 			WorkDir: dir, TTY: func() (*os.File, error) { return tty, nil }, CallerTerm: []string{"TERM=xterm-256color"},
 		}
 		env.Timeouts.ProjectStrip = waittest.Limit(t) // a test polling late still sees it; the next key hides it
+		if adjust != nil {
+			adjust(&env)
+		}
 		exit := Run(context.Background(), a.args, env)
 		a.done <- clikittest.Output{Exit: exit, Stdout: stdout.String(), Stderr: stderr.String()}
 	}()

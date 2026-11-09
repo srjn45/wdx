@@ -252,6 +252,8 @@ type Daemon struct {
 	nodeStreams    *nodeStreams
 	sessionStreams *sessionStreams
 	sessionServer  *http.Server
+	// clock is the time the hub's link and the sessions go by.
+	clock hublink.Clock
 }
 
 // AlreadyRunningError is returned when another daemon holds the lock of the
@@ -397,6 +399,7 @@ func Listen(ctx context.Context, opts Options) (_ *Daemon, err error) {
 	if opts.Hub.Clock != nil {
 		clock = opts.Hub.Clock
 	}
+	d.clock = clock
 	d.nodeStreams, d.sessionStreams = newNodeStreams(), newSessionStreams()
 	// It closes every incoming session, which a restart ends.
 	if d.remote, err = remote.New(context.WithoutCancel(logged), remote.Options{

@@ -92,9 +92,13 @@ func (c *client) next() []queued {
 
 // serveClient attaches a client: the history and screen it asks for, then
 // the output, while its input and size go to the shell.
-func (h *holder) serveClient(conn *net.UnixConn) {
+func (h *holder) serveClient(conn *net.UnixConn, hello Hello) {
 	c := &client{conn: conn, pid: peerPID(conn), wake: make(chan struct{}, 1)}
 	log := h.log.With("client_pid", c.pid)
+	if hello.Remote {
+		// The pid is the daemon's, which relays the client's bytes.
+		log = log.With("remote", true, "from_node", hello.Node)
+	}
 	h.mu.Lock()
 	err := h.write(conn, frameHello, h.hello())
 	h.mu.Unlock()

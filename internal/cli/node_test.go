@@ -102,9 +102,8 @@ func nodeLeaves() []*cobra.Command {
 }
 
 // The refusals of --node before the host is asked: the project from the
-// working directory, a relative path the host's daemon would receive, and
-// attach.
-var nodeRefusals = []string{"pass --project-id or --project-name with --node", "path must be absolute on node desktop", "attach with --node comes with remote tide",
+// working directory, and a relative path the host's daemon would receive.
+var nodeRefusals = []string{"pass --project-id or --project-name with --node", "path must be absolute on node desktop",
 	// project open with no flag, which is refused without --node too.
 	"nothing to open"}
 
@@ -296,19 +295,6 @@ func TestNodePaths(t *testing.T) {
 	wantError(t, v, out.Exit, clikit.CodeUsage, clikit.ExitUsage)
 	if !strings.Contains(out.Stdout, "pass --project-id or --project-name with --node") {
 		t.Errorf("%v: %s", args, out.Stdout)
-	}
-}
-
-func TestNodeAttachRefused(t *testing.T) {
-	t.Parallel()
-	home := newHome(t)
-	for _, group := range []string{"terminal", "agent"} {
-		args := []string{group, "attach", "--name", "x", "--node", "desktop", "--json"}
-		v, exit := wdxJSON(t, home, args...)
-		wantError(t, v, exit, clikit.CodeUsage, clikit.ExitUsage)
-		if !strings.Contains(v.Detail, "attach with --node comes with remote tide") {
-			t.Errorf("%v: %+v", args, v)
-		}
 	}
 }
 

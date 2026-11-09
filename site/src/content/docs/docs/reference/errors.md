@@ -190,6 +190,12 @@ Git would not move the base forward.
 
 Exit 1 · HTTP 409 · returned by [`wdx worktree land`](/wdx/docs/reference/cli/worktree/#wdx-worktree-land)
 
+## holder_version_unsupported
+
+The terminal was started by a wdx too old to attach to from another node.
+
+Exit 1 · HTTP 409 · returned by [`wdx agent attach`](/wdx/docs/reference/cli/agent/#wdx-agent-attach), [`wdx terminal attach`](/wdx/docs/reference/cli/terminal/#wdx-terminal-attach)
+
 ## hub_unreachable
 
 The hub cannot be reached, or did not answer as a hub does.

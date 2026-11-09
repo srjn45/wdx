@@ -50,12 +50,26 @@ func Attach(ctx context.Context, socket, id string, size Size, history int) (*Se
 	if err != nil {
 		return nil, err
 	}
-	s := &Session{conn: c, writeTimeout: limits.Write}
+	return AttachConn(ctx, c, id, size, history)
+}
+
+// AttachConn is Attach on conn, a connection to the holder of terminal id
+// already made: its socket, or a stream the daemon relays to it. The attach
+// waits until ctx's deadline, at most the dial limit; conn is closed when it
+// fails.
+func AttachConn(ctx context.Context, conn net.Conn, id string, size Size, history int) (*Session, error) {
+	limits := limitsOf(ctx)
+	ctx, cancel := context.WithTimeout(ctx, limits.Dial)
+	defer cancel()
+	deadline, _ := ctx.Deadline()
+	// Fails only on a closed connection, which the greeting reports.
+	_ = conn.SetDeadline(deadline)
+	s := &Session{conn: conn, writeTimeout: limits.Write}
 	if err := s.attach(id, size, history); err != nil {
-		c.Close()
+		conn.Close()
 		return nil, err
 	}
-	_ = c.SetDeadline(time.Time{})
+	_ = conn.SetDeadline(time.Time{})
 	return s, nil
 }
 

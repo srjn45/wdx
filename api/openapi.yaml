@@ -1168,6 +1168,39 @@ paths:
               schema: { $ref: "#/components/schemas/TerminalHistoryEnvelope" }
         default: { $ref: "#/components/responses/Problem" }
 
+  /v1/terminals/{terminal}/attach:
+    parameters:
+      - $ref: "#/components/parameters/TerminalRef"
+      - $ref: "#/components/parameters/TerminalProject"
+      - $ref: "#/components/parameters/TerminalDir"
+    post:
+      operationId: attachTerminal
+      parameters:
+        - name: Upgrade
+          in: header
+          required: true
+          description: What the connection is switched to.
+          schema: { type: string, enum: [wdx-stream] }
+      summary: A byte stream to a running terminal's holder, for a client that cannot dial its socket
+      description: |
+        An HTTP Upgrade, as connectHubNode is: once switched, the connection
+        speaks the holder's protocol (docs/ATTACH.md), which the daemon
+        relays to the holder's socket, from the client's hello on. It is for
+        a client on another node, through a session; one on this node dials
+        the socket itself. The holder is told the client is relayed, and from
+        which node. Through a session, bytes either way keep the session from
+        going idle. Nothing of the stream is logged but the bytes counted.
+        An agent's terminal is named by its terminal's id.
+
+        Errors: invalid_path, not_found, terminal_not_running,
+        holder_version_unsupported (the holder predates relayed clients:
+        restart the terminal), connection_lost (its holder cannot be
+        reached).
+      responses:
+        "101":
+          description: Switched, the connection is the holder's protocol.
+        default: { $ref: "#/components/responses/Problem" }
+
   /v1/agents:
     get:
       operationId: listAgents
@@ -4591,7 +4624,7 @@ components:
         Stable error code; never changed or reused. daemon_unavailable,
         already_running, tide_running, runtime_missing, port_in_use, runtime_failed,
         agent_not_running, attach_unsupported,
-        connection_lost, the
+        connection_lost (but by attachTerminal), the
         codes of wdx update (download_failed to restore_required) and of
         wdx deps install (cancelled to privileges_required) are reported
         by the CLI, never by the daemon.
@@ -4701,6 +4734,7 @@ components:
         - route_not_allowed
         - session_required
         - remote_not_for_agents
+        - holder_version_unsupported
 
     Problem:
       type: object
