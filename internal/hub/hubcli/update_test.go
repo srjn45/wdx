@@ -423,8 +423,8 @@ func TestUpdateApplyAndRollback(t *testing.T) {
 		t.Fatalf("want no warnings, got %v", v["warnings"])
 	}
 	in.want(t, newVersion)
-	if got := strings.Join(in.service.called(), ","); got != "start wdx-hub.service,stop wdx-hub.service,daemon-reload,start wdx-hub.service" {
-		t.Fatalf("want the service stopped, reloaded and started, got %s", got)
+	if got := strings.Join(in.service.called(), ","); got != "start wdx-hub.service,stop wdx-hub.service,daemon-reload,reset-failed wdx-hub.service,start wdx-hub.service" {
+		t.Fatalf("want the service stopped, reloaded, reset and started, got %s", got)
 	}
 	if _, err := os.Stat(filepath.Join(hubconfig.BackupsDir(in.home), "hub-"+identity.Version+".db")); err != nil {
 		t.Fatalf("want the database backed up, got %v", err)

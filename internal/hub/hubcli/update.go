@@ -54,7 +54,7 @@ const (
 type UpdateOptions struct {
 	// Layout is the installed hub's; hubconfig.Installed when nil.
 	Layout *hubconfig.Layout
-	// BaseURL holds the releases; GitHub's when empty.
+	// BaseURL holds the releases; the update.base_url setting when empty.
 	BaseURL string
 	// Version is the version of this wdx-hub; identity.Version when empty.
 	Version string
@@ -200,7 +200,7 @@ func checkOptions(cmd *cobra.Command) update.Options {
 		Program: update.Program{Name: name, GitHub: update.GitHub{Releases: hubconfig.ReleasesURL, API: hubconfig.ReleasesAPI, DevLatest: hubconfig.DevLatestURL}},
 		Home:    env.Config.Home,
 		Current: cmp.Or(env.Update.Version, identity.Version),
-		BaseURL: cmp.Or(env.Update.BaseURL, hubconfig.ReleasesURL),
+		BaseURL: cmp.Or(env.Update.BaseURL, env.Config.UpdateBaseURL, hubconfig.ReleasesURL),
 	}
 }
 
@@ -314,6 +314,11 @@ func (s hubService) start(ctx context.Context) (string, error) {
 	}
 	log.Info("unit written", "path", s.layout.Unit, "privileged_port", len(args) > 3)
 	if err := s.systemctl(ctx, "daemon-reload"); err != nil {
+		return "", err
+	}
+	// A release that failed to start makes systemd refuse to start the
+	// service again for a while, the one put back with it.
+	if err := s.systemctl(ctx, "reset-failed", hubconfig.Service); err != nil {
 		return "", err
 	}
 	if err := s.systemctl(ctx, "start", hubconfig.Service); err != nil {
