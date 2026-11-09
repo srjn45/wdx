@@ -28,6 +28,7 @@ import (
 	"github.com/srjn45/wdx/internal/logtest"
 	"github.com/srjn45/wdx/internal/runtest"
 	"github.com/srjn45/wdx/internal/telemetry"
+	"github.com/srjn45/wdx/internal/unixsocket"
 	"github.com/srjn45/wdx/internal/waittest"
 )
 
@@ -667,6 +668,19 @@ func TestOneDaemonPerHome(t *testing.T) {
 	}
 	if _, err := td.client.GetVersionWithResponse(context.Background()); err != nil {
 		t.Fatalf("the running daemon must keep serving: %v", err)
+	}
+}
+
+func TestSocketTooLong(t *testing.T) {
+	t.Parallel()
+	home := filepath.Join(t.TempDir(), "home")
+	socket := filepath.Join(shortDir(t), strings.Repeat("s", unixsocket.MaxPath))
+	_, err := Listen(context.Background(), Options{Home: home, Socket: socket, Log: logging.New(io.Discard, slog.LevelInfo)})
+	if e, ok := errors.AsType[*unixsocket.TooLongError](err); !ok || e.Path != socket {
+		t.Fatalf("want the socket's path refused as too long, got %v", err)
+	}
+	if _, err := os.Stat(home); !errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("want nothing made before the path is checked, got %v", err)
 	}
 }
 

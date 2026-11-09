@@ -39,6 +39,7 @@ import (
 	"github.com/srjn45/wdx/internal/telemetry"
 	"github.com/srjn45/wdx/internal/terminal"
 	"github.com/srjn45/wdx/internal/tidestate"
+	"github.com/srjn45/wdx/internal/unixsocket"
 	"github.com/srjn45/wdx/internal/worktree"
 )
 
@@ -285,6 +286,11 @@ func Listen(ctx context.Context, opts Options) (_ *Daemon, err error) {
 			d.log.Error("daemon could not start", "err", err)
 		}
 	}()
+	// Before anything is made: the system refuses a longer path with only
+	// "invalid argument".
+	if err := unixsocket.Check(opts.Socket); err != nil {
+		return nil, err
+	}
 	if err := os.MkdirAll(opts.Home, 0o700); err != nil {
 		return nil, err
 	}

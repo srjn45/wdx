@@ -38,6 +38,7 @@ import (
 	"github.com/srjn45/wdx/internal/identity"
 	"github.com/srjn45/wdx/internal/logging"
 	"github.com/srjn45/wdx/internal/telemetry"
+	"github.com/srjn45/wdx/internal/unixsocket"
 )
 
 // DefaultShutdownTimeout is how long requests in flight get to finish once
@@ -224,6 +225,11 @@ func Listen(ctx context.Context, opts Options) (_ *Server, err error) {
 		}
 	}()
 	ctx = logging.NewContext(ctx, s.log)
+	// Before anything is made: the system refuses a longer path with only
+	// "invalid argument".
+	if err := unixsocket.Check(hubconfig.SocketPath(cfg.Home)); err != nil {
+		return nil, err
+	}
 	if err := hubconfig.MakeHome(cfg.Home); err != nil {
 		return nil, err
 	}

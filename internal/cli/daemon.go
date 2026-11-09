@@ -25,6 +25,7 @@ import (
 	"github.com/srjn45/wdx/internal/logging"
 	"github.com/srjn45/wdx/internal/style"
 	"github.com/srjn45/wdx/internal/telemetry"
+	"github.com/srjn45/wdx/internal/unixsocket"
 )
 
 const (
@@ -150,6 +151,9 @@ func runForeground(cmd *cobra.Command) error {
 			return daemonSettings(now), nil
 		},
 	})
+	if _, ok := errors.AsType[*unixsocket.TooLongError](err); ok {
+		return &clikit.Hinted{Err: err, Hint: "a shorter home makes it shorter: set " + identity.Env("HOME") + " to one"}
+	}
 	if err != nil {
 		return err
 	}

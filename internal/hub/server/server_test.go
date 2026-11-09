@@ -35,6 +35,7 @@ import (
 	"github.com/srjn45/wdx/internal/runtest"
 	"github.com/srjn45/wdx/internal/sqlite"
 	"github.com/srjn45/wdx/internal/sqlite/sqlitetest"
+	"github.com/srjn45/wdx/internal/unixsocket"
 	"github.com/srjn45/wdx/internal/waittest"
 )
 
@@ -621,12 +622,29 @@ func TestAlreadyRunning(t *testing.T) {
 
 // A hub that cannot listen on its socket, as in a home whose path is too long
 // for one, fails to start and gives back what it took.
-func TestSocketCannotListen(t *testing.T) {
+func TestSocketTooLong(t *testing.T) {
 	t.Parallel()
 	cfg := testConfig(t)
 	cfg.Home = filepath.Join(t.TempDir(), strings.Repeat("h", 120))
 	_, err := Listen(context.Background(), Options{Config: cfg, Log: slog.New(slog.DiscardHandler)})
-	if err == nil {
+	if e, ok := errors.AsType[*unixsocket.TooLongError](err); !ok || e.Path != hubconfig.SocketPath(cfg.Home) {
+		t.Fatalf("want the socket's path refused as too long, got %v", err)
+	}
+	if _, err := os.Stat(cfg.Home); !errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("want nothing made before the path is checked, got %v", err)
+	}
+}
+
+// A socket that cannot be listened on, here for a directory in its place
+// that is not removed, gives the lock back.
+func TestSocketCannotListen(t *testing.T) {
+	t.Parallel()
+	cfg := testConfig(t)
+	sqlitetest.Seed(t, hubconfig.DBPath(cfg.Home), hubdb.Open)
+	if err := os.MkdirAll(filepath.Join(hubconfig.SocketPath(cfg.Home), "kept"), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := Listen(context.Background(), Options{Config: cfg, Log: slog.New(slog.DiscardHandler)}); err == nil {
 		t.Fatal("want the socket refused")
 	}
 	unlock, err := lock(hubconfig.LockPath(cfg.Home))

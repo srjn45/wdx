@@ -31,6 +31,7 @@ import (
 	"github.com/srjn45/wdx/internal/logtest"
 	"github.com/srjn45/wdx/internal/runtest"
 	"github.com/srjn45/wdx/internal/sqlite/sqlitetest"
+	"github.com/srjn45/wdx/internal/unixsocket"
 	"github.com/srjn45/wdx/internal/waittest"
 )
 
@@ -639,6 +640,21 @@ func TestServeTLSFiles(t *testing.T) {
 	}
 	if _, err := os.Stat(hubconfig.DBPath(home)); err == nil {
 		t.Fatal("want nothing started")
+	}
+}
+
+// A home too deep for the admin socket fails naming the path, its length
+// and the limit, with a shorter home as the hint.
+func TestServeSocketTooLong(t *testing.T) {
+	t.Parallel()
+	home := newHome(t)
+	deep := filepath.Join(home, strings.Repeat("h", unixsocket.MaxPath))
+	s := serve(t, home, func(env *Env) { env.Config.Home = deep })
+	out := s.exit(t)
+	socket := hubconfig.SocketPath(deep)
+	want := fmt.Sprintf("%s is %d bytes, more than the %d", socket, len(socket), unixsocket.MaxPath)
+	if out.Exit != clikit.ExitSystem || !strings.Contains(out.Stderr, want) || !strings.Contains(out.Stderr, "hint: a shorter home makes it shorter: set WDX_HUB_HOME to one") {
+		t.Fatalf("want the path refused, got %+v", out)
 	}
 }
 

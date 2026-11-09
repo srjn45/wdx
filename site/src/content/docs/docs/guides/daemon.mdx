@@ -58,7 +58,7 @@ daemon started (pid 2961213, version 0.4.0) on /home/you/.wdx/wdx.sock
   # Environment=SSH_AUTH_SOCK=%t/ssh-agent.socket
   wdx daemon restart
   ```
-- **Another home.** `WDX_HOME` gives a daemon of its own, with its own socket, database and settings, run in the background: the service runs the default home only.
+- **Another home.** `WDX_HOME` gives a daemon of its own, with its own socket, database and settings, run in the background: the service runs the default home only. Its socket's path, `<home>/wdx.sock`, must fit the system's limit, 107 bytes on Linux and 103 on macOS: a deeper home fails to start, naming the path and its length, and a shorter one is the answer.
 
 ## Commands
 

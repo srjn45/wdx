@@ -15,6 +15,7 @@ import (
 	"github.com/srjn45/wdx/internal/hub/server"
 	"github.com/srjn45/wdx/internal/hubapi"
 	"github.com/srjn45/wdx/internal/logging"
+	"github.com/srjn45/wdx/internal/unixsocket"
 )
 
 func newServeCmd() *cobra.Command {
@@ -74,6 +75,9 @@ func runServe(cmd *cobra.Command, _ []string) error {
 		ShutdownTimeout: run.env.Serve.ShutdownTimeout,
 		Now:             run.env.Serve.Now,
 	})
+	if _, ok := errors.AsType[*unixsocket.TooLongError](err); ok {
+		return &clikit.Hinted{Err: err, Hint: "a shorter home makes it shorter: set " + hubconfig.EnvPrefix + "HOME to one"}
+	}
 	if err != nil {
 		return err
 	}

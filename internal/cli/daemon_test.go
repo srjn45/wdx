@@ -18,6 +18,7 @@ import (
 	"github.com/srjn45/wdx/internal/daemon"
 	"github.com/srjn45/wdx/internal/identity"
 	"github.com/srjn45/wdx/internal/service"
+	"github.com/srjn45/wdx/internal/unixsocket"
 )
 
 // TestDaemonLifecycle starts, restarts and stops a daemon running the wdx
@@ -97,6 +98,20 @@ func TestDaemonStartFails(t *testing.T) {
 		t.Fatalf("want the daemon's own error in the detail, got %q", v.Detail)
 	}
 	wantHint(t, v, "see the log in "+identity.LogsDir(home))
+}
+
+// A home too deep for the daemon's socket fails naming the path, its
+// length and the limit, with a shorter home as the hint.
+func TestDaemonSocketTooLong(t *testing.T) {
+	t.Parallel()
+	home := filepath.Join(shortHome(t), strings.Repeat("h", unixsocket.MaxPath))
+	v, exit := wdxJSON(t, home, "daemon", "start", "--foreground")
+	wantError(t, v, exit, api.ErrorCodeInternal, clikit.ExitSystem)
+	socket := identity.SocketPath(home)
+	if want := fmt.Sprintf("%s is %d bytes, more than the %d", socket, len(socket), unixsocket.MaxPath); !strings.Contains(v.Detail, want) {
+		t.Fatalf("want %q in the detail, got %q", want, v.Detail)
+	}
+	wantHint(t, v, "a shorter home makes it shorter: set WDX_HOME to one")
 }
 
 // TestDaemonForeground runs the daemon in a command until its context ends,
