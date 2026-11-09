@@ -1,8 +1,10 @@
 ---
 title: Running a hub
-description: Install wdx-hub on a Linux server with one command, give its web endpoint TLS, invite its users, run its admin commands, update it and roll it back, back it up, and uninstall it.
+description: Install wdx-hub on a Linux server with one command, give its web endpoint TLS, invite its users, run its admin commands, update it and roll it back, back it up, and uninstall it, or deploy it on Fly.io.
 since: 0.5.0
 ---
+
+import Since from '../../../../components/Since.astro';
 
 ## What it is
 
@@ -41,7 +43,7 @@ choice: 1
 - **Run again** on a machine with the hub installed, the script does not install over it: it updates it, through the installed `wdx-hub update --apply` ([below](#updating)).
 - **Every other setting** has a default; `sudo wdx-hub help settings` lists them, and `sudo wdx-hub setting set` changes one, having the running hub read it again or saying it takes effect at the next start (`sudo systemctl restart wdx-hub`).
 
-Not on macOS, and not as a user service: to try a hub on a laptop, run `wdx-hub serve` in a terminal ([deploy/hub](https://github.com/srjn45/wdx/tree/main/deploy/hub) says how, and how to run it in a container).
+Not on macOS, and not as a user service: to run it without a server of your own, see [On Fly.io](#on-flyio); to try a hub on a laptop, run `wdx-hub serve` in a terminal ([deploy/hub](https://github.com/srjn45/wdx/tree/main/deploy/hub) says how, and how to run it in a container).
 
 ## TLS
 
@@ -158,3 +160,111 @@ $ curl -fsSL https://raw.githubusercontent.com/srjn45/wdx/main/scripts/install-h
 ```
 
 It stops and removes the service, the binary and `/usr/local/lib/wdx-hub/`. The `wdx-hub` user and its home stay, with the database, the certificate authority, the master key and the backups, so that installing again goes on where it was. `--purge` removes them too, after asking on the terminal, since every account and doc of the hub goes with them; `--purge --yes` does it without asking.
+
+## On Fly.io
+
+<Since v="0.5.0" /> [Fly.io](https://fly.io) runs the hub's container for you, from the repository's `deploy/hub/fly.toml` and `Dockerfile`: no server to keep, no proxy to set up, TLS for `https://<name>.fly.dev` by Fly. Choose it when the hub is for yourself or a few people and you would rather not look after a machine; choose a server of your own, with the install script above, when you want the hub on hardware or a network you control, a domain of your own without Fly in front, or `wdx-hub update` and its rollback.
+
+What it runs: one machine, always on, since the nodes keep a connection open that a stopped machine would drop; its web endpoint behind Fly's proxy, which terminates TLS on 443, and its node endpoint on 8443 as raw TCP, untouched, since the hub terminates the nodes' TLS itself; the hub's home on a 1 GB volume at `/data`, which Fly snapshots daily.
+
+### The first deploy
+
+You need [flyctl](https://fly.io/docs/flyctl/install/), a Fly account and a checkout of the repository. Choose the app's name and region once: the name makes the hub's address, `https://<name>.fly.dev`, and changing it later is a new hub to every passkey and every node's login; the region is the city closest to your machines, since every key typed into an attached terminal goes there and back.
+
+1. Log in and create the app:
+
+   ```console
+   $ fly auth login
+   $ fly apps create <name>
+   ```
+
+2. Create the volume the hub's home lives on:
+
+   ```console
+   $ fly volumes create wdx_hub_data --app <name> --region <region> --size 1
+   ```
+
+3. Give the app its addresses. The node endpoint is raw TCP, which only a dedicated IPv4 carries; IPv6 alone is free, but many offices, cafés and hotels have none. The IPv4 costs about $2 a month, and flyctl asks before allocating it:
+
+   ```console
+   $ fly ips allocate-v4 --app <name>
+   $ fly ips allocate-v6 --app <name>
+   ```
+
+4. Make the master key, **save it in your password manager first**, then set it with the public url as the app's secrets:
+
+   ```console
+   $ head -c 32 /dev/urandom | base64
+   $ fly secrets set --app <name> --stage WDX_HUB_MASTER_KEY=<the key> WDX_HUB_PUBLIC_URL=https://<name>.fly.dev
+   ```
+
+   A Fly secret cannot be read back. Without the master key, a restored volume's docs and authenticator secrets cannot be read.
+
+5. From a clean checkout of a release tag, deploy:
+
+   ```console
+   $ git checkout v0.5.0
+   $ make hub-fly-deploy APP=<name>
+   ```
+
+6. Invite yourself, as the image's user, `nonroot`, which reaches the hub's admin socket:
+
+   ```console
+   $ fly ssh console --app <name> --user nonroot -C "wdx-hub user invite"
+   ```
+
+   Open the link it prints, sign up and set up your authenticator.
+
+7. On each machine, log in:
+
+   ```console
+   $ wdx hub login --url https://<name>.fly.dev
+   ```
+
+Then tell the hub which address is Fly's proxy. Every request comes to it from the proxy, so until then the page that approves a login shows the proxy's address under **From**, not yours, and the rate limits and the audit chain see the same. Take that address from the first approval page and set it, once:
+
+```console
+$ fly secrets set --app <name> WDX_HUB_TRUSTED_PROXIES=<the proxy's address>
+```
+
+Setting a secret restarts the machine; the next approval page shows your own address. Registration stays closed, as on any hub: others join by the invite you make for them the same way, and every other admin command runs through `fly ssh console --app <name> --user nonroot -C "wdx-hub …"`. The hub logs to Fly: `fly logs --app <name>`.
+
+### What `make hub-fly-deploy` does
+
+`make hub-fly-deploy APP=<name>`, `scripts/hub-fly-deploy.sh`, refuses before anything reaches Fly unless flyctl is on the PATH, `APP` is set, the tree is clean and `HEAD` is exactly a release tag: a hub always runs a release's version. Then:
+
+- **When the app has a machine,** it snapshots the volume and prints the snapshot's id: note it, since it is what a rollback across a migration needs.
+- **It deploys** the tag with `fly deploy`, the image built by Fly's builder from `deploy/hub/Dockerfile` with the tag's version and commit, on one machine.
+- **It waits** until `https://<name>.fly.dev/v1/version` answers the tag's version, at most 5 minutes, and fails with its last answer otherwise.
+
+### Updating
+
+`wdx-hub update` does not apply on Fly: there is no installed binary for it to replace, so it answers `not_installed`. A hub on Fly is updated by deploying the new tag, by hand:
+
+```console
+$ git checkout v0.5.1
+$ make hub-fly-deploy APP=<name>
+```
+
+The restart drops every open session, attach and remote TIDE through the hub, as a network drop would; terminals keep running on their hosts, and the nodes connect again on their own.
+
+### Rolling back
+
+Each deploy is a release of the app with its image. List them, and deploy the previous one again:
+
+```console
+$ fly releases --app <name> --image
+$ fly deploy --app <name> --config deploy/hub/fly.toml --image <the previous image>
+```
+
+That works while the older release can use the database. When the update ran a migration the older release cannot read, it refuses to start, and `fly logs --app <name>` says `database schema version … needs a binary that knows schema version …`. Then go back to the snapshot the deploy took: create a volume from it, make it the one the machine runs on, and deploy the older image on it. Everything since the deploy is lost: signups, logins and the docs pushed, which the nodes push again.
+
+```console
+$ fly volumes create wdx_hub_data --app <name> --region <region> --size 1 --snapshot-id <the snapshot's id>
+```
+
+So before each update, the two things to note are the image `fly releases --image` lists for the running release, and the snapshot's id the deploy prints.
+
+### Cost
+
+About $4.50 a month: the shared-cpu-1x machine with 256 MB, always on, about $2; the dedicated IPv4, $2; the 1 GB volume and its snapshots, a few cents; and a little outbound data, the sessions between your nodes.
