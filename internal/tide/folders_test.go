@@ -189,10 +189,11 @@ func TestPlansInFolders(t *testing.T) {
 	for _, r := range m.planRows()[1:] { // after the selector
 		got = append(got, treeLead(r.place)+r.place.name()+r.plan.Name)
 	}
-	if want := []string{"− hub", "  └ auth", "      auth-a", "      auth-b", "− later", "  └ sso", "  top"}; !slices.Equal(got, want) {
+	if want := []string{"− hub", "  └ auth", "      ├ auth-a", "      └ auth-b", "− later", "  └ sso", "  top"}; !slices.Equal(got, want) {
 		t.Errorf("rows %q, want %q", got, want)
 	}
-	wantText(t, m, "  └ − auth", "      auth-a")
+	wantPlanLines(t, m, "− hub", "  └ − auth draft 2 plans", "      ├ auth-a draft 2 tasks", "      └ auth-b draft 1 task",
+		"− later", "  └ sso 4 tasks needs you", "  top draft 1 task")
 
 	m.moveToPlan(5)
 	keys(m, "left")
@@ -224,6 +225,45 @@ func TestPlansInFolders(t *testing.T) {
 	if rows := m.planRows(); len(rows) != 3 || rows[2].plan.Name != "sso" {
 		t.Errorf("the filter does not show a match in a folded folder: %+v", rows)
 	}
+}
+
+// TestPlanChildrenNested: the plans of a plan of plans are a level of the tree
+// under it, wherever it is, with the lines of the rows that follow it, the last
+// shown taking the end branch.
+func TestPlanChildrenNested(t *testing.T) {
+	t.Parallel()
+	m := worktreesModel(api.WorktreeStatus{Name: "main", Path: "/r"})
+	m.sections = sectionOrder("pdawc")
+	one, two, smoke := planIn(aPlan("doc-c1", "can-1", 1, 1), "/hub/deploy"), planIn(aPlan("doc-c2", "can-2", 1, 1), "/hub/deploy"), planIn(aPlan("doc-sm", "smoke", 1, 1), "/hub/deploy")
+	rollout := planIn(aParent("doc-roll", "roll", &one, &two, &smoke), "/hub/deploy")
+	a := planIn(aPlan("doc-a", "auth-a", 1, 2), "/hub")
+	auth := planIn(aParent("doc-auth", "auth", &a), "/hub")
+	setPlans(m, rollout, one, two, smoke, planIn(aPlan("doc-dn", "notes", 1, 1), "/hub/deploy"),
+		auth, a, planIn(aPlan("doc-hn", "hub-notes", 1, 1), "/hub"))
+	m.moveToPlan(0)
+	// The deepest rows have no room for their state, which gives way first.
+	all := []string{
+		"− hub",
+		"  ├ − deploy",
+		"  │   ├ − roll draft 3 plans",
+		"  │   │   ├ can-1 1 task",
+		"  │   │   ├ can-2 1 task",
+		"  │   │   └ smoke 1 task",
+		"  │   └ notes draft 1 task",
+		"  ├ − auth draft 1 plan",
+		"  │   └ auth-a draft 2 tasks",
+		"  └ hub-notes draft 1 task",
+	}
+	wantPlanLines(t, m, all...)
+
+	m.moveToPlan(slices.IndexFunc(m.planRows(), func(r planRow) bool { return r.plan.Name == "roll" }))
+	keys(m, "left")
+	wantPlanLines(t, m, slices.Concat(all[:2], []string{"  │   ├ + roll draft 3 plans"}, all[6:])...)
+	keys(m, "right")
+	wantPlanLines(t, m, all...)
+
+	m.list().filter.text = "can"
+	wantPlanLines(t, m, "− hub", "  └ − deploy", "      └ − roll draft 3 plans", "          ├ can-1 1 task", "          └ can-2 1 task")
 }
 
 // moveRequest is what the stub daemon of movesTo was asked.

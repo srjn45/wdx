@@ -57,6 +57,34 @@ func plansModel(t *testing.T) *Model {
 	return m
 }
 
+// planLines are the plan rows of the Plans section as the project pane shows
+// them, after the selector, without the pane's side and the cursor's pointer.
+func planLines(m *Model) []string {
+	var lines []string
+	in := false
+	for _, l := range paneLines(m) {
+		r := []rune(l)
+		heading := len(r) > 2 && (r[2] == '−' || r[2] == '+')
+		switch {
+		case heading && strings.Contains(l, "Plans"):
+			in = true
+		case heading:
+			in = false
+		case in && !strings.Contains(l, "<"):
+			lines = append(lines, strings.TrimRight(string(r[3:]), " "))
+		}
+	}
+	return lines
+}
+
+// wantPlanLines fails the test unless the Plans section shows want, row by row.
+func wantPlanLines(t *testing.T, m *Model, want ...string) {
+	t.Helper()
+	if got := planLines(m); !slices.Equal(got, want) {
+		t.Errorf("plan rows:\n%s\nwant:\n%s", strings.Join(got, "\n"), strings.Join(want, "\n"))
+	}
+}
+
 func loadPlan(m *Model, id string, c api.PlanContent) {
 	m.Update(planLoaded{projectID: "proj-demo", tab: planTab(id), content: c})
 }
@@ -64,7 +92,7 @@ func loadPlan(m *Model, id string, c api.PlanContent) {
 func TestPlansListed(t *testing.T) {
 	t.Parallel()
 	m := plansModel(t)
-	wantText(t, m, "Plans", "− auth draft 2 plans", "  auth-b draft 1 task", "  auth-a draft 2 tasks", "sso draft 4 tasks")
+	wantPlanLines(t, m, "− auth draft 2 plans", "  ├ auth-b draft 1 task", "  └ auth-a draft 2 tasks", "sso draft 4 tasks")
 	if got := headingRows(m); !slices.Equal(got, []string{"Plans", "Agents", "Worktrees", "Code"}) {
 		t.Errorf("headings %q", got)
 	}
@@ -79,7 +107,7 @@ func TestPlansListed(t *testing.T) {
 	}
 
 	keys(m, "left")
-	wantText(t, m, "+ auth draft 2 plans")
+	wantPlanLines(t, m, "+ auth draft 2 plans", "sso draft 4 tasks")
 	if strings.Contains(text(m), "auth-a") || len(m.planRows()) != 3 {
 		t.Errorf("folded, its plans still show:\n%s", text(m))
 	}
@@ -88,9 +116,7 @@ func TestPlansListed(t *testing.T) {
 		t.Errorf("down from the folded parent: %q, hint %q", l.planCursor, statusRow(m))
 	}
 	keys(m, "up", "right")
-	if len(m.planRows()) != 5 {
-		t.Errorf("unfolded: %+v", m.planRows())
-	}
+	wantPlanLines(t, m, "− auth draft 2 plans", "  ├ auth-b draft 1 task", "  └ auth-a draft 2 tasks", "sso draft 4 tasks")
 	keys(m, "down", "left") // on auth-b, its parent folds
 	if l := m.list(); len(m.planRows()) != 3 || l.planCursor != "doc-auth" {
 		t.Errorf("← on a child: %+v, cursor %q", m.planRows(), l.planCursor)
@@ -119,9 +145,18 @@ func TestPlanRowFits(t *testing.T) {
 			t.Errorf("%d: %q, want %q", width, got, want)
 		}
 	}
-	child := planRow{plan: aPlan("doc-a", "auth-a", 1, 2), child: true, place: treePlace{depth: 1, guide: "  "}}
-	if got := strings.TrimRight(planLine(st, child, plansGoingOn, false, rowLook{}, 30), " "); got != "    auth-a draft 2 tasks" {
-		t.Errorf("a plan under its plan of plans: %q", got)
+	// Under its plan of plans, the tree's lines take their room before the name.
+	m := plansModel(t)
+	child := m.planRows()[3] // auth-a, the last under auth
+	for width, want := range map[int]string{
+		30: "    └ auth-a draft 2 tasks",
+		14: "    └ auth-a",
+		10: "    └ au…",
+		6:  "    └",
+	} {
+		if got := strings.TrimRight(planLine(st, child, plansGoingOn, false, rowLook{}, width), " "); got != want {
+			t.Errorf("%d, under its plan of plans: %q, want %q", width, got, want)
+		}
 	}
 }
 
@@ -142,6 +177,10 @@ func TestPlanFilter(t *testing.T) {
 	if len(rows) != 3 || rows[1].plan.Name != "auth" || rows[1].match || rows[2].plan.Name != "auth-a" || !rows[2].match {
 		t.Fatalf("a child matching: %+v", rows)
 	}
+	wantPlanLines(t, m, "+ auth draft 2 plans", "  └ auth-a draft 2 tasks")
+	l.filter.text = "auth-b" // first of the two: the last shown all the same
+	wantPlanLines(t, m, "+ auth draft 2 plans", "  └ auth-b draft 1 task")
+	l.filter.text = "auth-a"
 	if m.filterMatches() != 1 {
 		t.Errorf("matches %d", m.filterMatches())
 	}

@@ -185,8 +185,9 @@ func (m *Model) planRows() []planRow {
 		}
 		g.plan.place = p
 		rows = append(rows, g.plan)
-		for _, c := range g.children {
-			c.place = treePlace{depth: p.depth + 1, guide: p.next}
+		for i, c := range g.children {
+			c.place = treePlace{depth: p.depth + 1}
+			c.place.guide, c.place.next = treeGuides(p.next, c.place.depth, i == len(g.children)-1)
 			rows = append(rows, c)
 		}
 	})
