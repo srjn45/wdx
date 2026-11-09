@@ -380,3 +380,19 @@ func TestInvalidSecretNotShown(t *testing.T) {
 		t.Errorf("the secret is in the problem: %+v", e.Problems)
 	}
 }
+
+// A value that does not parse leaves its setting at the default, which help
+// and completion run on.
+func TestInvalidKeepsDefault(t *testing.T) {
+	t.Parallel()
+	c, from, err := load(t, optionalToken(), fileWith(t, "count: 0\nmode: purple\nname: bob\n"), nil)
+	if err == nil {
+		t.Fatal("want the values refused")
+	}
+	if c.Count != 1 || c.Mode != "fast" || c.Name != "bob" {
+		t.Fatalf("want the defaults kept for count and mode, got %+v", c)
+	}
+	if _, ok := from["count"]; ok {
+		t.Fatalf("want count left out of from, got %v", from)
+	}
+}

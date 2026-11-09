@@ -26,6 +26,7 @@ how does the web endpoint get its TLS?
 choice: 1
 ==> made the master key
 ==> the settings in /var/lib/wdx-hub/.wdx-hub/config.yaml list every setting of this version
+==> installed the bash completion /usr/share/bash-completion/completions/wdx-hub
 ==> installed wdx-hub 0.5.0 -> /usr/local/bin/wdx-hub, the service wdx-hub.service
 ==> wdx-hub answers: hub 0.5.0 (1a2b3c4) api 1
 ==> point the proxy at 127.0.0.1:8080, the web endpoint
@@ -34,9 +35,10 @@ choice: 1
     https://hub.acme.dev/signup?invite=…
 ==> back up /var/lib/wdx-hub/.wdx-hub/config.yaml: it holds the master key, without which the hub's secrets are lost
 ==> run admin commands with sudo: sudo wdx-hub user list
+==> Tab completes wdx-hub's commands and flags in a new shell
 ```
 
-- **What it makes:** the system user `wdx-hub`, with no login shell, its home in `/var/lib/wdx-hub` that only it can read, and the hub's own home in it, `/var/lib/wdx-hub/.wdx-hub`: the config file, the database `hub.db`, the certificate authority, the admin socket, the logs and the backups. The binary goes to `/usr/local/bin/wdx-hub` and the service to `/etc/systemd/system/wdx-hub.service`, started at once and at every boot.
+- **What it makes:** the system user `wdx-hub`, with no login shell, its home in `/var/lib/wdx-hub` that only it can read, and the hub's own home in it, `/var/lib/wdx-hub/.wdx-hub`: the config file, the database `hub.db`, the certificate authority, the admin socket, the logs and the backups. The binary goes to `/usr/local/bin/wdx-hub` and the service to `/etc/systemd/system/wdx-hub.service`, started at once and at every boot. For each of bash, zsh and fish the machine has, the completion goes where that shell finds it for every user ([below](#tab-completion)).
 - **It asks two things,** the only settings without a default: the public url, where browsers and nodes reach the hub (`http://` only for `localhost` and `127.0.0.1`, which skips the TLS question), and how the web endpoint gets its TLS ([below](#tls)). A value the config file has already is not asked, so the script also installs over a hub set up by hand.
 - **Unattended,** with no terminal, it takes them from the environment and fails naming the one missing: `WDX_HUB_PUBLIC_URL`, `WDX_HUB_WEB_TLS` (`off` for a proxy, or `files`), and with `files` `WDX_HUB_WEB_TLS_CERT` and `WDX_HUB_WEB_TLS_KEY`. These reach only the script, never the running hub. Pass them through sudo: `curl … | sudo WDX_HUB_PUBLIC_URL=https://hub.acme.dev WDX_HUB_WEB_TLS=off sh`.
 - **Which release:** the newest stable one; `WDX_CHANNEL=dev` the newest of either kind, and `WDX_VERSION=0.5.0` that one. The channel is kept as the hub's `update.channel`, which `wdx-hub update` follows. Until a stable release has the hub, the stable channel says to use `WDX_CHANNEL=dev`. `WDX_DOWNLOAD_BASE` takes the releases from elsewhere, laid out as GitHub's, and is kept as `update.base_url`.
@@ -104,6 +106,12 @@ $ journalctl -u wdx-hub
 
 `sudo -u wdx-hub -H wdx-hub …` works too. Each has `--help`, and `--json` as wdx's commands do.
 
+### Tab completion
+
+<Since v="0.5.0" /> In a shell started after the install, Tab completes `wdx-hub`'s commands and flags, after `wdx-hub` or `sudo wdx-hub`, as it does wdx's ([Shell completion](/wdx/docs/guides/completion/)). The install wrote the script of each shell it found, for every user: `/usr/share/bash-completion/completions/wdx-hub` (bash, with the bash-completion package), `/usr/local/share/zsh/site-functions/_wdx-hub` (zsh) and `/usr/share/fish/vendor_completions.d/wdx-hub.fish` (fish); `wdx-hub update --apply` writes them again. `wdx-hub completion <shell>` prints one, for setting it up by hand.
+
+Help and completion work even where the hub's settings do not load, as for a user other than the hub's. Usernames after `--username` come from the running hub, over its admin socket, so they are offered only to a user who reaches it; to others Tab offers nothing there.
+
 ## Updating
 
 `wdx-hub update` works as [`wdx update`](/wdx/docs/guides/updating/) does. Without a flag it only looks:
@@ -132,6 +140,7 @@ updated wdx-hub 0.5.0 -> 0.5.1
 - **If the new release does not answer** within 30 seconds, everything is put back and the old one started: `update_failed`, naming the step, and `journalctl -u wdx-hub` says why.
 - **Restarting** closes every node's connection and every session's stream through the hub. The nodes connect again on their own, waiting longer each time up to 5 minutes; an open attach or remote TIDE sees the connection lost, as for a network drop.
 - `--channel dev` or `--version 0.5.1` choose another release this once.
+- **The shells' completions** are written again from the new binary, even when it is up to date; one it cannot write is a warning, and the update stands.
 
 Changed your mind:
 
@@ -159,7 +168,7 @@ To move the hub to another machine, install it there, stop both (`sudo systemctl
 $ curl -fsSL https://raw.githubusercontent.com/srjn45/wdx/main/scripts/install-hub.sh | sudo sh -s -- --uninstall
 ```
 
-It stops and removes the service, the binary and `/usr/local/lib/wdx-hub/`. The `wdx-hub` user and its home stay, with the database, the certificate authority, the master key and the backups, so that installing again goes on where it was. `--purge` removes them too, after asking on the terminal, since every account and doc of the hub goes with them; `--purge --yes` does it without asking.
+It stops and removes the service, the binary, the shells' completions and `/usr/local/lib/wdx-hub/`. The `wdx-hub` user and its home stay, with the database, the certificate authority, the master key and the backups, so that installing again goes on where it was. `--purge` removes them too, after asking on the terminal, since every account and doc of the hub goes with them; `--purge --yes` does it without asking.
 
 ## On Fly.io
 
@@ -227,7 +236,7 @@ Then tell the hub which address is Fly's proxy. Every request comes to it from t
 $ fly secrets set --app <name> WDX_HUB_TRUSTED_PROXIES=<the proxy's address>
 ```
 
-Setting a secret restarts the machine; the next approval page shows your own address. Registration stays closed, as on any hub: others join by the invite you make for them the same way, and every other admin command runs through `fly ssh console --app <name> --user nonroot -C "wdx-hub …"`. The hub logs to Fly: `fly logs --app <name>`.
+Setting a secret restarts the machine; the next approval page shows your own address. Registration stays closed, as on any hub: others join by the invite you make for them the same way, and every other admin command runs through `fly ssh console --app <name> --user nonroot -C "wdx-hub …"`. The hub logs to Fly: `fly logs --app <name>`. Nothing completes on Tab there: the image has no shell, so each command runs on its own.
 
 ### What `make hub-fly-deploy` does
 

@@ -187,6 +187,31 @@ func RewritesSettings(root *cobra.Command, args []string, err error) bool {
 	return path == root.Name()+" setting write" || path == root.Name()+" setting set"
 }
 
+// NeedsNoSettings is true when args ask root for help (--help, -h or the help
+// command) or for completion (the completion command, or a shell asking for
+// candidates): such a run works on the settings that loaded, whatever failed,
+// so that a broken config file or a setting not set yet never stops either.
+func NeedsNoSettings(root *cobra.Command, args []string) bool {
+	if isCompletion(args) {
+		return true
+	}
+	for _, arg := range args {
+		if arg == "--" {
+			break
+		}
+		if arg == "--help" || arg == "-h" {
+			return true
+		}
+	}
+	root.InitDefaultHelpCmd()
+	cmd, _, err := root.Find(args)
+	if err != nil {
+		return false
+	}
+	path := cmd.CommandPath()
+	return path == root.Name()+" help" || path == root.Name()+" completion" || strings.HasPrefix(path, root.Name()+" completion ")
+}
+
 // printError writes p to stdout as JSON, or to stderr as text: what failed on
 // the first line, then the hint and the debug id. Text given p.Lines prints
 // the first in place of p's detail and the others under it, as a list of

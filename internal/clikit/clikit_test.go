@@ -272,6 +272,36 @@ func TestRewritesSettings(t *testing.T) {
 	}
 }
 
+func TestNeedsNoSettings(t *testing.T) {
+	t.Parallel()
+	for _, tc := range []struct {
+		args []string
+		want bool
+	}{
+		{[]string{"--help"}, true},
+		{[]string{"thing", "list", "--help"}, true},
+		{[]string{"thing", "list", "-h", "--json"}, true},
+		{[]string{"help"}, true},
+		{[]string{"help", "thing"}, true},
+		{[]string{"--color", "never", "help", "thing", "list"}, true},
+		{[]string{"completion"}, true},
+		{[]string{"completion", "zsh"}, true},
+		{[]string{"completion", "bash", "--json"}, true},
+		{[]string{"__complete", "thing", ""}, true},
+		{[]string{"__completeNoDesc", "gr"}, true},
+		{nil, false},
+		{[]string{"thing", "list"}, false},
+		{[]string{"greet", "--name", "ann", "--yes"}, false},
+		{[]string{"setting", "write"}, false},
+		{[]string{"greet", "--", "--help"}, false},
+		{[]string{"nosuch"}, false},
+	} {
+		if got := clikit.NeedsNoSettings(newKit(errFailed)(), tc.args); got != tc.want {
+			t.Errorf("%v: got %v, want %v", tc.args, got, tc.want)
+		}
+	}
+}
+
 func TestColor(t *testing.T) {
 	t.Parallel()
 	terminal := func(env *clikit.Env) { env.Stdout = clikittest.Typed(t) }

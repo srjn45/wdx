@@ -40,13 +40,15 @@ import (
 const newVersion = "0.6.0"
 
 // release is a wdx-hub of version %[1]s, as an update runs it: it writes the
-// settings of its home anew unchanged, says its version and prints its unit.
+// settings of its home anew unchanged, says its version and prints its unit
+// and completions.
 const release = `#!/bin/sh
 case "$1 $2" in
 "settings write") cp "$WDX_HUB_HOME/config.yaml" "$5"
 	echo '{"result": "written", "settings": {"path": "'"$5"'", "added": [], "dropped": []}}' ;;
 "version --json") echo '{"cli": {"name": "wdx-hub", "version": "%[1]s", "commit": "none"}, "hub": null}' ;;
 "service unit") echo '{"unit": "unit of %[1]s"}' ;;
+"completion "*) echo "$2 completion of %[1]s" ;;
 *) echo "release %[1]s: $*" >&2; exit 1 ;;
 esac
 `
@@ -139,6 +141,11 @@ func installHub(t *testing.T, base string) *installedHub {
 			Binary: filepath.Join(lib, "bin", name),
 			Unit:   filepath.Join(lib, "systemd", hubconfig.Service),
 			Lib:    filepath.Join(lib, "lib", name),
+			Completions: []hubconfig.Completion{
+				{Shell: "bash", Path: filepath.Join(lib, "bash-completion", name)},
+				{Shell: "zsh", Path: filepath.Join(lib, "site-functions", "_"+name)},
+				{Shell: "fish", Path: filepath.Join(lib, "vendor_completions.d", name+".fish")},
+			},
 		},
 		base: base,
 	}
@@ -159,7 +166,7 @@ func (in *installedHub) env(version string) func(*Env) {
 	return func(env *Env) {
 		env.Root = true
 		env.Account = &in.account
-		env.Update = UpdateOptions{Layout: &in.layout, BaseURL: in.base, Version: version, Systemctl: in.service.systemctl}
+		env.Update = UpdateOptions{Layout: &in.layout, BaseURL: in.base, Version: version, Systemctl: in.service.systemctl, LookPath: noFish}
 	}
 }
 
@@ -192,6 +199,14 @@ func (in *installedHub) want(t *testing.T, version string) {
 	if exit != clikit.ExitOK || h == nil || h["version"] != version {
 		t.Fatalf("want the hub answering as %s, got %v", version, v)
 	}
+}
+
+// noFish finds bash and zsh, and no fish.
+func noFish(file string) (string, error) {
+	if file == "fish" {
+		return "", exec.ErrNotFound
+	}
+	return "/bin/" + file, nil
 }
 
 // testService is the hub's service: systemctl start serves the home in this
@@ -488,6 +503,46 @@ func updatedAcrossBreaking(t *testing.T) *installedHub {
 
 // TestUpdateRollbackRestores rolls back across a migration that breaks the
 // previous version, restoring the copy only when told to.
+// --apply writes the completion of each shell found, from the new binary,
+// and again when up to date; one it cannot write is a warning.
+func TestUpdateWritesCompletions(t *testing.T) {
+	t.Parallel()
+	noCompletion := strings.Replace(releaseOf("0.7.0"), `"completion "*)`, `"completion "*) exit 1; `, 1)
+	base, _ := publishHub(t, map[string]string{newVersion: releaseOf(newVersion), "0.7.0": noCompletion})
+	in := installHub(t, base)
+	in.start(t)
+	wantCompletions := func(version string) {
+		t.Helper()
+		for _, c := range in.layout.Completions[:2] {
+			if got := readTestFile(t, c.Path); got != c.Shell+" completion of "+version+"\n" {
+				t.Errorf("want the %s completion of %s, got %q", c.Shell, version, got)
+			}
+		}
+		if _, err := os.Stat(in.layout.Completions[2].Path); !os.IsNotExist(err) {
+			t.Errorf("want no fish completion without fish, got %v", err)
+		}
+	}
+	if v, exit := in.json(t, identity.Version, "--apply"); exit != clikit.ExitOK || v["result"] != resultUpdated {
+		t.Fatalf("want updated, got exit %d: %v", exit, v)
+	}
+	wantCompletions(newVersion)
+
+	if err := os.Remove(in.layout.Completions[0].Path); err != nil {
+		t.Fatal(err)
+	}
+	if v, exit := in.json(t, newVersion, "--apply"); exit != clikit.ExitOK || v["result"] != resultUpToDate {
+		t.Fatalf("want up to date, got exit %d: %v", exit, v)
+	}
+	wantCompletions(newVersion)
+
+	v, exit := in.json(t, newVersion, "--apply", "--version", "0.7.0")
+	w, _ := v["warnings"].([]any)
+	if exit != clikit.ExitOK || v["result"] != resultUpdated || len(w) != 2 || !strings.Contains(w[0].(string), "the bash completion is not written to "+in.layout.Completions[0].Path) {
+		t.Fatalf("want updated with a warning per shell, got exit %d: %v", exit, v)
+	}
+	wantCompletions(newVersion)
+}
+
 func TestUpdateRollbackRestores(t *testing.T) {
 	t.Parallel()
 	in := updatedAcrossBreaking(t)

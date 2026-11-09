@@ -15,6 +15,15 @@ type Layout struct {
 	Binary string // the binary the service runs
 	Unit   string // the systemd unit
 	Lib    string // root's: the update's lock and downloads, and the previous version
+	// Completions are where each shell's completion is installed for every
+	// user, for the shells this machine has.
+	Completions []Completion
+}
+
+// Completion is the file a shell loads the completion of wdx-hub from.
+type Completion struct {
+	Shell string // bash, zsh or fish, as wdx-hub completion names it
+	Path  string
 }
 
 // Installed is the layout of an installed hub, the one wdx-hub update
@@ -24,6 +33,11 @@ var Installed = Layout{
 	Binary: "/usr/local/bin/" + Name,
 	Unit:   "/etc/systemd/system/" + Service,
 	Lib:    "/usr/local/lib/" + Name,
+	Completions: []Completion{
+		{"bash", "/usr/share/bash-completion/completions/" + Name},
+		{"zsh", "/usr/local/share/zsh/site-functions/_" + Name},
+		{"fish", "/usr/share/fish/vendor_completions.d/" + Name + ".fish"},
+	},
 }
 
 // Where the hub's releases are published: with wdx's, on GitHub.

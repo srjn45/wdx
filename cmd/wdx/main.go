@@ -25,7 +25,7 @@ func main() {
 	// Which clipboard tool tide needs depends on the graphical session.
 	env.Deps.Session = cli.Session(os.Environ())
 	cfg, err := config.Load(os.Getenv)
-	if err != nil && !cli.RewritesSettings(os.Args[1:], err) {
+	if err != nil && !cli.RewritesSettings(os.Args[1:], err) && !cli.NeedsNoSettings(os.Args[1:]) {
 		os.Exit(cli.ConfigError(os.Args[1:], env, err))
 	}
 	env.Config = cfg

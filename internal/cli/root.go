@@ -166,6 +166,12 @@ func RewritesSettings(args []string, err error) bool {
 	return clikit.RewritesSettings(newRoot(config.Default()), args, err)
 }
 
+// NeedsNoSettings is true when args ask for help or completion, which run on
+// the settings that loaded whatever failed to.
+func NeedsNoSettings(args []string) bool {
+	return clikit.NeedsNoSettings(newRoot(config.Default()), args)
+}
+
 // frameworkEnv is what the framework takes of env for the run of args.
 func frameworkEnv(env Env, args []string) clikit.Env {
 	var values []clikit.SettingValue

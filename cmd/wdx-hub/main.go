@@ -26,7 +26,7 @@ func main() {
 		os.Exit(3)
 	}
 	cfg, err := hubconfig.Load(os.Getenv)
-	if err != nil && !hubcli.RewritesSettings(args, err) {
+	if err != nil && !hubcli.RewritesSettings(args, err) && !hubcli.NeedsNoSettings(args) {
 		os.Exit(hubcli.ConfigError(args, env, err))
 	}
 	env.Config = cfg

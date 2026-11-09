@@ -2,9 +2,10 @@
 # Install wdx-hub with install-hub.sh as the system service it installs,
 # update it with wdx-hub update, see an update to a release that does not
 # serve put back, roll it back, update it through the script again and
-# uninstall it: the tests of the wdx doc HUB_INSTALL. Its releases are this
-# tree, built by dist.sh as three versions for this machine and read from
-# file://; the third runs but never serves.
+# uninstall it, with the shells' completions: the tests of the wdx docs
+# HUB_INSTALL and HUB_COMPLETION. Its releases are this tree, built by dist.sh
+# as three versions for this machine and read from file://; the third runs but
+# never serves.
 #
 # It needs root through sudo without a password, and systemd: it installs
 # into /usr/local, /etc/systemd and /var/lib, so it runs in CI, never on a
@@ -68,6 +69,23 @@ want() {
 # answers checks the hub answers on its socket as version $1.
 answers() { want ".hub.version == \"$1\"" version; }
 
+# The completion of each shell, as install-hub.sh writes them for every user.
+COMPLETIONS="bash:/usr/share/bash-completion/completions/$NAME zsh:/usr/local/share/zsh/site-functions/_$NAME fish:/usr/share/fish/vendor_completions.d/$NAME.fish"
+
+# completions checks that the completion of every shell found is installed
+# and names wdx-hub, and that of a shell not found is not.
+completions() {
+	for c in $COMPLETIONS; do
+		shell="${c%%:*}"
+		file="${c#*:}"
+		if command -v "$shell" >/dev/null 2>&1; then
+			grep -q "$NAME" "$file" || die "no $shell completion in $file"
+		else
+			[ ! -e "$file" ] || die "a $shell completion in $file, with no $shell"
+		fi
+	done
+}
+
 # owned checks that nothing in the hub's home is another user's, as root's
 # commands and updates must leave it.
 owned() {
@@ -104,6 +122,7 @@ echo "$out" | grep -q 'signup?invite=' || die "install printed no invite"
 answers "$V1"
 hub user list >/dev/null || die "sudo $NAME user list failed"
 want ".update.current == \"$V1\" and .update.available" update
+completions
 owned
 
 echo "updating to $V2"
@@ -125,17 +144,22 @@ want '.result == "rolled_back"' update --rollback --cancel
 answers "$V1"
 owned
 
-echo "updating to $V2 through the script"
+echo "updating to $V2 through the script, which writes the completions again"
+sudo rm -f "/usr/share/bash-completion/completions/$NAME"
 out="$(sudo env WDX_DOWNLOAD_BASE="file://$DIST" WDX_VERSION="$V2" sh scripts/install-hub.sh </dev/null)" ||
 	die "the script's update: $out"
 echo "$out" | grep -q "update --apply" || die "the script did not update: $out"
 answers "$V2"
+completions
 owned
 
 echo "uninstalling"
 sudo sh scripts/install-hub.sh --uninstall || die "uninstall failed"
 for path in "/usr/local/bin/$NAME" "/etc/systemd/system/$NAME.service" "/usr/local/lib/$NAME"; do
 	[ ! -e "$path" ] || die "uninstall left $path"
+done
+for c in $COMPLETIONS; do
+	[ ! -e "${c#*:}" ] || die "uninstall left ${c#*:}"
 done
 for path in "$HUB_HOME/config.yaml" "$HUB_HOME/hub.db"; do
 	sudo test -f "$path" || die "uninstall removed $path"
@@ -147,4 +171,4 @@ sudo sh scripts/install-hub.sh --purge --yes </dev/null || die "purge failed"
 if id -u "$NAME" >/dev/null 2>&1 || sudo test -e /var/lib/wdx-hub; then
 	die "purge left the user or its home"
 fi
-echo "installed $V1, updated to $V2, put $V2 back after $V3, rolled back to $V1, updated to $V2 by the script, uninstalled and purged"
+echo "installed $V1, updated to $V2, put $V2 back after $V3, rolled back to $V1, updated to $V2 by the script, uninstalled and purged, with the completions"

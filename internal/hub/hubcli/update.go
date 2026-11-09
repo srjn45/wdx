@@ -66,6 +66,9 @@ type UpdateOptions struct {
 	// StartTimeout is how long the hub started on a release gets to answer;
 	// defaultStartTimeout when 0.
 	StartTimeout time.Duration
+	// LookPath finds a shell, whose completion --apply installs;
+	// exec.LookPath when nil.
+	LookPath func(file string) (string, error)
 }
 
 func (o UpdateOptions) layout() hubconfig.Layout {
@@ -102,7 +105,8 @@ func newUpdateCmd() *cobra.Command {
 			"are put back and the service starts on the old binary.\n\n" +
 			"The release writes the config file anew, as its setting write does: the\n" +
 			"values set stay, its new settings are listed, and keys it no longer has are\n" +
-			"commented out at the end.\n\n" +
+			"commented out at the end. --apply then writes the completion of every shell\n" +
+			"found for every user, from the installed binary, even when up to date.\n\n" +
 			"--rollback installs the kept version again, with the config file as it was\n" +
 			"before the update. The database stays when that version can use it; when a\n" +
 			"migration since the update breaks it, the copy is restored, losing every\n" +
@@ -154,6 +158,8 @@ func newUpdateCmd() *cobra.Command {
 				if err != nil {
 					return err
 				}
+				// Up to date too: a hub installed before its completions gets them.
+				r.Warnings = append(r.Warnings, writeCompletions(cmd, o)...)
 				result := resultUpdated
 				if r.UpToDate {
 					result = resultUpToDate
@@ -245,6 +251,42 @@ func switchOptions(cmd *cobra.Command, flag string) (update.Options, error) {
 		o.Progress = cmd.ErrOrStderr()
 	}
 	return o, nil
+}
+
+// writeCompletions writes the completion of every shell found, as the
+// installed binary prints it, where the layout says, and returns what failed
+// as warnings: the update is done, and Tab is a convenience.
+func writeCompletions(cmd *cobra.Command, o update.Options) []string {
+	ctx := cmd.Context()
+	log := logging.FromContext(ctx)
+	env := envOf(cmd)
+	lookPath := env.Update.LookPath
+	if lookPath == nil {
+		lookPath = exec.LookPath
+	}
+	var warnings []string
+	for _, c := range env.Update.layout().Completions {
+		if _, err := lookPath(c.Shell); err != nil {
+			log.Info("no completion written: the shell is not found", "shell", c.Shell)
+			continue
+		}
+		script, err := output(func() *exec.Cmd {
+			return o.Program.Command(ctx, o.Program.Binary, env.Config.Home, "completion", c.Shell)
+		})
+		if err == nil {
+			err = os.MkdirAll(filepath.Dir(c.Path), 0o755)
+		}
+		if err == nil {
+			err = atomicfile.Write(c.Path, script, 0o644)
+		}
+		if err != nil {
+			log.Error("completion not written", "shell", c.Shell, "path", c.Path, "err", err)
+			warnings = append(warnings, fmt.Sprintf("the %s completion is not written to %s: %v", c.Shell, c.Path, err))
+			continue
+		}
+		log.Info("completion written", "shell", c.Shell, "path", c.Path)
+	}
+	return warnings
 }
 
 // asAccount runs a release as the user a, on the home it is given.

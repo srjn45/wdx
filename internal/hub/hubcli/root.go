@@ -91,6 +91,13 @@ func RewritesSettings(args []string, err error) bool {
 	return clikit.RewritesSettings(newRoot(), args, err)
 }
 
+// NeedsNoSettings is true when args ask for help or completion, which run on
+// the settings that loaded whatever failed to: public_url, required, is not
+// set where the hub does not run, nor for a user other than the hub's.
+func NeedsNoSettings(args []string) bool {
+	return clikit.NeedsNoSettings(newRoot(), args)
+}
+
 // servesToOutput is true when args run serve, which logs to stdout; with
 // --json it fails, and logs to the files as the other commands do.
 func servesToOutput(args []string) bool {
@@ -169,7 +176,7 @@ func newRoot() *cobra.Command {
 		Long:   name + " serve runs the hub; user, audit, backup and version ask it over its socket, and setting changes the config file it reads.",
 		Color:  style.ColorAuto,
 		Topics: topics,
-	}, newServeCmd(), newVersionCmd(), newSettingCmd(), newBackupCmd(), newUserCmd(), newAuditCmd(), newUpdateCmd(), newServiceCmd())
+	}, newServeCmd(), newVersionCmd(), newSettingCmd(), newBackupCmd(), newUserCmd(), newAuditCmd(), newUpdateCmd(), newServiceCmd(), newCompletionCmd())
 }
 
 func newVersionCmd() *cobra.Command {
@@ -216,4 +223,12 @@ func (r versionResponse) Text(w io.Writer, st style.Style) {
 		return
 	}
 	fmt.Fprintf(w, "hub %s %s %s\n", st.Name(r.Hub.Version), st.Muted("("+r.Hub.Commit+")"), st.Muted("api "+r.Hub.ApiVersion))
+}
+
+func newCompletionCmd() *cobra.Command {
+	cmd := clikit.NewCompletionCmd(name)
+	cmd.Long = "The script asks " + name + " for the candidates on every Tab, so it completes\n" +
+		"new commands and flags as soon as " + name + " is updated. Usernames come from\n" +
+		"the running hub, over its socket; nothing is offered without one."
+	return cmd
 }

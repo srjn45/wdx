@@ -7,8 +7,9 @@
 # verifies its checksum, makes the system user wdx-hub with its home in
 # /var/lib/wdx-hub, asks the settings that have no default (public_url and
 # how the web endpoint gets its TLS), makes the master key, installs the
-# binary in /usr/local/bin and the service wdx-hub.service, starts it, and
-# prints an invite for the first user. With the hub installed already it
+# binary in /usr/local/bin, the completion of every shell found among bash,
+# zsh and fish for every user, and the service wdx-hub.service, starts it,
+# and prints an invite for the first user. With the hub installed already it
 # updates it instead, through the installed wdx-hub update --apply. The wdx
 # doc HUB_INSTALL designs it.
 #
@@ -26,8 +27,9 @@
 #   WDX_HUB_WEB_TLS_CERT  with files, the certificate's absolute path
 #   WDX_HUB_WEB_TLS_KEY   with files, the private key's absolute path
 #
-# Flags: --uninstall      stop and remove the service, the binary and
-#                         /usr/local/lib/wdx-hub; the user and its home stay
+# Flags: --uninstall      stop and remove the service, the binary, the
+#                         completions and /usr/local/lib/wdx-hub; the user and
+#                         its home stay
 #        --purge          --uninstall, then remove the user and its home, with
 #                         the hub's accounts, docs and backups, after asking
 #        --purge --yes    the same without asking
@@ -46,6 +48,11 @@ HUB_HOME="$HUB_DIR/.$NAME"
 TARGET=/usr/local/bin/$NAME
 UNIT=/etc/systemd/system/$NAME.service
 LIB=/usr/local/lib/$NAME
+# The shells' completions for every user, hubconfig.Installed.Completions:
+# wdx-hub update --apply writes them again.
+BASH_COMPLETION=/usr/share/bash-completion/completions/$NAME
+ZSH_COMPLETION=/usr/local/share/zsh/site-functions/_$NAME
+FISH_COMPLETION=/usr/share/fish/vendor_completions.d/$NAME.fish
 
 # The PATH the hub's commands run with, whatever the caller's.
 SAFE_PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
@@ -93,6 +100,12 @@ uninstall() {
 	rm -f "$TARGET"
 	rm -rf "$LIB"
 	info "removed $TARGET and $LIB"
+	for f in "$BASH_COMPLETION" "$ZSH_COMPLETION" "$FISH_COMPLETION"; do
+		if [ -f "$f" ]; then
+			rm -f "$f"
+			info "removed the completion $f"
+		fi
+	done
 }
 
 purge() {
@@ -308,6 +321,28 @@ cp "$new" "$TARGET.tmp.$$"
 chmod 0755 "$TARGET.tmp.$$"
 mv -f "$TARGET.tmp.$$" "$TARGET"
 
+# write_completion writes the completion script of shell $1, as the installed
+# binary prints it, to file $2, for every user.
+write_completion() {
+	command -v "$1" >/dev/null 2>&1 || return 1
+	mkdir -p "$(dirname "$2")"
+	if as_hub "$TARGET" completion "$1" >"$2.tmp.$$" && chmod 0644 "$2.tmp.$$" && mv -f "$2.tmp.$$" "$2"; then
+		info "installed the $1 completion $2"
+		return 0
+	fi
+	rm -f "$2.tmp.$$"
+	warn "could not write the $1 completion to $2"
+	return 1
+}
+completions=
+if write_completion bash "$BASH_COMPLETION"; then
+	completions=1
+	[ -f /usr/share/bash-completion/bash_completion ] ||
+		warn "the bash-completion package, which loads $BASH_COMPLETION, is not installed"
+fi
+write_completion zsh "$ZSH_COMPLETION" && completions=1
+write_completion fish "$FISH_COMPLETION" && completions=1
+
 # The release prints its own unit, as wdx-hub update writes it.
 listen_web="$(hub setting get --name listen.web | sed -n '1s/^listen.web //p')"
 set -- service unit
@@ -352,4 +387,7 @@ if as_hub "$TARGET" user list --color never | grep -q '^no users'; then
 fi
 info "back up $HUB_HOME/config.yaml: it holds the master key, without which the hub's secrets are lost"
 info "run admin commands with sudo: sudo $NAME user list"
+if [ -n "$completions" ]; then
+	info "Tab completes $NAME's commands and flags in a new shell"
+fi
 info "see whether a newer release is out with sudo $NAME update, and install it with sudo $NAME update --apply"

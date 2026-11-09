@@ -88,9 +88,10 @@ func (t Table[C]) row(key string) (Row[C], bool) {
 // Resolve returns the settings from the defaults overridden by each source
 // in turn, so a later source wins, and where each was taken from, by key:
 // "default", the environment variable, or the config file and line. A key
-// with a problem is left out of from. It fails with an *Error listing every
-// problem: a required setting missing, a value that does not parse, and what
-// the table's Check finds.
+// with a problem is left out of from, and one whose value does not parse
+// keeps its default, so that what needs no settings runs on the rest. It
+// fails with an *Error listing every problem: a required setting missing, a
+// value that does not parse, and what the table's Check finds.
 func (t Table[C]) Resolve(sources []Source) (C, map[string]string, error) {
 	var c C
 	from := map[string]string{}
@@ -118,6 +119,9 @@ func (t Table[C]) Resolve(sources []Source) (C, map[string]string, error) {
 				shown = secretShown
 			}
 			problems = append(problems, Problem{Key: r.Key, From: source, Value: &shown, Reason: err.Error(), byEnv: byEnv})
+			if !r.Required {
+				_ = r.Set(&c, r.Default)
+			}
 			continue
 		}
 		from[r.Key] = source

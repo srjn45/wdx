@@ -759,6 +759,41 @@ func TestHelpJSON(t *testing.T) {
 	}
 }
 
+// Help and completion run as main runs them on settings that failed to load:
+// on those that did; every other command fails at startup.
+func TestHelpWithInvalidSettings(t *testing.T) {
+	t.Parallel()
+	home := shortHome(t)
+	if err := os.WriteFile(identity.ConfigPath(home), []byte("otel:\n  endpoint: \"\"\nlog:\n  level: debug\n  retention_days: 0\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	startup := func(args ...string) clikittest.Output {
+		cfg, err := config.Load(func(key string) string { return map[string]string{"WDX_HOME": home}[key] })
+		if err == nil {
+			t.Fatal("want bad settings rejected")
+		}
+		var stdout, stderr bytes.Buffer
+		env := Env{Stdin: strings.NewReader(""), Stdout: &stdout, Stderr: &stderr, Config: cfg}
+		if !RewritesSettings(args, err) && !NeedsNoSettings(args) {
+			exit := ConfigError(args, env, err)
+			return clikittest.Output{Exit: exit, Stdout: stdout.String(), Stderr: stderr.String()}
+		}
+		exit := Run(context.Background(), args, env)
+		out := clikittest.Output{Exit: exit, Stdout: stdout.String(), Stderr: stderr.String()}
+		wantLogged(t, home, args, out)
+		return out
+	}
+	if out := startup("--help"); out.Exit != clikit.ExitOK || !strings.HasPrefix(out.Stdout, "wdx: ") {
+		t.Fatalf("want the help, got %+v", out)
+	}
+	if out := startup("__complete", "proj"); out.Exit != clikit.ExitOK || !strings.Contains(out.Stdout, "project\t") {
+		t.Fatalf("want project offered, got %+v", out)
+	}
+	if out := startup("project", "list", "--json"); out.Exit != clikit.ExitUsage || !strings.Contains(out.Stdout, "log.retention_days") {
+		t.Fatalf("want project list refused, got %+v", out)
+	}
+}
+
 func TestConfigError(t *testing.T) {
 	t.Parallel()
 	home := newHome(t)
