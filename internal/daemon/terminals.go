@@ -45,15 +45,19 @@ func (s *server) ListTerminals(ctx context.Context, req api.ListTerminalsRequest
 
 func (s *server) CreateTerminal(ctx context.Context, req api.CreateTerminalRequestObject) (api.CreateTerminalResponseObject, error) {
 	b := req.Body
-	if err := absolute(b.Dir); err != nil {
-		return nil, err
+	// With a project, an empty dir starts in its clone path: a client on
+	// another node sends one, its working directory meaning nothing here.
+	if b.Dir != "" || b.Project == nil {
+		if err := absolute(b.Dir); err != nil {
+			return nil, err
+		}
 	}
 	p, err := s.projectOf(ctx, b.Project, &b.Dir)
 	if err != nil {
 		return nil, err
 	}
 	dir := b.Dir
-	if !p.Holds(dir) {
+	if dir == "" || !p.Holds(dir) {
 		dir = p.ClonePath()
 		logging.FromContext(ctx).Info("dir outside the project, using its clone path", "project_id", p.ID, "path", b.Dir, "dir", dir)
 	}

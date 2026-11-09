@@ -3755,7 +3755,7 @@ components:
           description: The project's name, or "id:" and its id; by default the one whose worktree holds dir.
         dir:
           type: string
-          description: Absolute path the shell starts in; see createTerminal.
+          description: Absolute path the shell starts in, or empty with project for its clone path; see createTerminal.
         name:
           type: string
           nullable: true
@@ -3917,7 +3917,7 @@ components:
           description: The project's name, or "id:" and its id; by default the one whose worktree holds dir.
         dir:
           type: string
-          description: Absolute path it starts in; see createAgent.
+          description: Absolute path it starts in, or empty with project for its clone path; see createAgent.
         name:
           type: string
           nullable: true

@@ -303,6 +303,32 @@ func TestNodePaths(t *testing.T) {
 	}
 }
 
+// With --node a terminal or an agent starts in the project's checkout on the
+// host, the laptop's working directory meaning nothing there.
+func TestNodeCreatesInTheProject(t *testing.T) {
+	t.Parallel()
+	p := openPair(t)
+	app := newProjectDir(t, p.desktop.home, "app")
+	for _, args := range [][]string{
+		{"terminal", "create", "--project-name", "app", "--node", "desktop", "--json"},
+		{"agent", "create", "--project-name", "app", "--aca", "claude_code", "--node", "desktop", "--json"},
+	} {
+		out := p.onLaptop(laptopDir(t), nil, args...)
+		var v jsonOutput
+		_ = json.Unmarshal(clikittest.JSON(t, args, out, codes), &v)
+		var dir string
+		switch {
+		case v.Terminal != nil:
+			dir = v.Terminal.Dir
+		case v.Agent != nil:
+			dir = v.Agent.Dir
+		}
+		if out.Exit != clikit.ExitOK || dir != app {
+			t.Errorf("%v: exit %d, dir %q, want %s: %s", args, out.Exit, dir, app, out.Stdout)
+		}
+	}
+}
+
 func TestNodeVersion(t *testing.T) {
 	t.Parallel()
 	p := openPair(t)
