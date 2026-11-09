@@ -33,6 +33,7 @@ import (
 	"github.com/srjn45/wdx/internal/db"
 	"github.com/srjn45/wdx/internal/identity"
 	"github.com/srjn45/wdx/internal/runtest"
+	"github.com/srjn45/wdx/internal/waittest"
 )
 
 // brokenRelease says it is version 0.3.0 and writes the settings, adding a
@@ -466,8 +467,9 @@ func updatedAcrossBreaking(t *testing.T) (installation, int) {
 		t.Fatal("the update failed")
 	}
 	in.newProject(t, "after")
-	// As a migration of the new version that breaks older ones would.
-	conn, err := sql.Open("sqlite", identity.DBPath(in.home))
+	// As a migration of the new version that breaks older ones would. The
+	// daemon just started may be writing: wait for it.
+	conn, err := sql.Open("sqlite", fmt.Sprintf("file:%s?_pragma=busy_timeout(%d)", identity.DBPath(in.home), waittest.Limit(t).Milliseconds()))
 	if err != nil {
 		t.Fatal(err)
 	}

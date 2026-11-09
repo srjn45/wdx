@@ -33,6 +33,7 @@ import (
 	"github.com/srjn45/wdx/internal/logging"
 	"github.com/srjn45/wdx/internal/runtest"
 	"github.com/srjn45/wdx/internal/sqlite/sqlitetest"
+	"github.com/srjn45/wdx/internal/waittest"
 )
 
 // newVersion is the release the update tests install.
@@ -471,8 +472,9 @@ func updatedAcrossBreaking(t *testing.T) *installedHub {
 	if v, exit := in.json(t, identity.Version, "--apply"); exit != clikit.ExitOK {
 		t.Fatalf("the update failed: %v", v)
 	}
-	// As a migration of the new version that breaks older ones would.
-	conn, err := sql.Open("sqlite", hubconfig.DBPath(in.home))
+	// As a migration of the new version that breaks older ones would. The
+	// hub just started may be writing its first cleanup: wait for it.
+	conn, err := sql.Open("sqlite", fmt.Sprintf("file:%s?_pragma=busy_timeout(%d)", hubconfig.DBPath(in.home), waittest.Limit(t).Milliseconds()))
 	if err != nil {
 		t.Fatal(err)
 	}
