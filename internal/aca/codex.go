@@ -7,7 +7,6 @@ import (
 	"fmt"
 	"io"
 	"strings"
-	"time"
 )
 
 // Codex is OpenAI's Codex CLI: the wdx docs ACA_CODEX, ACA_READY, CODEX_ACTIVITY,
@@ -79,31 +78,15 @@ func tomlString(s string) string {
 const (
 	codexPasteStart = "\x1b[200~"
 	codexPasteEnd   = "\x1b[201~"
-	// codexPasteSettle keeps the key apart from the paste: Codex takes keys that come
-	// fast as a paste, where Enter is a newline.
-	codexPasteSettle = 150 * time.Millisecond
 	// codexSubmit is Enter, which gives a message to the running turn at its next
 	// step, and submits it at rest. Tab would queue it for after the turn.
 	codexSubmit = "\r"
 )
 
-// Deliver implements AiCodingAgent: the message is read at the turn's next step, as
-// Claude Code reads one. A paste-end marker in the message is taken out, or the rest
-// would be typed as keys, and a message starting with "/" gets a space before it, or
-// Codex reads it as a command and submits nothing.
-func (Codex) Deliver(w io.Writer, message string) error {
-	return codexType(w, message)
-}
-
-// Steer implements AiCodingAgent: the same keys as Deliver, as Enter already steers.
-// Checked on 0.163.0 while Codex thinks, runs a tool and streams, and with messages
-// queued, which it keeps for after the turn (the wdx doc CODEX_STEER).
-func (Codex) Steer(w io.Writer, message string) error {
-	return codexType(w, message)
-}
-
-// codexType pastes message, then presses Enter once the paste has settled.
-func codexType(w io.Writer, message string) error {
+// Paste implements AiCodingAgent. A paste-end marker in the message is taken out,
+// or the rest would be typed as keys, and a message starting with "/" gets a space
+// before it, or Codex reads it as a command and submits nothing.
+func (Codex) Paste(w io.Writer, message string) error {
 	for strings.Contains(message, codexPasteEnd) {
 		message = strings.ReplaceAll(message, codexPasteEnd, "")
 	}
@@ -111,13 +94,22 @@ func codexType(w io.Writer, message string) error {
 	if strings.HasPrefix(message, "/") {
 		message = " " + message
 	}
-	if _, err := io.WriteString(w, codexPasteStart+message+codexPasteEnd); err != nil {
-		return err
-	}
-	time.Sleep(codexPasteSettle)
+	_, err := io.WriteString(w, codexPasteStart+message+codexPasteEnd)
+	return err
+}
+
+// Submit implements AiCodingAgent: Enter, which gives the message to the running
+// turn at its next step, as Claude Code reads one, and submits it at rest. Codex
+// takes keys that come fast after a paste as part of it, where Enter is a newline.
+func (Codex) Submit(w io.Writer, _ func()) error {
 	_, err := io.WriteString(w, codexSubmit)
 	return err
 }
+
+// SendNow implements AiCodingAgent: nothing, as Submit already steers. Checked on
+// 0.163.0 while Codex thinks, runs a tool and streams, and with messages queued,
+// which it keeps for after the turn (the wdx doc CODEX_STEER).
+func (Codex) SendNow(io.Writer) error { return nil }
 
 // ScreenParser implements AiCodingAgent.
 func (Codex) ScreenParser() ScreenParser { return CodexScreenParser{} }

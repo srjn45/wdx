@@ -145,41 +145,35 @@ func antigravityNote(dir, project, note string) string {
 	return text + "\n"
 }
 
-// Deliver implements AiCodingAgent: the message is read at the turn's next step, as
-// Claude Code reads one, and submitted at rest, where alt+m does as Enter. Checked
-// on 1.5.2 (the wdx doc ANTIGRAVITY_PARITY).
-func (Antigravity) Deliver(w io.Writer, message string) error {
-	return antigravityType(w, message)
-}
-
-// Steer implements AiCodingAgent: the same keys as Deliver, as alt+m already gives
-// the message to the running turn. It waits for the next step: the running tool's
-// end, which it does not stop, or the end of the model's answer when no tool runs.
-func (Antigravity) Steer(w io.Writer, message string) error {
-	return antigravityType(w, message)
-}
-
-// antigravityType pastes message, then presses alt+m once the paste has settled. A
-// bracketed paste keeps a message's newlines content, and a paste-end marker in the
-// message is taken out, or the rest would be typed as keys. alt+m is one write, or
-// Antigravity could read its Esc alone, which interrupts the turn.
-func antigravityType(w io.Writer, message string) error {
+// Paste implements AiCodingAgent. A bracketed paste keeps a message's newlines
+// content, and a paste-end marker in the message is taken out, or the rest would be
+// typed as keys.
+func (Antigravity) Paste(w io.Writer, message string) error {
 	for strings.Contains(message, antigravityPasteEnd) {
 		message = strings.ReplaceAll(message, antigravityPasteEnd, "")
 	}
 	message = escapeBang(message)
-	if _, err := io.WriteString(w, antigravityPasteStart+message+antigravityPasteEnd); err != nil {
-		return err
-	}
-	time.Sleep(antigravityPasteSettle)
+	_, err := io.WriteString(w, antigravityPasteStart+message+antigravityPasteEnd)
+	return err
+}
+
+// Submit implements AiCodingAgent: alt+m, which gives the message to the running
+// turn at its next step, as Claude Code reads one, and submits it at rest, as Enter
+// does. It waits for the next step: the running tool's end, which it does not stop,
+// or the end of the model's answer when no tool runs. alt+m is one write, or
+// Antigravity could read its Esc alone, which interrupts the turn. Checked on 1.5.2
+// (the wdx doc ANTIGRAVITY_PARITY).
+func (Antigravity) Submit(w io.Writer, _ func()) error {
 	_, err := io.WriteString(w, antigravitySendNow)
 	return err
 }
 
+// SendNow implements AiCodingAgent: nothing, as Submit already steers.
+func (Antigravity) SendNow(io.Writer) error { return nil }
+
 const (
-	antigravityPasteStart  = "\x1b[200~"
-	antigravityPasteEnd    = "\x1b[201~"
-	antigravityPasteSettle = 150 * time.Millisecond
+	antigravityPasteStart = "\x1b[200~"
+	antigravityPasteEnd   = "\x1b[201~"
 	// antigravitySendNow is alt+m, which sends a message to the running turn with
 	// queuedMessages set to queue, and submits it at rest.
 	antigravitySendNow = "\x1bm"

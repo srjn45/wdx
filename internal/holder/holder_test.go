@@ -56,7 +56,7 @@ func runHolder(args []string) int {
 	o.screenHold = os.Getenv(screenHoldVar)                  //nolint:forbidigo // as the home above
 	if dir := os.Getenv(parserDirVar); dir != "" {           //nolint:forbidigo // as the home above
 		o.ParseScreen = testParser(dir)
-		o.Deliver = aca.ClaudeCode{}.Deliver
+		o.Deliver, _ = aca.Typed(aca.ClaudeCode{})
 		o.Interrupt = aca.ClaudeCode{}.Interrupt()
 		if os.Getenv(steerVar) != "" { //nolint:forbidigo // as the home above
 			o.Steer = testSteer

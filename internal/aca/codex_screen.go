@@ -12,7 +12,7 @@ import (
 // 0.163.0; the wdx docs ACA_READY and CODEX_ACTIVITY.
 //
 // The box is drawn while Codex still loads, and a message submitted then was lost
-// (its Tab dropped, when Deliver pressed Tab), so the box counts as ready only once
+// (its Tab dropped, when wdx pressed Tab to submit), so the box counts as ready only once
 // the status line shows under it, after one blank line:
 //
 //	› Ask Codex to do anything

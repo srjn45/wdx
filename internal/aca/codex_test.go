@@ -1,9 +1,7 @@
 package aca_test
 
 import (
-	"bytes"
 	"context"
-	"io"
 	"os"
 	"path/filepath"
 	"slices"
@@ -80,11 +78,10 @@ func TestCodexAskPassesNoPermissions(t *testing.T) {
 	}
 }
 
-// Deliver and Steer type the same keys: a paste, then Enter, which Codex reads at the
-// running turn's next step and submits at rest. Tab would queue it for after the turn.
-func TestCodexDeliverAndSteer(t *testing.T) {
+// The paste, then Enter, which Codex reads at the running turn's next step and
+// submits at rest; steering adds nothing. Tab would queue it for after the turn.
+func TestCodexSteps(t *testing.T) {
 	t.Parallel()
-	codex := aca.Codex{}
 	for _, c := range []struct{ name, message, want string }{
 		{"plain, submitted by Enter", "hello", "\x1b[200~hello\x1b[201~\r"},
 		{"lines stay content", "one\ntwo", "\x1b[200~one\ntwo\x1b[201~\r"},
@@ -95,27 +92,14 @@ func TestCodexDeliverAndSteer(t *testing.T) {
 		{"a leading bang is given to the model", "!x", "\x1b[200~\\!x\x1b[201~\r"},
 		{"even one a marker hid", "\x1b[201~!x", "\x1b[200~\\!x\x1b[201~\r"},
 	} {
-		for method, write := range map[string]func(io.Writer, string) error{"Deliver": codex.Deliver, "Steer": codex.Steer} {
-			t.Run(method+"/"+c.name, func(t *testing.T) {
-				t.Parallel()
-				var got bytes.Buffer
-				if err := write(&got, c.message); err != nil {
-					t.Fatal(err)
+		t.Run(c.name, func(t *testing.T) {
+			t.Parallel()
+			for _, now := range []bool{false, true} {
+				if got := keys(typed(t, aca.Codex{}, c.message, now)); got != c.want {
+					t.Errorf("steered %v: got %q, want %q", now, got, c.want)
 				}
-				if got.String() != c.want {
-					t.Fatalf("got %q, want %q", got.String(), c.want)
-				}
-			})
-		}
-	}
-}
-
-func TestCodexDeliverFails(t *testing.T) {
-	t.Parallel()
-	for writes := range 2 {
-		if err := (aca.Codex{}).Deliver(&failingWriter{writes: writes}, "hello"); err == nil {
-			t.Fatalf("no error after %d writes", writes)
-		}
+			}
+		})
 	}
 }
 

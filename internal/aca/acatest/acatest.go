@@ -66,9 +66,11 @@ func (a *ACA) Program() string { return cmp.Or(a.ProgramName, "sh") }
 // the id.
 func (a *ACA) ScreenParser() aca.ScreenParser { return aca.ClaudeCodeScreenParser{} }
 
-// Deliver implements aca.AiCodingAgent: Claude Code's, as a holder goes by the
-// id.
-func (a *ACA) Deliver(w io.Writer, message string) error { return aca.ClaudeCode{}.Deliver(w, message) }
+// Paste implements aca.AiCodingAgent: Claude Code's, as a holder goes by the id.
+func (a *ACA) Paste(w io.Writer, message string) error { return aca.ClaudeCode{}.Paste(w, message) }
+
+// Submit implements aca.AiCodingAgent: Claude Code's, as a holder goes by the id.
+func (a *ACA) Submit(w io.Writer, settle func()) error { return aca.ClaudeCode{}.Submit(w, settle) }
 
 // Interrupt implements aca.AiCodingAgent: Claude Code's, as a holder goes by the
 // id.
@@ -318,9 +320,15 @@ func (b *Bare) Command(context.Context, aca.Launch) ([]string, error) {
 // ScreenParser implements aca.AiCodingAgent.
 func (b *Bare) ScreenParser() aca.ScreenParser { return aca.NoScreenParser{} }
 
-// Deliver implements aca.AiCodingAgent: the message typed, then Enter.
-func (b *Bare) Deliver(w io.Writer, message string) error {
-	_, err := io.WriteString(w, message+"\r")
+// Paste implements aca.AiCodingAgent: the message typed.
+func (b *Bare) Paste(w io.Writer, message string) error {
+	_, err := io.WriteString(w, message)
+	return err
+}
+
+// Submit implements aca.AiCodingAgent: Enter.
+func (b *Bare) Submit(w io.Writer, _ func()) error {
+	_, err := io.WriteString(w, "\r")
 	return err
 }
 

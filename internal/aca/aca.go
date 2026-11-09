@@ -22,17 +22,26 @@ type AiCodingAgent interface {
 	Command(context.Context, Launch) ([]string, error)
 	// ScreenParser reads what it is doing from its screen.
 	ScreenParser() ScreenParser
-	// Deliver puts one message into its input box on w, its terminal's input,
-	// and submits it. Everything a message needs waits here, and the holder runs
-	// it apart from what must not wait.
-	Deliver(w io.Writer, message string) error
+	// Paste, Submit and SendNow are the steps that type a message on w, its
+	// terminal's input: each writes its keys and nothing else, and the holder
+	// says when each runs, from what the screen shows (the wdx doc
+	// SEND_CONFIRMED, docs/SEND.md).
+	//
+	// Paste puts one message into its input box, unsubmitted.
+	Paste(w io.Writer, message string) error
+	// Submit presses the key that submits the box: at rest it starts a turn, in
+	// a turn it queues the message or gives it to the turn, as each ACA does. It
+	// may be pressed again, while the box still holds what Paste put there. An
+	// ACA that needs a pause between two keys calls settle between them, which
+	// the holder gives, as no step waits itself.
+	Submit(w io.Writer, settle func()) error
+	// SendNow gives what Submit queued to the running turn at once, without
+	// stopping it: how an instant message reaches an ACA that can steer, in place
+	// of Interrupt then Paste and Submit. It writes nothing for an ACA whose Submit
+	// already steers, and for one that cannot, which embeds NoSteer.
+	SendNow(w io.Writer) error
 	// Interrupt is the input that stops its turn.
 	Interrupt() []byte
-	// Steer gives one message to the turn running, on w, without stopping it, or
-	// submits it when none runs: how an instant message reaches an ACA that can,
-	// in place of Interrupt then Deliver. One that cannot embeds NoSteer.
-	// docs/SEND.md.
-	Steer(w io.Writer, message string) error
 	// BackUp brings the backup in l.BackupDir up to date with what it keeps of
 	// the conversation, TranscriptFile among it, and says what it learned. What it
 	// keeps and how it says so differ per AI coding agent. docs/AGENT_RESUME.md.

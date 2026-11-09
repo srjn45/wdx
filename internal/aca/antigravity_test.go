@@ -1,9 +1,7 @@
 package aca_test
 
 import (
-	"bytes"
 	"errors"
-	"io"
 	"os"
 	"path/filepath"
 	"slices"
@@ -164,61 +162,35 @@ func folderHolds(t *testing.T, dir string) []string {
 	return names
 }
 
-// Deliver and Steer type the same keys: a paste, then alt+m, which gives the
-// message to the running turn at its next step and submits it at rest.
-func TestAntigravityDeliverAndSteer(t *testing.T) {
+// The paste, then alt+m, which gives the message to the running turn at its next
+// step and submits it at rest; steering adds nothing.
+func TestAntigravitySteps(t *testing.T) {
 	t.Parallel()
-	for _, send := range []struct {
-		name string
-		send func(io.Writer, string) error
-	}{
-		{"Deliver", aca.Antigravity{}.Deliver},
-		{"Steer", aca.Antigravity{}.Steer},
+	for _, c := range []struct{ name, message, want string }{
+		{"plain", "hello", "\x1b[200~hello\x1b[201~\x1bm"},
+		{"lines stay content", "one\ntwo", "\x1b[200~one\ntwo\x1b[201~\x1bm"},
+		{"cannot end the paste", "a\x1b[201~b", "\x1b[200~ab\x1b[201~\x1bm"},
+		{"nor by a marker its removal makes", "a\x1b[20\x1b[201~1~b", "\x1b[200~ab\x1b[201~\x1bm"},
+		{"a leading bang is given to the model", "!x", "\x1b[200~\\!x\x1b[201~\x1bm"},
+		{"even one a marker hid", "\x1b[201~!x", "\x1b[200~\\!x\x1b[201~\x1bm"},
 	} {
-		for _, c := range []struct{ name, message, want string }{
-			{"plain", "hello", "\x1b[200~hello\x1b[201~\x1bm"},
-			{"lines stay content", "one\ntwo", "\x1b[200~one\ntwo\x1b[201~\x1bm"},
-			{"cannot end the paste", "a\x1b[201~b", "\x1b[200~ab\x1b[201~\x1bm"},
-			{"nor by a marker its removal makes", "a\x1b[20\x1b[201~1~b", "\x1b[200~ab\x1b[201~\x1bm"},
-			{"a leading bang is given to the model", "!x", "\x1b[200~\\!x\x1b[201~\x1bm"},
-			{"even one a marker hid", "\x1b[201~!x", "\x1b[200~\\!x\x1b[201~\x1bm"},
-		} {
-			t.Run(send.name+"/"+c.name, func(t *testing.T) {
-				t.Parallel()
-				var got bytes.Buffer
-				if err := send.send(&got, c.message); err != nil {
-					t.Fatal(err)
+		t.Run(c.name, func(t *testing.T) {
+			t.Parallel()
+			for _, now := range []bool{false, true} {
+				if got := keys(typed(t, aca.Antigravity{}, c.message, now)); got != c.want {
+					t.Errorf("steered %v: got %q, want %q", now, got, c.want)
 				}
-				if got.String() != c.want {
-					t.Fatalf("got %q, want %q", got.String(), c.want)
-				}
-			})
-		}
+			}
+		})
 	}
 }
 
 // alt+m is one write, after the paste's: its Esc read alone would interrupt the turn.
 func TestAntigravityWritesAltMWhole(t *testing.T) {
 	t.Parallel()
-	for _, send := range []func(io.Writer, string) error{aca.Antigravity{}.Deliver, aca.Antigravity{}.Steer} {
-		var w recordingWriter
-		if err := send(&w, "hello"); err != nil {
-			t.Fatal(err)
-		}
-		if want := []string{"\x1b[200~hello\x1b[201~", "\x1bm"}; !slices.Equal(w.writes, want) {
-			t.Fatalf("wrote %q, want %q", w.writes, want)
-		}
-	}
-}
-
-func TestAntigravityDeliverFails(t *testing.T) {
-	t.Parallel()
-	for writes := range 2 {
-		if err := (aca.Antigravity{}).Deliver(&failingWriter{writes: writes}, "hello"); err == nil {
-			t.Fatalf("Deliver: no error after %d writes", writes)
-		}
-		if err := (aca.Antigravity{}).Steer(&failingWriter{writes: writes}, "hello"); err == nil {
-			t.Fatalf("Steer: no error after %d writes", writes)
+	for _, now := range []bool{false, true} {
+		if got, want := typed(t, aca.Antigravity{}, "hello", now), []string{"\x1b[200~hello\x1b[201~", "\x1bm"}; !slices.Equal(got, want) {
+			t.Fatalf("wrote %q, want %q", got, want)
 		}
 	}
 }

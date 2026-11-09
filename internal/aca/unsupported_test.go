@@ -3,7 +3,6 @@ package aca_test
 import (
 	"context"
 	"errors"
-	"io"
 	"testing"
 
 	"github.com/srjn45/wdx/internal/aca"
@@ -27,8 +26,9 @@ func TestStubsSayNotSupported(t *testing.T) {
 	if got, err := bare.Detached(ctx, aca.Launch{}); err != nil || len(got) != 0 {
 		t.Errorf("Detached = %v, %v; want nothing", got, err)
 	}
-	if err := bare.Steer(io.Discard, "hello"); !errors.Is(err, aca.ErrNotSupported) {
-		t.Errorf("Steer: %v", err)
+	var w recordingWriter
+	if err := bare.SendNow(&w); err != nil || len(w.writes) > 0 {
+		t.Errorf("SendNow wrote %q, %v; want nothing", w.writes, err)
 	}
 }
 

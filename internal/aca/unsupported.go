@@ -79,12 +79,14 @@ func (NoUsage) Usage(Launch) ([]Usage, []string, error) {
 	return nil, nil, ErrNotSupported
 }
 
-// NoSteer is Steer for an AI coding agent that cannot take a message into a running
-// turn: an instant message stops the turn with Interrupt, then goes in with Deliver.
+// NoSteer is SendNow for an AI coding agent that cannot take a message into a
+// running turn: an instant message stops the turn with Interrupt, then goes in with
+// Paste and Submit.
 type NoSteer struct{}
 
-// Steer implements AiCodingAgent.
-func (NoSteer) Steer(io.Writer, string) error { return ErrNotSupported }
+// SendNow implements AiCodingAgent: nothing, as CanSteer is false and the holder
+// never needs it.
+func (NoSteer) SendNow(io.Writer) error { return nil }
 
 func (NoSteer) steersNot() {}
 
