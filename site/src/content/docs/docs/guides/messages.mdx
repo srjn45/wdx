@@ -4,6 +4,7 @@ description: Give an agent a task or type a command into a terminal from a scrip
 commands: [agent send, terminal send, message list, message resend, message discard]
 ---
 import Commands from '../../../../components/Commands.astro';
+import Since from '../../../../components/Since.astro';
 
 ## What it is
 
@@ -53,6 +54,7 @@ There is nothing to send in TIDE: there you type into the agent or terminal itse
 ## How it behaves
 
 - **In order, when it can.** Messages go in the order sent. One to an agent waits while text is in its input box, a question is open or its screen cannot be read. During a turn it goes in for the agent to take up at its next step (Claude Code, Codex), or after the turn (Cursor, Antigravity).
+- **Submitted once it shows** <Since v="0.5.0" />. wdx pastes a message into the agent's input box and presses Enter once the box shows it, not after a fixed time, so a busy machine slowing the agent does not leave the message unsent. If the box still holds just what wdx pasted, it presses Enter again, twice at most; text you typed there is never submitted.
 - **It does not wait** for the message to go in, or for a reply. The answer is `queued`.
 - **`--instant`** goes before the other messages and waits as they do. Claude Code takes it at once, Codex at its next step; an ACA that cannot take a message during its turn has the turn interrupted first.
 - **Kept until it arrives.** Every message is stored before it goes to the holder. One still queued when the agent ends goes on when the agent starts again in the same session, or is restarted with `agent restart`.

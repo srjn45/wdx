@@ -124,6 +124,8 @@ Known failures, kept as such in the tests:
 
 In bash mode the box has a draft even with only `!`, decided by the human for `wdx agent send`: a message delivered there would run as a shell command.
 
+**The draft's text** (the wdx doc SEND_CONFIRMED). `ScreenState.DraftText` is the box's text as shown, `""` when `Draft` is false: each line trimmed and the lines joined with `\n`, without the box's prompt mark (`❯`, `›`, `>`, `→`) and without what the ACA dims there itself. Claude Code, Codex and Antigravity read it from the box's undimmed lines, Cursor from the undimmed lines of its box block, as each reads `Draft`, through one helper, `draftText` (`internal/aca/drafttext.go`). A mode's mark stays, as in `! ls`, since it is part of what the box would run; blank lines at either end are left out, one inside stays. A long paste reads as the ACA renders it, as Claude Code's `[Pasted text #1 +58 lines]`. The holder only compares it, what the screen showed just after its paste with what it shows now, to know whether to press the submit key again (docs/SEND.md, Typing); nothing parses it. `Draft` itself is unchanged. As `ScreenState.Equal` sees the text, the holder logs `screen state changed`, never with the text, each time it changes, as a person types.
+
 Not recorded: vim mode, `#` and other input modes, image pastes, a running turn in bash mode, a real holder.
 
 A read and parse costs about 340 µs and 25 KB at 120x40 on a machine kept busy, a third of the 1 ms it cost under the same load before `Screen.lines` stopped copying each cell, and most of it under the holder's screen lock.
