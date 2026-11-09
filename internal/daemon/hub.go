@@ -284,6 +284,7 @@ func (s *server) SendHubLoginCode(ctx context.Context, req api.SendHubLoginCodeR
 
 func (s *server) LogoutHub(ctx context.Context, _ api.LogoutHubRequestObject) (api.LogoutHubResponseObject, error) {
 	before := s.hub.Status()
+	s.remote.LoggingOut(ctx)
 	told, err := s.hub.Logout(ctx)
 	if err != nil {
 		return nil, hubFailure(err)

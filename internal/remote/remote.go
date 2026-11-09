@@ -189,6 +189,23 @@ func (r *Remote) Apply(ctx context.Context) {
 	r.Kick()
 }
 
+// LoggingOut tells the host of every session open from this node that it
+// closed, best effort, while the hub still carries the streams to them:
+// once logged out, a host could not be told, and would keep the session
+// open until it went idle.
+func (r *Remote) LoggingOut(ctx context.Context) {
+	list, err := r.Sessions(ctx)
+	if err != nil {
+		logging.FromContext(ctx).Error("hosts not told of the logout", "err", err)
+		return
+	}
+	for _, s := range list {
+		if s.Direction == Outgoing {
+			r.tellClosed(ctx, s)
+		}
+	}
+}
+
 // LoggedOut closes every session both ways and forgets every node's key, so
 // that a key pinned under one account never carries over to the next.
 func (r *Remote) LoggedOut(ctx context.Context) error {

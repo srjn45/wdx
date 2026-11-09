@@ -164,6 +164,22 @@ func wantCodeExit(t *testing.T, v jsonOutput, exit int, code api.ErrorCode, want
 	}
 }
 
+// A node that logs out closes its sessions on their hosts too, while the hub
+// still carries the streams to them.
+func TestHubLogoutClosesSessionsOnHosts(t *testing.T) {
+	t.Parallel()
+	p := openPair(t)
+	if v, _ := p.desktop.sessionJSON("hub", "session", "list"); len(v.Sessions) != 1 {
+		t.Fatalf("the desktop's sessions before: %+v", v.Sessions)
+	}
+	if v, exit := p.laptop.hubJSON(nil, "hub", "logout"); exit != clikit.ExitOK || v.Result != "logged_out" {
+		t.Fatalf("logout: exit %d, %+v", exit, v)
+	}
+	if v, _ := p.desktop.sessionJSON("hub", "session", "list"); len(v.Sessions) != 0 {
+		t.Errorf("the desktop kept the logged out laptop's session: %+v", v.Sessions)
+	}
+}
+
 func TestHubSessionOpenRefused(t *testing.T) {
 	t.Parallel()
 	p := newHubPair(t)
