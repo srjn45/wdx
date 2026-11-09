@@ -72,6 +72,8 @@ Agreed on 2026-11-03, in requirements gathering. This overrides anything above o
 
 MVP: registering and logging in, nodes, remote access between one's own nodes (in place of the web terminal), and docs going up to the hub (nothing comes back down to nodes yet). Later: the hub sending docs to other members.
 
+The first stable release with the hub, 0.5.0, is remote access between one's own nodes complete and without known bugs, with the same experience as working on the machine itself. Doc sharing, usage tracking and billing come after it (decided 2026-11-09).
+
 ### Security, approved
 
 On top of mTLS, end-to-end encryption between nodes and the authenticator code checked by the host:
