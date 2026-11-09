@@ -25,10 +25,10 @@ wdx agent create --aca cursor
 
 ## What wdx reads
 
-- **Its state**, from the input box and its footer: working, idle or waiting, and a draft.
+- **Its state**, from the input box and the footer under it: working, idle or waiting, and a draft.
 - **The question it asks:** not yet; a question reads `waiting`.
-- **Its model**, from its screen.
-- **How full its context is**, from a status line wdx gives it in the agent's config.
+- **Its model**, from the footer's first line.
+- **How full its context is**, from a status line wdx gives it in the agent's config. Cursor draws no footer of its own under a status line, so wdx's prints it: the model and how full the context is, then the directory and its branch. Your own `statusLine` from `~/.cursor/cli-config.json` still runs, its lines under the footer, with your `padding`, `updateIntervalMs` and `timeoutMs`.
 - **Its conversation**, rendered from its chat store as it grows, so `wdx agent transcript` and `--brief` have it; a chat store Cursor lost is put back. Its subagents are not rendered yet.
 
 ## Messages
