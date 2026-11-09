@@ -9,6 +9,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"strings"
+	"syscall"
 	"testing"
 
 	"github.com/srjn45/wdx/internal/runtest"
@@ -273,4 +274,28 @@ func TestApplyBackupFails(t *testing.T) {
 	if got := installed(t, o); got != old {
 		t.Fatalf("want the old binary left, got\n%s", got)
 	}
+}
+
+// TestLockReleasedWhileForked unlocks while a copy of the lock's file is
+// open, as in a child another goroutine forked that has not exec'd yet: the
+// next update must still get the lock.
+func TestLockReleasedWhileForked(t *testing.T) {
+	t.Parallel()
+	home := t.TempDir()
+	f, err := lockFile(home)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// What a fork does with every open file: the copy shares the lock.
+	forked, err := syscall.Dup(int(f.Fd()))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer syscall.Close(forked)
+	unlockFile(f)
+	unlock, err := lock(home)
+	if err != nil {
+		t.Fatalf("lock after the unlock, its file still open in a fork: %v", err)
+	}
+	unlock()
 }

@@ -798,6 +798,15 @@ func sameContent(a, b string) (bool, error) {
 // lock takes the update lock of home, failing with a *RunningError when
 // another process holds it.
 func lock(home string) (unlock func(), err error) {
+	f, err := lockFile(home)
+	if err != nil {
+		return nil, err
+	}
+	return func() { unlockFile(f) }, nil
+}
+
+// lockFile opens home's update.lock and locks it.
+func lockFile(home string) (*os.File, error) {
 	if err := os.MkdirAll(home, 0o700); err != nil {
 		return nil, err
 	}
@@ -812,5 +821,13 @@ func lock(home string) (unlock func(), err error) {
 		}
 		return nil, err
 	}
-	return func() { f.Close() }, nil
+	return f, nil
+}
+
+// unlockFile unlocks f before closing it: a child another goroutine forked
+// meanwhile holds f until it execs, and with it a lock the close alone
+// would leave held.
+func unlockFile(f *os.File) {
+	_ = syscall.Flock(int(f.Fd()), syscall.LOCK_UN)
+	f.Close()
 }
