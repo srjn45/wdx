@@ -183,8 +183,10 @@ func (s *Server) control(parent context.Context, conn *websocket.Conn, n node.No
 	// Ended before the connection's life is, they end with it.
 	defer running.Wait()
 	defer end()
-	running.Go(func() { s.readControl(life, cancel, conn, n, saved) })
-	running.Go(func() { s.ping(life, cancel, conn, n) })
+	// A copy: the loop below writes n's certificate expiry as they read theirs.
+	held := n
+	running.Go(func() { s.readControl(life, cancel, conn, held, saved) })
+	running.Go(func() { s.ping(life, cancel, conn, held) })
 	renewals := time.NewTicker(s.opts.RenewInterval)
 	defer renewals.Stop()
 	for {
