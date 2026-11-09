@@ -5,6 +5,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -224,4 +225,48 @@ func TestAntigravityUsageUnknown(t *testing.T) {
 			t.Errorf("%s: %v", name, err)
 		}
 	}
+}
+
+// TestAntigravityModelBuckets: every model of agy 1.5.0's list, by id and by name,
+// the names its footer shows, and that the id is matched before the name.
+func TestAntigravityModelBuckets(t *testing.T) {
+	t.Parallel()
+	out, err := os.ReadFile(filepath.Join("testdata", "antigravity", "models.txt"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var models []aca.Model
+	for line := range strings.Lines(string(out)) {
+		id, name, ok := strings.Cut(strings.TrimSpace(line), "\t")
+		if !ok {
+			t.Fatalf("line %q has no tab", line)
+		}
+		models = append(models, aca.Model{ID: id, Name: name})
+	}
+	want := map[string]string{
+		"gemini-4-argon-medium": "gemini-argon-wtu", "gemini-4-argon-high": "gemini-argon-wtu", "gemini-4-argon-low": "gemini-argon-wtu",
+		"gemini-3.8-flash-high": "gemini", "gemini-3.8-flash-medium": "gemini", "gemini-3.8-flash-low": "gemini",
+		"claude-opus-5-5-low": "3p", "claude-opus-5-5-medium": "3p", "claude-opus-5-5-high": "3p",
+		"claude-sonnet-5-5-low": "3p", "claude-sonnet-5-5-medium": "3p", "claude-sonnet-5-5-high": "3p",
+		"gpt-oss-120b-medium": "3p",
+	}
+	if len(models) != len(want) {
+		t.Fatalf("%d models in the list, %d expected", len(models), len(want))
+	}
+	cases := knownByIDAndName(models, func(m aca.Model) []string {
+		bucket, ok := want[m.ID]
+		if !ok {
+			t.Fatalf("no bucket expected for %s", m.ID)
+		}
+		return []string{bucket}
+	})
+	cases = append(cases, unknownModels...)
+	cases = append(cases,
+		bucketsCase{name: "Gemini 3.8 Flash", buckets: []string{"gemini"}, known: true},
+		bucketsCase{name: "Claude Sonnet 4.6 (Thinking)", buckets: []string{"3p"}, known: true},
+		bucketsCase{id: "gemini-4-argon-low", name: "Claude Opus 5.5 (Low)", buckets: []string{"gemini-argon-wtu"}, known: true},
+		bucketsCase{id: "llama-9-70b", name: "Gemini 3.8 Flash", buckets: []string{"gemini"}, known: true},
+		bucketsCase{name: "Argonaut"},
+	)
+	checkModelBuckets(t, aca.Antigravity{}, cases)
 }

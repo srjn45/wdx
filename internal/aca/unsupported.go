@@ -79,6 +79,13 @@ func (NoUsage) Usage(Launch) ([]Usage, []string, error) {
 	return nil, nil, ErrNotSupported
 }
 
+// NoModelBuckets is ModelBuckets for an AI coding agent whose models wdx cannot
+// tell apart by bucket yet: it knows none.
+type NoModelBuckets struct{}
+
+// ModelBuckets implements AiCodingAgent.
+func (NoModelBuckets) ModelBuckets(string, string) ([]string, bool) { return nil, false }
+
 // NoSteer is SendNow for an AI coding agent that cannot take a message into a
 // running turn: an instant message stops the turn with Interrupt, then goes in with
 // Paste and Submit.

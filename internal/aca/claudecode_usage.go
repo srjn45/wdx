@@ -13,3 +13,17 @@ func (ClaudeCode) Usage(l Launch) ([]Usage, []string, error) {
 	rows, err := readStatusUsage(l.BackupDir, claudeCodeStatusFile)
 	return rows, nil, err
 }
+
+// claudeCodeModelBuckets is Claude Code's models, its aliases (opus takes opusplan and
+// opus[1m] too) and full ids, which all draw on the bucket "" alone, as its status line
+// names no other; the Fable weekly of /usage, once read, is Fable's (the wdx doc
+// AGENT_LIMITED).
+var claudeCodeModelBuckets = []modelFamily{{
+	idPrefixes: []string{"fable", "opus", "sonnet", "haiku", "claude-"},
+	nameWords:  []string{"Fable", "Opus", "Sonnet", "Haiku", "Claude"},
+}}
+
+// ModelBuckets implements AiCodingAgent, from claudeCodeModelBuckets.
+func (ClaudeCode) ModelBuckets(id, name string) ([]string, bool) {
+	return modelBuckets(claudeCodeModelBuckets, id, name)
+}

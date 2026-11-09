@@ -75,6 +75,12 @@ type AiCodingAgent interface {
 	// too; ErrNoUsage when it has told nothing, as on a plan without limits. The
 	// daemon reads it with ContextSize, from the same changes. The wdx doc USAGE.
 	Usage(l Launch) (rows []Usage, follow []string, err error)
+	// ModelBuckets is the named buckets of Usage a model draws on besides "", which
+	// every model draws on where the ACA has it: by id, as Model.ID and Launch.Model
+	// give it, else by name, as ScreenState.Model reads it. known is false when
+	// neither says, so that an unknown model is never taken for one of a bucket. The
+	// wdx doc AGENT_LIMITED.
+	ModelBuckets(id, name string) (buckets []string, known bool)
 }
 
 // Usage is how much of one limit of an ACA's account is used: a window, of a bucket

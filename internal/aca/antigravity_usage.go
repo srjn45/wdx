@@ -75,3 +75,19 @@ func antigravityQuotaID(id string) (bucket, window string) {
 func antigravityUsedPercent(remaining float64) int {
 	return int(math.Floor(100*(1-remaining) + 1e-9))
 }
+
+// antigravityModelBuckets is which group of models, as Usage names them, each model
+// draws on, as agy -p /usage says in prose: Gemini 4 Argon on gemini-argon-wtu, the
+// other Gemini models on gemini, Claude and GPT-OSS on 3p (the wdx doc
+// USAGE_ANTIGRAVITY). Argon comes first, as its ids and names are Gemini's too.
+var antigravityModelBuckets = []modelFamily{
+	{idPrefixes: []string{"gemini-4-argon-"}, nameWords: []string{"Argon"}, buckets: []string{"gemini-argon-wtu"}},
+	{idPrefixes: []string{"gemini-"}, nameWords: []string{"Gemini"}, buckets: []string{"gemini"}},
+	{idPrefixes: []string{"claude-", "gpt-"}, nameWords: []string{"Claude", "GPT"}, buckets: []string{"3p"}},
+}
+
+// ModelBuckets implements AiCodingAgent: one group of antigravityModelBuckets, as no
+// limit applies to every model.
+func (Antigravity) ModelBuckets(id, name string) ([]string, bool) {
+	return modelBuckets(antigravityModelBuckets, id, name)
+}

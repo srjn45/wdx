@@ -199,3 +199,19 @@ func (c Cursor) accessToken(l Launch) (string, error) {
 	}
 	return auth.AccessToken, nil
 }
+
+// cursorModelBuckets is the families of `cursor-agent models`: Auto draws on auto
+// besides the included allowance, every other model on that allowance alone; api is
+// API-key spend, no model's.
+var cursorModelBuckets = []modelFamily{
+	{ids: []string{"auto"}, names: []string{"Auto"}, buckets: []string{"auto"}},
+	{
+		idPrefixes: []string{"gpt-", "claude-", "gemini-", "grok-", "cursor-", "composer-", "muse-", "kimi-", "glm-", "deepseek-"},
+		nameWords:  []string{"GPT", "Codex", "Claude", "Gemini", "Grok", "Composer", "Muse", "Kimi", "GLM", "DeepSeek"},
+	},
+}
+
+// ModelBuckets implements AiCodingAgent, from cursorModelBuckets.
+func (Cursor) ModelBuckets(id, name string) ([]string, bool) {
+	return modelBuckets(cursorModelBuckets, id, name)
+}

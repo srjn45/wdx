@@ -54,6 +54,9 @@ type ACA struct {
 	ContextFiles string
 	// BriefOf, when set, is the ACA whose Brief it gives, Claude Code's when nil.
 	BriefOf aca.AiCodingAgent
+	// Buckets is what ModelBuckets says of a model, by its id or else its name; a
+	// model in neither is not known.
+	Buckets map[string][]string
 }
 
 // ID implements aca.AiCodingAgent.
@@ -146,6 +149,16 @@ func (a *ACA) ContextSize(l aca.Launch) (aca.ContextSize, []string, error) {
 		return aca.ContextSize{}, nil, aca.ErrNoContextSize
 	}
 	return size, []string{file}, err
+}
+
+// ModelBuckets implements aca.AiCodingAgent: Buckets of the id, else of the name.
+func (a *ACA) ModelBuckets(id, name string) ([]string, bool) {
+	for _, key := range []string{id, name} {
+		if buckets, ok := a.Buckets[key]; ok && key != "" {
+			return slices.Clone(buckets), true
+		}
+	}
+	return nil, false
 }
 
 // UsageFile is the file in an agent's backup ACA's Usage reads: the rows as JSON,
@@ -300,6 +313,7 @@ type Bare struct {
 	aca.NoBrief
 	aca.NoContextSize
 	aca.NoDetached
+	aca.NoModelBuckets
 	aca.NoSteer
 	aca.NoUsage
 	// Name is its id, and ProgramName what Program says, "sh" when "".

@@ -225,3 +225,27 @@ func TestCursorFetchUsageFromTheHome(t *testing.T) {
 		t.Errorf("fetch: %v, %d calls", err, calls.Load())
 	}
 }
+
+// TestCursorModelBuckets: every model of the account's list, by id and by name, Auto
+// alone drawing on auto, and the names its status line shows.
+func TestCursorModelBuckets(t *testing.T) {
+	t.Parallel()
+	models, err := aca.Cursor{}.Models(context.Background(), aca.Launch{Shell: printingShell(t, "testdata/cursor/models.txt", 0)})
+	if err != nil {
+		t.Fatal(err)
+	}
+	cases := knownByIDAndName(models, func(m aca.Model) []string {
+		if m.ID == "auto" {
+			return []string{"auto"}
+		}
+		return nil
+	})
+	cases = append(cases, unknownModels...)
+	cases = append(cases,
+		bucketsCase{name: "Gemini 3.8 Flash Low", known: true},
+		bucketsCase{name: "Grok 4.7 Low", known: true},
+		bucketsCase{id: "claude-opus-4-8[context=1m,effort=high,fast=false]", known: true},
+		bucketsCase{name: "Automatic"},
+	)
+	checkModelBuckets(t, aca.Cursor{}, cases)
+}

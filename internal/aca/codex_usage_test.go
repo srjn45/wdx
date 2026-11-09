@@ -1,6 +1,7 @@
 package aca_test
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -180,4 +181,26 @@ func TestCodexUsageFurtherBackThanABlock(t *testing.T) {
 	if rows, _, err := codexUsage(t, home); !errors.Is(err, aca.ErrNoUsage) {
 		t.Errorf("further back than 1 MiB: usage = %s %v", usageRowsText(rows), err)
 	}
+}
+
+// TestCodexModelBuckets: every model codex 0.163.0 lists, by id and by name, and the
+// names its status line shows, none drawing on a named bucket.
+func TestCodexModelBuckets(t *testing.T) {
+	t.Parallel()
+	sample, err := filepath.Abs("testdata/codex/0.163.0/debug_models.json")
+	if err != nil {
+		t.Fatal(err)
+	}
+	models, err := aca.Codex{}.Models(context.Background(), aca.Launch{Shell: fakeCodexShell(t, sample)})
+	if err != nil {
+		t.Fatal(err)
+	}
+	cases := knownByIDAndName(models, func(aca.Model) []string { return nil })
+	cases = append(cases, unknownModels...)
+	cases = append(cases,
+		bucketsCase{name: "GPT-6-Sol", known: true},
+		bucketsCase{name: "gpt-5.4 codex", known: true},
+		bucketsCase{id: "premium"},
+	)
+	checkModelBuckets(t, aca.Codex{}, cases)
 }

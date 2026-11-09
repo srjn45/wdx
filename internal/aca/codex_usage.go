@@ -151,3 +151,12 @@ func codexUsageRows(bucket string, observed time.Time, windows ...*codexWindow) 
 	}
 	return rows
 }
+
+// codexModelBuckets is Codex's models, which all draw on the bucket "" alone: the
+// other limit ids its session file names are no model's.
+var codexModelBuckets = []modelFamily{{idPrefixes: []string{"gpt-"}, nameWords: []string{"GPT"}}}
+
+// ModelBuckets implements AiCodingAgent, from codexModelBuckets.
+func (Codex) ModelBuckets(id, name string) ([]string, bool) {
+	return modelBuckets(codexModelBuckets, id, name)
+}

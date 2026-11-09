@@ -1,6 +1,7 @@
 package aca_test
 
 import (
+	"context"
 	"errors"
 	"os"
 	"path/filepath"
@@ -79,4 +80,25 @@ func TestClaudeCodeUsageUnknown(t *testing.T) {
 	if _, _, err := (aca.ClaudeCode{}).Usage(aca.Launch{}); !errors.Is(err, aca.ErrNoUsage) {
 		t.Errorf("no backup: %v", err)
 	}
+}
+
+// TestClaudeCodeModelBuckets: its aliases and their names, full ids, and the names its
+// banner and /model show, none drawing on a named bucket.
+func TestClaudeCodeModelBuckets(t *testing.T) {
+	t.Parallel()
+	models, err := aca.ClaudeCode{}.Models(context.Background(), aca.Launch{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	cases := knownByIDAndName(models, func(aca.Model) []string { return nil })
+	cases = append(cases, unknownModels...)
+	for _, name := range []string{"Haiku 5.5", "Haiku 4.5", "Fable 5", "Fable 5.1", "Opus 5.5", "Opus 4.8", "Sonnet 5.5"} {
+		cases = append(cases, bucketsCase{name: name, known: true})
+	}
+	cases = append(cases,
+		bucketsCase{id: "claude-opus-5-5", known: true},
+		bucketsCase{id: "opus[1m]", known: true},
+		bucketsCase{id: "opusplan", known: true},
+	)
+	checkModelBuckets(t, aca.ClaudeCode{}, cases)
 }
