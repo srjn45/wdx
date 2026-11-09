@@ -166,6 +166,7 @@ func (h testHome) start(t *testing.T) *Model {
 	// run waits for each command: one waiting for the stream's next event
 	// would never end. follow_test.go follows the stream.
 	m.openStream = nil
+	m.openSessions = nil
 	// Wide enough for the project pane's lines: 31 cells inside its borders.
 	m.Update(tea.WindowSizeMsg{Width: 128, Height: 24})
 	run(m, m.Init())

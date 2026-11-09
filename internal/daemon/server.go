@@ -20,33 +20,35 @@ import (
 // server implements the API on the project store, the terminals' supervisor,
 // the agents' manager, and the doc and plan stores.
 type server struct {
-	projects     *project.Store
-	terminals    *terminal.Supervisor
-	agents       *agent.Manager
-	docs         *doc.Store
-	outbox       *doc.Outbox
-	plans        *plan.Store
-	tabs         *tidestate.Store
-	gitCopy      *gitCopy
-	self         api.Daemon
-	notices      *notices        // tells the streams about changes
-	stopping     <-chan struct{} // closed when the daemon starts stopping: the streams end
-	reload       func(context.Context) error
-	settings     SettingStore // nil when it has none
-	tracker      *worktree.Tracker
-	marks        *worktree.Marks
-	comments     *worktree.Comments
-	lander       *worktree.Lander
-	pullRequests *worktree.PullRequests
-	runner       *plan.Runner
-	planParallel func() int
-	ghProgram    string // as Options.GH
-	hub          *hublink.Link
-	hubLogins    *hubLogins
-	access       *hubAccess
-	remote       *remote.Remote
-	nodeStreams  *nodeStreams
-	clock        hublink.Clock
+	projects  *project.Store
+	terminals *terminal.Supervisor
+	agents    *agent.Manager
+	docs      *doc.Store
+	outbox    *doc.Outbox
+	plans     *plan.Store
+	tabs      *tidestate.Store
+	gitCopy   *gitCopy
+	self      api.Daemon
+	notices   *notices // tells the streams about changes
+	// sessionNotices tells the session streams a session opened or closed.
+	sessionNotices *notices
+	stopping       <-chan struct{} // closed when the daemon starts stopping: the streams end
+	reload         func(context.Context) error
+	settings       SettingStore // nil when it has none
+	tracker        *worktree.Tracker
+	marks          *worktree.Marks
+	comments       *worktree.Comments
+	lander         *worktree.Lander
+	pullRequests   *worktree.PullRequests
+	runner         *plan.Runner
+	planParallel   func() int
+	ghProgram      string // as Options.GH
+	hub            *hublink.Link
+	hubLogins      *hubLogins
+	access         *hubAccess
+	remote         *remote.Remote
+	nodeStreams    *nodeStreams
+	clock          hublink.Clock
 }
 
 var _ api.StrictServerInterface = (*server)(nil)

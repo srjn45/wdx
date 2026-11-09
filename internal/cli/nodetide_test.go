@@ -4,6 +4,8 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/charmbracelet/x/ansi"
+
 	"github.com/srjn45/wdx/internal/api"
 	"github.com/srjn45/wdx/internal/clikit"
 )
@@ -92,5 +94,57 @@ func TestNodeTideForAgents(t *testing.T) {
 	}
 	if run.altScreen() {
 		t.Error("the window opened")
+	}
+}
+
+// TestHostIndicator runs TIDE on the desktop while the laptop opens a
+// session into it and closes it: the bar says remote: laptop, in cyan, while
+// it is open, and no longer once it closed, which TIDE follows on one
+// stream it opens once, asking for the sessions in no other way.
+func TestHostIndicator(t *testing.T) {
+	t.Parallel()
+	p := newHubPair(t)
+	p.setUp()
+	p.remoteAccess(true)
+	newProjectDir(t, p.desktop.home, "app")
+
+	args := []string{"tide"}
+	run := startInTerminalWith(t, p.desktop.home, "", 128, 24, args, p.desktop.env(nil))
+	run.waitScreen("┃ Switch Project")
+	run.input("\r")
+	run.waitScreen("\n app · project ")
+	run.wantBar(ansi.Green)
+
+	if v, exit := p.laptop.sessionJSON("hub", "session", "open", "--node", "desktop", "--code", p.code()); exit != clikit.ExitOK {
+		t.Fatalf("open: %d %+v", exit, v.jsonOutput)
+	}
+	run.waitScreen("\n remote: laptop · app · project ")
+	run.wantBar(ansi.Cyan)
+
+	if v, exit := p.laptop.sessionJSON("hub", "session", "close", "--all"); exit != clikit.ExitOK || len(v.Sessions) != 1 {
+		t.Fatalf("close: %d %+v", exit, v.jsonOutput)
+	}
+	run.waitScreen("\n app · project ")
+	run.wantBar(ansi.Green)
+
+	run.input("\x11") // C-q: the menu
+	run.input("q")
+	if out := run.waitText(); out.Exit != clikit.ExitOK {
+		t.Fatalf("got %+v", out)
+	}
+	streams := 0
+	for _, l := range logLines(t, p.desktop.home, runID(t, p.desktop.home, args)) {
+		if l["msg"] != "request received" {
+			continue
+		}
+		switch l["path"] {
+		case "/v1/hub/sessions/events":
+			streams++
+		case "/v1/hub/sessions":
+			t.Errorf("TIDE asked for the sessions: %v", l)
+		}
+	}
+	if streams != 1 {
+		t.Errorf("TIDE opened the sessions' stream %d times, want once", streams)
 	}
 }

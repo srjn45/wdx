@@ -103,6 +103,9 @@ type Options struct {
 	// into this node, until it is done with it; the Remote closes conn when
 	// the session closes. Without it, a stream ends once opened.
 	ServeStream func(ctx context.Context, conn net.Conn, s Session)
+	// Changed, when not nil, is called after a session opened or closed,
+	// either way; it must not block.
+	Changed func()
 	// idleChecked, when not nil, is called each time the idle timer has
 	// looked, for tests to wait on.
 	idleChecked func()
@@ -302,6 +305,13 @@ func (r *Remote) cut(ctx context.Context, closed []Session) {
 	}
 	if len(conns) > 0 {
 		logging.FromContext(ctx).Info("session streams cut", "streams", len(conns))
+	}
+}
+
+// changed says sessions opened or closed.
+func (r *Remote) changed() {
+	if r.opts.Changed != nil {
+		r.opts.Changed()
 	}
 }
 

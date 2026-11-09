@@ -44,6 +44,7 @@ func (h testHome) followResumed(t *testing.T, tick func(time.Duration, func(time
 		ViewFlush: waittest.Limit(t)}) // a busy machine slows quitting rather than loses what it sends
 	t.Cleanup(func() {
 		m.unfollow()
+		m.unfollowSessions()
 		m.detachAll()
 	})
 	if tick != nil {

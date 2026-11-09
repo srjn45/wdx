@@ -283,5 +283,6 @@ func (r *Remote) opened(ctx context.Context, s Session, key ed25519.PublicKey) (
 	if err := tx.Commit(); err != nil {
 		return Session{}, err
 	}
+	r.changed()
 	return s, nil
 }

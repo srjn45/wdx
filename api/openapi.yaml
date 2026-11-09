@@ -2649,6 +2649,29 @@ paths:
               schema: { $ref: "#/components/schemas/HubSessionsClosed" }
         default: { $ref: "#/components/responses/Problem" }
 
+  /v1/hub/sessions/events:
+    get:
+      operationId: streamHubSessions
+      tags: [hub]
+      summary: Follow the sessions into this node, sent whole every time one opens or closes
+      description: |
+        Server-sent events (text/event-stream), as streamProject sends, for
+        as long as the client stays. Each event is "event: sessions" with a
+        HubSessionList as its data: the incoming sessions open now, by when
+        they opened. The first is sent at once; another after every session
+        opened or closed, never on a timer. With the node not logged in, or
+        hub.remote_access off, the list is empty, and nothing more is sent
+        until that changes. The stream ends when the daemon stops.
+
+        It is read from the database: it never asks the hub.
+      responses:
+        "200":
+          description: The stream of the incoming sessions.
+          content:
+            text/event-stream:
+              schema: { type: string }
+        default: { $ref: "#/components/responses/Problem" }
+
   /v1/hub/sessions/{id}:
     parameters:
       - name: id

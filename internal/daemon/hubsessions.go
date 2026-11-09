@@ -1,8 +1,12 @@
 package daemon
 
 import (
+	"bytes"
 	"context"
+	"encoding/json"
 	"errors"
+	"fmt"
+	"net/http"
 	"sync"
 
 	"github.com/srjn45/wdx/internal/api"
@@ -58,6 +62,78 @@ func (s *server) ListHubSessions(ctx context.Context, _ api.ListHubSessionsReque
 		return nil, err
 	}
 	return api.ListHubSessions200JSONResponse{Sessions: sessionViews(list)}, nil
+}
+
+func (s *server) StreamHubSessions(ctx context.Context, _ api.StreamHubSessionsRequestObject) (api.StreamHubSessionsResponseObject, error) {
+	return &hubSessionStream{ctx: ctx, s: s}, nil
+}
+
+// hubSessionStream sends the incoming sessions, then again after every
+// session opened or closed, until the client leaves or the daemon stops.
+type hubSessionStream struct {
+	ctx context.Context
+	s   *server
+}
+
+func (st *hubSessionStream) VisitStreamHubSessionsResponse(w http.ResponseWriter) error {
+	log := logging.FromContext(st.ctx)
+	changed, stop := st.s.sessionNotices.subscribe() // before the first read, so no change is missed
+	defer stop()
+	w.Header().Set("Content-Type", "text/event-stream")
+	w.Header().Set("Cache-Control", "no-cache")
+	w.WriteHeader(http.StatusOK)
+	flush := http.NewResponseController(w).Flush
+
+	var last []byte
+	sent := 0
+	reason := "client left"
+	defer func() { log.Info("session stream ended", "events", sent, "reason", reason) }()
+	for {
+		data, err := st.next()
+		if err != nil {
+			// The status is sent: the stream can only end.
+			log.Error("sessions not read for their stream", "err", err)
+			reason = "sessions not read"
+			return nil
+		}
+		if !bytes.Equal(data, last) {
+			if _, err := fmt.Fprintf(w, "event: sessions\ndata: %s\n\n", data); err != nil {
+				return nil // the client is gone
+			}
+			if err := flush(); err != nil {
+				return nil
+			}
+			last = data
+			sent++
+			log.Debug("session event sent", "bytes", len(data))
+		}
+		select {
+		case <-st.ctx.Done():
+			return nil
+		case <-st.s.stopping:
+			reason = "daemon stopping"
+			return nil
+		case <-changed:
+		}
+	}
+}
+
+// next is the stream's next event: the incoming sessions open, none when
+// the node is logged out or allows no remote access.
+func (st *hubSessionStream) next() ([]byte, error) {
+	incoming := []api.HubSession{}
+	if st.s.hub.Status().LoggedIn() && st.s.access.remoteAccess.Load() {
+		list, err := st.s.remote.Sessions(st.ctx)
+		if err != nil {
+			return nil, err
+		}
+		for _, s := range list {
+			if s.Direction == remote.Incoming {
+				incoming = append(incoming, sessionView(s))
+			}
+		}
+	}
+	return json.Marshal(api.HubSessionList{Sessions: incoming})
 }
 
 func (s *server) OpenHubSession(ctx context.Context, req api.OpenHubSessionRequestObject) (api.OpenHubSessionResponseObject, error) {

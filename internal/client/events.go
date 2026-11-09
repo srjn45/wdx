@@ -118,3 +118,51 @@ func decodeEvent(event, data string) (ProjectEvent, error) {
 
 // Close stops following the project.
 func (s *ProjectStream) Close() error { return s.body.Close() }
+
+// HubSessionStream is the sessions into this node followed with
+// streamHubSessions: every event is all of them.
+type HubSessionStream struct {
+	body    io.ReadCloser
+	scanner *bufio.Scanner
+}
+
+// HubSessionEvents follows the sessions into this node, until ctx ends or
+// Close.
+func (c *Client) HubSessionEvents(ctx context.Context) (*HubSessionStream, error) {
+	resp, err := c.api.StreamHubSessions(ctx)
+	if err != nil {
+		return nil, err
+	}
+	if resp.StatusCode != http.StatusOK {
+		defer resp.Body.Close()
+		r, err := api.ParseStreamHubSessionsResponse(resp)
+		if err != nil {
+			return nil, err
+		}
+		_, err = result[struct{}](resp, r.Body, r.ApplicationproblemJSONDefault)
+		return nil, err
+	}
+	scanner := bufio.NewScanner(resp.Body)
+	scanner.Buffer(make([]byte, 0, 4<<10), maxEvent)
+	return &HubSessionStream{body: resp.Body, scanner: scanner}, nil
+}
+
+// Next waits for the sessions into this node as they are next. It returns
+// io.EOF once the daemon ended the stream.
+func (s *HubSessionStream) Next() ([]api.HubSession, error) {
+	event, data, err := nextEvent(s.scanner)
+	if err != nil {
+		return nil, err
+	}
+	if event != "sessions" {
+		return nil, fmt.Errorf("unexpected event %q from the daemon", event)
+	}
+	var v api.HubSessionList
+	if err := json.Unmarshal([]byte(data), &v); err != nil {
+		return nil, fmt.Errorf("sessions event unreadable: %w", err)
+	}
+	return v.Sessions, nil
+}
+
+// Close stops following the sessions.
+func (s *HubSessionStream) Close() error { return s.body.Close() }

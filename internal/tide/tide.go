@@ -56,44 +56,48 @@ type Model struct {
 	remote       remoteState
 	dialTerminal func(ctx context.Context, id string) (net.Conn, error) // from Options, or the holder's socket under home
 
-	width, height  int
-	layout         layout
-	projects       *projectList
-	root           screen                                                               // what the project pane shows: the project, or that there is none
-	shown          string                                                               // the project shown, or "" before one is
-	previous       string                                                               // the project shown before it, which the switcher selects first
-	tab            int                                                                  // the terminal pane's tab shown, an index into terminals()
-	following      *following                                                           // the stream of the project shown
-	streams        int                                                                  // how many streams were opened, numbering them
-	openStream     func(ctx context.Context, ref string) (*client.ProjectStream, error) // nil in tests that follow nothing
-	selectedTab    map[string]string                                                    // the terminal id of the tab selected, by project id, for the run
-	createdTab     map[string]string                                                    // the terminal created here in each project, selected once the stream brings it
-	agentLists     map[string]*agentList                                                // the Agents list of each project shown, by project id, for the run
-	view           viewState                                                            // how far what tide shows is from what the daemon keeps
-	startView      *tideView                                                            // the view the daemon had at start; nil when it had none to read
-	term           *attachment                                                          // the terminal the terminal pane shows
-	agentTerm      *attachment                                                          // the active agent's terminal, which the agent pane shows
-	attaches       int                                                                  // how many attachments were made, numbering them
-	rests          int                                                                  // how many project switches rested, numbering them
-	resting        bool                                                                 // a project switched to has not rested yet: nothing attaches
-	tabRests       int                                                                  // how many agent tab switches rested, numbering them
-	tabSwitching   bool                                                                 // an agent tab was switched to with the keys, and they have not rested yet
-	tabResting     bool                                                                 // another was switched to soon after: no agent attaches
-	mouseTo        pane                                                                 // the pane whose program got a press: its drag and release go too
-	agentForm      *agentForm                                                           // what C-q a and C-q c ask a new agent is created with, while they do
-	editorClose    *editorCloseBox                                                      // what closing an editor's tab asks, while it does
-	editorKeys     map[string]string                                                    // what to type into an editor once its tab attaches, by terminal id
-	land           *landBox                                                             // what L asks, while it is open
-	confirm        *confirmBox                                                          // the confirmation of C-q x, while it is open
-	taskBox        *taskAnswers                                                         // the answers to a plan's task that cannot go on, while open
-	terminalNotice string                                                               // why the last terminal request failed, until the next key
-	statusNotice   string                                                               // what the status line says in place of the keys, until the next key or click
-	menu           bool                                                                 // the menu is open
-	projectMenu    bool                                                                 // and shows its Project submenu
-	switcher       *switcherBox                                                         // the project switcher, while it is open
-	opening        []screen                                                             // [Open Project] and the screens above it, while that popup is open
-	strip          int                                                                  // how many times the project strip was shown
-	stripShown     bool                                                                 // the project strip is shown
+	width, height int
+	layout        layout
+	projects      *projectList
+	root          screen                                                               // what the project pane shows: the project, or that there is none
+	shown         string                                                               // the project shown, or "" before one is
+	previous      string                                                               // the project shown before it, which the switcher selects first
+	tab           int                                                                  // the terminal pane's tab shown, an index into terminals()
+	following     *following                                                           // the stream of the project shown
+	streams       int                                                                  // how many streams were opened, numbering them
+	openStream    func(ctx context.Context, ref string) (*client.ProjectStream, error) // nil in tests that follow nothing
+	// openSessions opens the stream of the sessions into this node; nil in a
+	// remote TIDE, whose host's they are not, and in tests that follow nothing.
+	openSessions   func(ctx context.Context) (sessionStream, error)
+	incoming       incoming
+	selectedTab    map[string]string     // the terminal id of the tab selected, by project id, for the run
+	createdTab     map[string]string     // the terminal created here in each project, selected once the stream brings it
+	agentLists     map[string]*agentList // the Agents list of each project shown, by project id, for the run
+	view           viewState             // how far what tide shows is from what the daemon keeps
+	startView      *tideView             // the view the daemon had at start; nil when it had none to read
+	term           *attachment           // the terminal the terminal pane shows
+	agentTerm      *attachment           // the active agent's terminal, which the agent pane shows
+	attaches       int                   // how many attachments were made, numbering them
+	rests          int                   // how many project switches rested, numbering them
+	resting        bool                  // a project switched to has not rested yet: nothing attaches
+	tabRests       int                   // how many agent tab switches rested, numbering them
+	tabSwitching   bool                  // an agent tab was switched to with the keys, and they have not rested yet
+	tabResting     bool                  // another was switched to soon after: no agent attaches
+	mouseTo        pane                  // the pane whose program got a press: its drag and release go too
+	agentForm      *agentForm            // what C-q a and C-q c ask a new agent is created with, while they do
+	editorClose    *editorCloseBox       // what closing an editor's tab asks, while it does
+	editorKeys     map[string]string     // what to type into an editor once its tab attaches, by terminal id
+	land           *landBox              // what L asks, while it is open
+	confirm        *confirmBox           // the confirmation of C-q x, while it is open
+	taskBox        *taskAnswers          // the answers to a plan's task that cannot go on, while open
+	terminalNotice string                // why the last terminal request failed, until the next key
+	statusNotice   string                // what the status line says in place of the keys, until the next key or click
+	menu           bool                  // the menu is open
+	projectMenu    bool                  // and shows its Project submenu
+	switcher       *switcherBox          // the project switcher, while it is open
+	opening        []screen              // [Open Project] and the screens above it, while that popup is open
+	strip          int                   // how many times the project strip was shown
+	stripShown     bool                  // the project strip is shown
 	lastClick      click
 	sel            *selection                // text selected with the mouse, while dragged and until the next click or key
 	copy           func(text string) tea.Cmd // puts text on the clipboard; tests replace it
@@ -215,6 +219,9 @@ func New(ctx context.Context, opts Options) *Model {
 	// tide starts on the project pane, under the switcher or [Open Project], and
 	// shows the terminals of a project only once one is shown.
 	m.copy = m.copyToClipboard
+	if m.node == "" {
+		m.openSessions = openHubSessions(opts.Client)
+	}
 	if m.dialTerminal == nil {
 		m.dialTerminal = func(ctx context.Context, id string) (net.Conn, error) {
 			return (&net.Dialer{}).DialContext(ctx, "unix", identity.HolderSocket(m.home, id))
@@ -225,14 +232,15 @@ func New(ctx context.Context, opts Options) *Model {
 	return m
 }
 
-// Init reads the view the daemon kept and asks it its version; a remote TIDE
-// does neither, keeping its view in memory and trusting the API version the
-// nodes agreed on, but follows its session.
+// Init reads the view the daemon kept, asks it its version and follows the
+// sessions into this node; a remote TIDE does none of it, keeping its view in
+// memory, trusting the API version the nodes agreed on and showing a host
+// whose sessions are not its own, but follows its session.
 func (m *Model) Init() tea.Cmd {
 	if m.node != "" {
 		return tea.Batch(m.listProjects(), m.watchLink())
 	}
-	return tea.Batch(m.readTideView(), m.checkDaemonVersion())
+	return tea.Batch(m.readTideView(), m.checkDaemonVersion(), m.followSessions())
 }
 
 // Update handles msg, then attaches the terminal of the tab selected and the
@@ -420,6 +428,12 @@ func (m *Model) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.verifyAnsweredMsg(msg)
 	case commentAnswered:
 		m.commentAnsweredMsg(msg)
+	case sessionsOpened:
+		return m, m.sessionsOpened(msg)
+	case sessionsEvent:
+		return m, m.sessionsEvent(msg)
+	case reopenSessions:
+		return m, m.reopenSessions(msg)
 	case reopenStream:
 		if _, ok := m.current(msg.gen); ok {
 			return m, m.open()

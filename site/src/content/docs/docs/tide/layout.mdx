@@ -71,6 +71,10 @@ wdx tide --node desk
 
 When the session ends, closed on either node, by the node's daemon restarting, idle, or remote access turned off there, a message takes the whole window and says why. Type the code to open a new session, and TIDE goes on with what it showed; or `C-q` to quit. A network that drops for a moment shows `reconnecting to desk…` in the status line first; after 30 seconds without reaching the node, the message comes.
 
+### Sessions into this node
+
+A TIDE on this machine <Since v="0.5.0" /> shows when another node has a session into it: the status line turns cyan and starts with `remote:` and the nodes, `remote: laptop · app · project`, or `remote: laptop, work` for two, for as long as any is open. It follows them as they open and close, never on a timer. `wdx hub session list` says the same from the CLI, and `wdx hub session close` ends one.
+
 ## Commands
 
 <Commands />

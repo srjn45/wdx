@@ -35,7 +35,7 @@ import (
 // anything.
 func (d *Daemon) handlers() (local, remote http.Handler) {
 	validate, router := validation()
-	s := &server{projects: d.projects, terminals: d.terminals, agents: d.agents, docs: d.docs, outbox: d.outbox, plans: d.plans, tabs: d.tabs, gitCopy: d.gitCopy, self: d.Info(), notices: d.notices, stopping: d.stopping, reload: d.reload, settings: d.opts.SettingStore, tracker: d.tracker, marks: d.marks, comments: d.comments, lander: d.lander, pullRequests: d.pullRequests, runner: d.runner, planParallel: func() int { return int(d.planParallel.Load()) }, ghProgram: d.opts.GH, hub: d.hub, hubLogins: &d.hubLogins, access: d.access, remote: d.remote, nodeStreams: d.nodeStreams, clock: d.clock}
+	s := &server{projects: d.projects, terminals: d.terminals, agents: d.agents, docs: d.docs, outbox: d.outbox, plans: d.plans, tabs: d.tabs, gitCopy: d.gitCopy, self: d.Info(), notices: d.notices, sessionNotices: d.sessionNotices, stopping: d.stopping, reload: d.reload, settings: d.opts.SettingStore, tracker: d.tracker, marks: d.marks, comments: d.comments, lander: d.lander, pullRequests: d.pullRequests, runner: d.runner, planParallel: func() int { return int(d.planParallel.Load()) }, ghProgram: d.opts.GH, hub: d.hub, hubLogins: &d.hubLogins, access: d.access, remote: d.remote, nodeStreams: d.nodeStreams, clock: d.clock}
 	strict := api.NewStrictHandlerWithOptions(s, nil, api.StrictHTTPServerOptions{
 		RequestErrorHandlerFunc:  badRequest,
 		ResponseErrorHandlerFunc: failed,

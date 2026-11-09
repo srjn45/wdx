@@ -219,6 +219,7 @@ type Daemon struct {
 	trackerNotices sync.WaitGroup
 	changes        sync.Mutex    // one request changing state at a time
 	notices        *notices      // tells the project streams about changes
+	sessionNotices *notices      // tells the session streams a session opened or closed
 	stopping       chan struct{} // closed when the daemon starts stopping
 	// abort is cancelled when the changes in flight at shutdown have run
 	// out of time.
@@ -276,7 +277,7 @@ func Listen(ctx context.Context, opts Options) (_ *Daemon, err error) {
 		opts.Socket = identity.SocketPath(opts.Home)
 	}
 	opts.ShutdownTimeout = cmp.Or(opts.ShutdownTimeout, DefaultShutdownTimeout)
-	d := &Daemon{opts: opts, log: opts.Log.With("debug_id", logging.NewDebugID()), started: time.Now(), notices: newNotices(), stopping: make(chan struct{})}
+	d := &Daemon{opts: opts, log: opts.Log.With("debug_id", logging.NewDebugID()), started: time.Now(), notices: newNotices(), sessionNotices: newNotices(), stopping: make(chan struct{})}
 	d.abort, d.abortChanges = context.WithCancel(context.Background())
 	defer func() {
 		if err != nil {
@@ -407,6 +408,7 @@ func Listen(ctx context.Context, opts Options) (_ *Daemon, err error) {
 		RemoteAccess: d.access.remoteAccess.Load,
 		IdleTimeout:  func() time.Duration { return time.Duration(d.access.idleTimeout.Load()) },
 		ServeStream:  d.sessionStreams.serve,
+		Changed:      d.sessionNotices.notify,
 	}); err != nil {
 		return nil, err
 	}

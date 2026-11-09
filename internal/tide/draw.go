@@ -486,6 +486,11 @@ func (m *Model) statusLine() string {
 		state = style.StatusRemote
 		left = " " + m.st.BarName(m.node) + " ›" + left
 	}
+	if r := m.remoteSessions(); r != "" && m.node == "" {
+		// Another node has a session into this one: so that it is never missed.
+		state = style.StatusRemote
+		left = " " + r + " ·" + left
+	}
 	right := m.st.BarMuted(defaultHint)
 	if h, ok := m.root.(hinter); ok && l.focus == project && m.projects.loaded {
 		right = m.st.BarMuted(h.hint())
