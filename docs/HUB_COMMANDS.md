@@ -18,15 +18,14 @@ The browser is opened with `xdg-open` or `open`, the optional entry `browser` in
 ### Which hub
 
 - **No `hub.url` setting.** The hub's address is kept with the login, in `<home>/hub/`, and `wdx hub status` shows it. A setting could be changed while logged in to another hub, which nothing could make sense of.
-- **Exactly one of `--hub-central` or `--url <url>`:** `--hub-central` is the public hub, named as Maven Central is, its address built into the binary so that nobody changes it; `--url` is any other. Neither, or both, is a `usage` error, so that a company's engineer never ends up on the public hub by leaving a flag out. `--url` completes the public hub's address.
-- `--hub-central` ships with the public hub, after the first release. Until then `--url` is required, and the MVP runs its hub locally (docs/HUB_ARCH.md).
-- A release that changes the public hub's address changes what `--hub-central` means for later logins only; a node already logged in keeps its address, and the hub tells its nodes of a move over the connection they trust.
+- **The central hub without a flag, `--url <url>` for another** (the wdx doc HUB_CENTRAL, which replaced the `--hub-central` flag first planned here): with no `--url`, `wdx hub login` logs in to the hub wdx's users share, `https://wdx-hub.fly.dev`, its address built into the binary (`identity.CentralHub`) so that nobody changes it, and text mode says so first on stderr: `logging in to the central hub, <url>; --url logs in to another`. `--url` is a hub of one's own; a self-hosted hub's nodes name it.
+- A release that changes the central hub's address changes where later logins go only; a node already logged in keeps its address, and the move's plan says how its nodes follow.
 
 ### `wdx hub login`
 
 | Flag | |
 |---|---|
-| `--hub-central` / `--url <url>` | the hub, exactly one |
+| `--url <url>` | a hub of one's own; the central hub when not given |
 | `--name <name>` | this node's name in the account; the hostname by default; unique in the account |
 | `--no-browser` | print the link and code; open no browser |
 
@@ -194,6 +193,8 @@ An invite or reset link is a secret: printed on a line of its own, since the adm
 ### The rest
 
 `wdx-hub setting list`, `get`, `set` (the running hub reads the file again) and `write`, on the same engine as wdx's, with settings marked secret shown as `[secret]`; `wdx-hub audit verify`, which walks the audit chain: `{"audit": {"rows", "head"}}`, `head` the last row's hash or `null` for an empty chain, or `audit_broken` (exit 1) with the first broken row's `id` and `at` in `details`; `wdx-hub backup --out <path>`, online through the socket, result `backed_up`; `wdx-hub version`, with the running hub's and the range of wdx versions it accepts.
+
+`wdx-hub completion bash|zsh|fish` prints the shell's completion script, as `wdx completion` does, on the same `clikit.NewCompletionCmd`; `install-hub.sh` and `wdx-hub update --apply` write it system-wide for each shell found, and `--uninstall` removes it (the wdx doc HUB_COMPLETION). Help and completion run on whatever settings loaded, so they work without `public_url`, as another user than the hub's; every other command still fails at startup on an invalid or missing setting.
 
 ### `wdx-hub update`
 
