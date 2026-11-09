@@ -1,5 +1,5 @@
-# wdx-hub as a system service, with /usr/local/bin/wdx-hub from its release
-# archive. README.md says how to install it.
+# wdx-hub as a system service, as install-hub.sh installs it: wdx-hub service unit
+# prints this file, and wdx-hub update writes it anew from each release.
 [Unit]
 Description=wdx hub
 Documentation=https://github.com/srjn45/wdx/tree/main/deploy/hub
@@ -8,11 +8,19 @@ After=network-online.target
 
 [Service]
 ExecStart=/usr/local/bin/wdx-hub serve
-DynamicUser=yes
+User=wdx-hub
+Group=wdx-hub
+# The user's home directory is /var/lib/wdx-hub, and the hub's home the
+# default in it, /var/lib/wdx-hub/.wdx-hub. Its settings are in config.yaml
+# there, written by sudo wdx-hub setting set; one given here as WDX_HUB_<KEY>
+# wins over the file.
 StateDirectory=wdx-hub
-Environment=WDX_HUB_HOME=/var/lib/wdx-hub
-# Settings, public_url and master_key first, are in /var/lib/wdx-hub/config.yaml, written by
-# wdx-hub setting set; one given here as WDX_HUB_<KEY> wins over the file.
+StateDirectoryMode=0700
+ProtectSystem=strict
+ProtectHome=yes
+PrivateTmp=yes
+NoNewPrivileges=yes
+CapabilityBoundingSet=
 Restart=on-failure
 
 [Install]

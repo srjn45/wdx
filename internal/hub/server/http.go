@@ -23,7 +23,6 @@ import (
 	"go.opentelemetry.io/otel/metric"
 
 	"github.com/srjn45/wdx/internal/hubapi"
-	"github.com/srjn45/wdx/internal/identity"
 	"github.com/srjn45/wdx/internal/logging"
 )
 
@@ -276,7 +275,7 @@ func (s *Server) logRequests(e endpoint, next http.Handler) http.Handler {
 			"body_too_large", tooLarge)
 
 		w.Header().Set(hubapi.DebugIDHeader, id)
-		w.Header().Set(hubapi.VersionHeader, identity.Version)
+		w.Header().Set(hubapi.VersionHeader, s.version())
 		rec := &recorder{ResponseWriter: w}
 		defer func() {
 			var stack []byte

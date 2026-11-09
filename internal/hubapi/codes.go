@@ -38,6 +38,17 @@ var Codes = map[ErrorCode]clikit.CodeInfo{
 	ErrorCodeNodeNotFound:   codeInfo(http.StatusNotFound, clikit.ExitRejected, "the account has no such other node"),
 	ErrorCodeNodeOffline:    codeInfo(http.StatusConflict, clikit.ExitRejected, "the node is not connected to the hub"),
 	ErrorCodeTooManyStreams: codeInfo(http.StatusTooManyRequests, clikit.ExitRejected, "the account has as many streams open as the hub allows"),
+
+	ErrorCodeDownloadFailed:    codeInfo(http.StatusBadGateway, clikit.ExitSystem, "the release could not be found or downloaded"),
+	ErrorCodeChecksumMismatch:  codeInfo(http.StatusBadGateway, clikit.ExitSystem, "the downloaded release does not match its checksum"),
+	ErrorCodeOlderVersion:      codeInfo(http.StatusConflict, clikit.ExitRejected, "the release is older than the installed version"),
+	ErrorCodeUpdateRunning:     codeInfo(http.StatusConflict, clikit.ExitRejected, "another update or rollback is running"),
+	ErrorCodeUpdateFailed:      codeInfo(http.StatusInternalServerError, clikit.ExitSystem, "the update or rollback failed and was undone"),
+	ErrorCodeNoPreviousVersion: codeInfo(http.StatusConflict, clikit.ExitRejected, "no previous version is kept to roll back to"),
+	ErrorCodeRestoreRequired:   codeInfo(http.StatusConflict, clikit.ExitRejected, "rolling back needs the database backup, losing the changes since the update"),
+	ErrorCodeSettingsInvalid:   codeInfo(http.StatusUnprocessableEntity, clikit.ExitRejected, "the release does not accept a value the config file sets"),
+	ErrorCodeRootRequired:      codeInfo(http.StatusForbidden, clikit.ExitUsage, "installing or rolling back the hub replaces root's files: run it with sudo"),
+	ErrorCodeNotInstalled:      codeInfo(http.StatusUnprocessableEntity, clikit.ExitUsage, "the hub is not installed as install-hub.sh installs it: update it the way it was installed"),
 }
 
 func codeInfo(status, exit int, description string) clikit.CodeInfo {

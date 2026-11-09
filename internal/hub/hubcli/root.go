@@ -38,6 +38,16 @@ type Env struct {
 	WorkDir string
 	// Serve are what serve takes besides the settings; tests set them.
 	Serve ServeOptions
+	// Root is true when the command runs as root, which update --apply and
+	// --rollback need.
+	Root bool
+	// Account is the installed hub's user, when root runs the command on a
+	// machine that has the installed hub; update runs the release as it.
+	Account *hubconfig.Account
+	// User says who the command runs as, and how it came to, for the log.
+	User string
+	// Update are what tests change of update.
+	Update UpdateOptions
 }
 
 // ServeOptions are what tests change of serve.
@@ -106,6 +116,7 @@ func frameworkEnv(env Env) clikit.Env {
 			RetentionDays: env.Config.LogRetentionDays,
 		},
 		Settings: values,
+		User:     env.User,
 		NoColor:  env.NoColor,
 		WorkDir:  env.WorkDir,
 		Codes: func(code string) (clikit.CodeInfo, bool) {
@@ -158,7 +169,7 @@ func newRoot() *cobra.Command {
 		Long:   name + " serve runs the hub; user, audit, backup and version ask it over its socket, and setting changes the config file it reads.",
 		Color:  style.ColorAuto,
 		Topics: topics,
-	}, newServeCmd(), newVersionCmd(), newSettingCmd(), newBackupCmd(), newUserCmd(), newAuditCmd())
+	}, newServeCmd(), newVersionCmd(), newSettingCmd(), newBackupCmd(), newUserCmd(), newAuditCmd(), newUpdateCmd(), newServiceCmd())
 }
 
 func newVersionCmd() *cobra.Command {

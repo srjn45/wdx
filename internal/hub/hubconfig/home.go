@@ -36,3 +36,7 @@ func MakeHome(home string) error {
 	}
 	return os.Chmod(home, 0o700)
 }
+
+// BackupsDir is where wdx-hub update keeps a backup of the database before
+// each update.
+func BackupsDir(home string) string { return filepath.Join(home, "backups") }

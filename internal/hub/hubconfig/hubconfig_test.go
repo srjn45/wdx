@@ -62,6 +62,7 @@ func TestDefaults(t *testing.T) {
 	want := Config{
 		Home: home, PublicURL: "http://localhost:8080", ListenWeb: ":8080", ListenNodes: ":8443", WebTLS: TLSOff,
 		LogLevel: slog.LevelInfo, LogRetentionDays: 7, OtelInterval: 15 * time.Second, Registration: RegistrationClosed,
+		UpdateChannel: "stable",
 	}
 	c.From = nil
 	if !reflect.DeepEqual(c, want) {
@@ -110,7 +111,7 @@ func TestEnvironmentOverFile(t *testing.T) {
 		"WDX_HUB_LOG_LEVEL": "warn", "WDX_HUB_LOG_RETENTION_DAYS": "9",
 		"WDX_HUB_OTEL_ENDPOINT": "https://env:4318", "WDX_HUB_OTEL_INTERVAL_SECONDS": "6",
 		"WDX_HUB_MASTER_KEY": testKey, "WDX_HUB_REGISTRATION": "open", "WDX_HUB_TRUSTED_PROXIES": "10.0.0.1",
-		"WDX_HUB_NODES_URL": "https://nodes.example.com:9443/",
+		"WDX_HUB_NODES_URL": "https://nodes.example.com:9443/", "WDX_HUB_UPDATE_CHANNEL": "dev",
 	}
 	maps.Copy(e, vars)
 	c, err := Load(e.getenv)
@@ -122,7 +123,7 @@ func TestEnvironmentOverFile(t *testing.T) {
 		WebTLS: TLSOff, WebTLSCert: "/env/cert", WebTLSKey: "/env/key", LogLevel: slog.LevelWarn, LogRetentionDays: 9,
 		OtelEndpoint: "https://env:4318", OtelInterval: 6 * time.Second,
 		MasterKey: testKeyBytes, Registration: RegistrationOpen, TrustedProxies: []netip.Prefix{netip.MustParsePrefix("10.0.0.1/32")},
-		NodesURL: "https://nodes.example.com:9443",
+		NodesURL: "https://nodes.example.com:9443", UpdateChannel: "dev",
 	}
 	from := c.From
 	c.From = nil
@@ -352,5 +353,30 @@ func TestTrustedProxies(t *testing.T) {
 		if got := problems(t, url, env{"WDX_HUB_TRUSTED_PROXIES": bad}); got["trusted_proxies"] == "" {
 			t.Errorf("%s: want it refused, got %v", bad, got)
 		}
+	}
+}
+
+// TestLayoutPresent finds the hub installed only with both its binary and
+// its unit.
+func TestLayoutPresent(t *testing.T) {
+	t.Parallel()
+	dir := t.TempDir()
+	l := Layout{User: Name, Binary: filepath.Join(dir, "bin", Name), Unit: filepath.Join(dir, Service), Lib: filepath.Join(dir, "lib")}
+	if l.Present() {
+		t.Fatal("want nothing installed")
+	}
+	for i, path := range []string{l.Binary, l.Unit} {
+		if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(path, nil, 0o644); err != nil {
+			t.Fatal(err)
+		}
+		if got, want := l.Present(), i == 1; got != want {
+			t.Fatalf("with %s: want present %v, got %v", path, want, got)
+		}
+	}
+	if l.Previous() != filepath.Join(dir, "lib", "previous") {
+		t.Fatalf("unexpected previous version's directory %s", l.Previous())
 	}
 }

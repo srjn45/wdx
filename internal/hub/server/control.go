@@ -15,7 +15,6 @@ import (
 	"github.com/srjn45/wdx/internal/hub/ca"
 	"github.com/srjn45/wdx/internal/hub/node"
 	"github.com/srjn45/wdx/internal/hubapi"
-	"github.com/srjn45/wdx/internal/identity"
 	"github.com/srjn45/wdx/internal/logging"
 )
 
@@ -165,7 +164,7 @@ func (s *Server) control(parent context.Context, conn *websocket.Conn, n node.No
 	log.Info("control connected", "api_version", hello.ApiVersion, "wdx_version", hello.WdxVersion, "os", hello.Os)
 
 	if err := wsjson.Write(life, conn, hubapi.ControlWelcome{
-		Type: hubapi.ControlWelcomeTypeWelcome, HubVersion: identity.Version, ApiVersion: s.apiVersion,
+		Type: hubapi.ControlWelcomeTypeWelcome, HubVersion: s.version(), ApiVersion: s.apiVersion,
 		Node: hubapi.NodeRef{Id: n.ID, Name: n.Name},
 	}); err != nil {
 		log.Info("control closed", "reason", "connection", "err", err)

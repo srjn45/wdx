@@ -17,6 +17,9 @@ func problem(err error) (clikit.Problem, bool) {
 	if e, ok := errors.AsType[*problemError](err); ok {
 		return toProblem(e.problem), true
 	}
+	if p, ok := updateProblem(err); ok {
+		return toProblem(p), true
+	}
 	if _, ok := errors.AsType[*server.AlreadyRunningError](err); ok {
 		p := hubapi.NewProblem(hubapi.ErrorCodeAlreadyRunning, err.Error())
 		hint := "stop the hub serving this home first, or give this one another " + hubconfig.EnvPrefix + "HOME"

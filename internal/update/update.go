@@ -49,6 +49,17 @@ type Program struct {
 	// same.
 	Command func(ctx context.Context, binary, home string, args ...string) *exec.Cmd
 	GitHub  GitHub
+	// Owner is the user the program runs as when another updates it, as
+	// root updates wdx-hub; nil when the program runs as the user updating
+	// it. The new binary, run as Owner, gets the home it is checked on, and
+	// the database and config file the update puts in place are made
+	// Owner's before the daemon starts.
+	Owner *Owner
+}
+
+// Owner is a user by its ids.
+type Owner struct {
+	UID, GID int
 }
 
 // GitHub is where a program is published on GitHub.
@@ -66,9 +77,18 @@ type GitHub struct {
 type Options struct {
 	Program Program
 	Home    string // the home whose daemon and database are switched
+	// Staging holds the update lock, the downloads and what a switch
+	// replaces before it is kept in Program.Previous: Home when empty. The
+	// hub's is root's, beside the previous version, out of its home.
+	Staging string
 	Current string // the version installed
 	BaseURL string // where the releases are
 	Daemon  Daemon
+	// Backup, when not nil, backs up the database while the daemon still
+	// runs, once the new release is checked and before the switch: wdx-hub
+	// keeps a backup of every update. Its failure ends the update with
+	// nothing changed.
+	Backup func(ctx context.Context) error
 	// Progress gets a line for each step.
 	Progress io.Writer
 	// Preflight is how long the new binary gets to write the settings and to
@@ -223,7 +243,7 @@ func resolve(ctx context.Context, o Options, channel, version string) (string, e
 // binary and database are kept in Program.Previous for a rollback.
 func Apply(ctx context.Context, o Options, channel, version string) (Result, error) {
 	log := logging.FromContext(ctx)
-	unlock, err := lock(o.Home)
+	unlock, err := lock(o.staging())
 	if err != nil {
 		return Result{}, err
 	}
@@ -247,7 +267,7 @@ func Apply(ctx context.Context, o Options, channel, version string) (Result, err
 		return Result{From: o.Current, To: o.Current, SchemaFrom: from.Version, SchemaTo: from.Version, UpToDate: true, Warnings: warnings}, nil
 	}
 
-	dir, err := os.MkdirTemp(o.Home, "update-")
+	dir, err := os.MkdirTemp(o.staging(), "update-")
 	if err != nil {
 		return Result{}, err
 	}
@@ -268,6 +288,13 @@ func Apply(ctx context.Context, o Options, channel, version string) (Result, err
 		binary, warning = o.sign(ctx, binary, target)
 		if warning != "" {
 			warnings = append(warnings, warning)
+		}
+	}
+
+	if o.Backup != nil {
+		if err := o.Backup(ctx); err != nil {
+			log.Error("database not backed up", "err", err)
+			return Result{}, &FailedError{Step: "back up", Err: err, Version: o.Current}
 		}
 	}
 
@@ -348,7 +375,7 @@ func keep(ctx context.Context, o Options, replaced, updatedTo string) (warning s
 // it fails with a *RestoreRequiredError.
 func Rollback(ctx context.Context, o Options, discardChanges bool) (Result, error) {
 	log := logging.FromContext(ctx)
-	unlock, err := lock(o.Home)
+	unlock, err := lock(o.staging())
 	if err != nil {
 		return Result{}, err
 	}
@@ -422,7 +449,7 @@ func (o Options) switchTo(ctx context.Context, binary, backup, settings, want st
 		return "", &FailedError{Step: "stop", Err: err, Version: o.Current}
 	}
 
-	dir, err := os.MkdirTemp(o.Home, "replaced-")
+	dir, err := os.MkdirTemp(o.staging(), "replaced-")
 	if err != nil {
 		return "", o.undo(ctx, "back up", err, replaced{})
 	}
@@ -460,6 +487,9 @@ func (o Options) switchTo(ctx context.Context, binary, backup, settings, want st
 		log.Info("settings installed", "path", configPath, "from", settings)
 	}
 
+	if err := o.own(ctx); err != nil {
+		return "", o.undo(ctx, "install", err, r)
+	}
 	o.progress("starting the daemon")
 	got, err := o.Daemon.Start(ctx)
 	if err == nil && got != want {
@@ -556,7 +586,11 @@ func (o Options) undo(ctx context.Context, step string, err error, r replaced) e
 		}
 		return nil
 	}
-	if failed.UndoErr = undo(); failed.UndoErr == nil {
+	failed.UndoErr = undo()
+	if failed.UndoErr == nil {
+		failed.UndoErr = o.own(ctx)
+	}
+	if failed.UndoErr == nil {
 		got, err := o.Daemon.Start(ctx)
 		if err == nil && got != o.Current {
 			err = fmt.Errorf("the daemon answers as version %s, not %s", got, o.Current)
@@ -609,7 +643,7 @@ func (o Options) holdSignals() (release func()) {
 func sweep(ctx context.Context, o Options) []string {
 	log := logging.FromContext(ctx)
 	warnings := []string{}
-	downloads, _ := filepath.Glob(filepath.Join(o.Home, "update-*"))
+	downloads, _ := filepath.Glob(filepath.Join(o.staging(), "update-*"))
 	for _, dir := range downloads {
 		if err := os.RemoveAll(dir); err != nil {
 			log.Error("stale download not deleted", "dir", dir, "err", err)
@@ -617,13 +651,37 @@ func sweep(ctx context.Context, o Options) []string {
 		}
 		log.Info("stale download deleted", "dir", dir)
 	}
-	replaced, _ := filepath.Glob(filepath.Join(o.Home, "replaced-*"))
+	replaced, _ := filepath.Glob(filepath.Join(o.staging(), "replaced-*"))
 	for _, dir := range replaced {
 		log.Warn("files a switch cut short replaced are left", "dir", dir)
 		w := fmt.Sprintf("%s holds the binary, database and config file a switch cut short replaced; delete it once you no longer need them", dir)
 		warnings = append(warnings, w)
 	}
 	return warnings
+}
+
+func (o Options) staging() string { return cmp.Or(o.Staging, o.Home) }
+
+// own makes the database and config file Program.Owner's, when it is set:
+// the switch and its undo put them in place as the updater, and reading the
+// database may have made its -wal and -shm. Links are changed, not followed,
+// as the home is the owner's to change.
+func (o Options) own(ctx context.Context) error {
+	if o.Program.Owner == nil {
+		return nil
+	}
+	db := o.Program.DB
+	for _, path := range []string{db, db + "-wal", db + "-shm", o.Program.Config} {
+		err := os.Lchown(path, o.Program.Owner.UID, o.Program.Owner.GID)
+		if errors.Is(err, fs.ErrNotExist) {
+			continue
+		}
+		if err != nil {
+			return err
+		}
+	}
+	logging.FromContext(ctx).Info("files given to the program's user", "uid", o.Program.Owner.UID, "gid", o.Program.Owner.GID, "db", db, "config", o.Program.Config)
+	return nil
 }
 
 func (o Options) progress(format string, args ...any) {
@@ -647,6 +705,18 @@ func preflight(ctx context.Context, o Options, binary, version, dir string) (sta
 	checkHome := filepath.Join(dir, "home")
 	if err := os.MkdirAll(checkHome, 0o700); err != nil {
 		return "", Settings{}, err
+	}
+	if owner := o.Program.Owner; owner != nil {
+		// The new binary runs as the owner: it reaches the download through
+		// the directories above it and writes in the home it is checked on.
+		for _, d := range []string{filepath.Dir(dir), dir} {
+			if err := os.Chmod(d, 0o711); err != nil {
+				return "", Settings{}, err
+			}
+		}
+		if err := os.Lchown(checkHome, owner.UID, owner.GID); err != nil {
+			return "", Settings{}, err
+		}
 	}
 	current := o.Program.Config
 	if exists(current) {

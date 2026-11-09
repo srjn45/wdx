@@ -29,11 +29,14 @@ const (
 
 func newSettingCmd() *cobra.Command {
 	cmd := &cobra.Command{
-		Use:   "setting",
-		Short: "Show and change the settings",
-		Long:  name + " help settings explains every setting.",
-		Args:  clikit.NoArgs,
-		RunE:  func(cmd *cobra.Command, _ []string) error { return cmd.Help() },
+		Use: "setting",
+		// wdx-hub update runs the release it installs as settings write, as
+		// wdx update does, so this name stays for good.
+		Aliases: []string{"settings"},
+		Short:   "Show and change the settings",
+		Long:    name + " help settings explains every setting.",
+		Args:    clikit.NoArgs,
+		RunE:    func(cmd *cobra.Command, _ []string) error { return cmd.Help() },
 	}
 	cmd.AddCommand(newSettingListCmd(), newSettingGetCmd(), newSettingSetCmd(), newSettingWriteCmd())
 	return cmd

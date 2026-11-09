@@ -24,7 +24,7 @@ type api struct {
 var _ hubapi.StrictServerInterface = (*api)(nil)
 
 func (a *api) version() hubapi.VersionJSONResponse {
-	return hubapi.VersionJSONResponse{Name: hubconfig.Name, Version: identity.Version, Commit: identity.Commit, ApiVersion: a.apiVersion}
+	return hubapi.VersionJSONResponse{Name: hubconfig.Name, Version: a.server.version(), Commit: identity.Commit, ApiVersion: a.apiVersion}
 }
 
 func (a *api) GetVersion(context.Context, hubapi.GetVersionRequestObject) (hubapi.GetVersionResponseObject, error) {

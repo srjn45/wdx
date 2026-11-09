@@ -54,8 +54,11 @@ type Env struct {
 	Program        Program
 	Logs           Logs
 	Settings       []SettingValue
-	NoColor        bool   // NO_COLOR is set or TERM is dumb; turns off color mode auto only
-	WorkDir        string // the working directory, which Absolute makes paths against
+	// User says who the program runs as, when it chose: logged with
+	// command received.
+	User    string
+	NoColor bool   // NO_COLOR is set or TERM is dumb; turns off color mode auto only
+	WorkDir string // the working directory, which Absolute makes paths against
 	// Codes says what an error code of the program means: its HTTP status,
 	// exit code and description. usage and internal are the framework's,
 	// which every program's table has.

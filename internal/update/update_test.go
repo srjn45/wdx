@@ -208,3 +208,69 @@ func TestApplyUndoneProgram(t *testing.T) {
 		t.Fatalf("want no previous version kept, got %v", err)
 	}
 }
+
+// TestApplyStagingOwnerBackup updates a program as wdx-hub's is: its lock and
+// downloads outside its home, its files given to its user, its database
+// backed up before the switch. What the update leaves in the home is the
+// program's files alone.
+func TestApplyStagingOwnerBackup(t *testing.T) {
+	t.Parallel()
+	o := applying(t)
+	withData(t, o)
+	o.Staging = filepath.Join(t.TempDir(), "lib")
+	o.Program.Previous = filepath.Join(o.Staging, "previous")
+	o.Program.Owner = &Owner{UID: os.Getuid(), GID: os.Getgid()}
+	var order []string
+	o.Backup = func(context.Context) error {
+		order = append(order, "backup")
+		return nil
+	}
+	stop := o.Daemon.Stop
+	o.Daemon.Stop = func(ctx context.Context) error {
+		order = append(order, "stop")
+		return stop(ctx)
+	}
+
+	if _, err := Apply(context.Background(), o, "stable", ""); err != nil {
+		t.Fatal(err)
+	}
+	if strings.Join(order, ",") != "backup,stop" {
+		t.Fatalf("want the backup before the daemon stops, got %v", order)
+	}
+	entries, err := os.ReadDir(o.Home)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, e := range entries {
+		if !strings.HasPrefix(e.Name(), "tool") {
+			t.Errorf("want the home to hold only the program's files, got %s", e.Name())
+		}
+	}
+	for _, path := range []string{filepath.Join(o.Staging, "update.lock"), filepath.Join(o.Program.Previous, "previous.json")} {
+		if _, err := os.Stat(path); err != nil {
+			t.Errorf("want %s in the staging directory: %v", path, err)
+		}
+	}
+}
+
+// TestApplyBackupFails ends the update before the switch when the database
+// cannot be backed up: nothing changes.
+func TestApplyBackupFails(t *testing.T) {
+	t.Parallel()
+	o := applying(t)
+	withData(t, o)
+	old := installed(t, o)
+	o.Backup = func(context.Context) error { return errors.New("no room") }
+	o.Daemon.Stop = func(context.Context) error {
+		t.Error("the daemon was stopped")
+		return nil
+	}
+
+	_, err := Apply(context.Background(), o, "stable", "")
+	if failed, ok := errors.AsType[*FailedError](err); !ok || failed.Step != "back up" || failed.UndoErr != nil {
+		t.Fatalf("want the backup failed, got %v", err)
+	}
+	if got := installed(t, o); got != old {
+		t.Fatalf("want the old binary left, got\n%s", got)
+	}
+}

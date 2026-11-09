@@ -35,6 +35,7 @@ import (
 	"github.com/srjn45/wdx/internal/hub/pages"
 	"github.com/srjn45/wdx/internal/hub/relay"
 	"github.com/srjn45/wdx/internal/hubapi"
+	"github.com/srjn45/wdx/internal/identity"
 	"github.com/srjn45/wdx/internal/logging"
 	"github.com/srjn45/wdx/internal/telemetry"
 )
@@ -80,7 +81,13 @@ type Options struct {
 	// Streams limits the streams between nodes; the relay's defaults when
 	// zero.
 	Streams relay.Options
+	// Version is the release the hub says it runs: identity.Version when
+	// empty. wdx-hub update's tests start a hub as the release they install.
+	Version string
 }
+
+// version is the release the hub says it runs.
+func (s *Server) version() string { return cmp.Or(s.opts.Version, identity.Version) }
 
 // SettingStore is the settings as the commands keep them: the server does not
 // read the config file itself.

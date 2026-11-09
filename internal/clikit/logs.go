@@ -47,7 +47,16 @@ func logReceived(log *slog.Logger, args []string, env Env) {
 		"cwd", env.WorkDir,
 		"stdin_terminal", IsTerminal(env.Stdin),
 		"no_color", env.NoColor,
-		slog.Group("settings", settings...))
+		slog.Group("settings", settings...),
+		user(env.User))
+}
+
+// user is the user a run runs as, when its program says.
+func user(name string) slog.Attr {
+	if name == "" {
+		return slog.Attr{}
+	}
+	return slog.String("user", name)
 }
 
 // PromptFlag and CodeFlag are the flags whose values are never logged, only

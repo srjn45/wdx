@@ -80,6 +80,7 @@ type Config struct {
 	// TrustedProxies are the addresses whose X-Forwarded-For is believed, an
 	// address as a prefix of its full length.
 	TrustedProxies []netip.Prefix
+	UpdateChannel  string // one of UpdateChannels
 
 	// From tells where each setting was taken from, by key: "default", the
 	// environment variable, or the config file and line.
@@ -109,6 +110,10 @@ var logLevels = []string{"debug", "info", "warn", "error"}
 var tlsChoices = []string{TLSOff, TLSFiles}
 
 var registrationChoices = []string{RegistrationClosed, RegistrationOpen}
+
+// UpdateChannels are the release channels wdx-hub update follows: stable
+// releases only, or every release.
+var UpdateChannels = []string{"stable", "dev"}
 
 // localHosts are the hosts public_url may name with http.
 var localHosts = []string{"localhost", "127.0.0.1"}
@@ -310,6 +315,20 @@ var rows = []settings.Row[Config]{
 			return strings.Join(list, ",")
 		},
 	},
+	{
+		Key:         "update.channel",
+		Description: "releases " + Name + " update installs: stable, or dev for the newest release of either kind",
+		Default:     "stable",
+		Choices:     UpdateChannels,
+		Set: func(c *Config, v string) error {
+			if !slices.Contains(UpdateChannels, v) {
+				return fmt.Errorf("%q is not one of %s", v, strings.Join(UpdateChannels, ", "))
+			}
+			c.UpdateChannel = v
+			return nil
+		},
+		Get: func(c Config) string { return c.UpdateChannel },
+	},
 }
 
 // setMasterKey sets the master key from v, 32 bytes in base64, or none when
@@ -452,6 +471,9 @@ func Load(getenv func(string) string) (Config, error) {
 	file, problems := table.File(ConfigPath(home))
 	c, from, err := table.Resolve([]settings.Source{file, env})
 	c.From = from
+	// The table's default is the home of the user the process started as;
+	// run as root, wdx-hub may have become the hub's user since.
+	c.Home = home
 	if e, ok := errors.AsType[*settings.Error](err); ok {
 		problems = append(problems, e.Problems...)
 	}

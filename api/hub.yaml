@@ -997,7 +997,8 @@ components:
       description: |
         Stable error code; never changed or reused. already_running,
         hub_unavailable and cancelled are reported by the CLI, never by the
-        hub.
+        hub, and so are the codes of wdx-hub update, from download_failed
+        on.
       enum:
         - usage
         - internal
@@ -1026,6 +1027,16 @@ components:
         - node_not_found
         - node_offline
         - too_many_streams
+        - download_failed
+        - checksum_mismatch
+        - older_version
+        - update_running
+        - update_failed
+        - no_previous_version
+        - restore_required
+        - settings_invalid
+        - root_required
+        - not_installed
 
     Problem:
       type: object
