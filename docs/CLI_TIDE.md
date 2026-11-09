@@ -171,6 +171,18 @@ The CLI and tide stay in sync, but not one to one. The CLI serves scripts and AI
 |---|---|---|---|---|
 | List, read and change settings | `setting list`, `get`, `set` | the settings tab, `C-q s` | Same | |
 
+## Another of one's nodes
+
+| Feature | CLI | tide | Status | Why they differ |
+|---|---|---|---|---|
+| Work on another node | `--node <name>` on `agent`, `terminal`, `project`, `doc`, `plan`, `worktree`, `message` and `version` | `wdx tide --node <name>`: a whole TIDE on the host, with a cyan bar and the node in its title | Same | tide takes the node once, for the window, rather than a flag per action (the wdx doc HUB_REMOTE_TIDE) |
+| Attach to a terminal or an agent there | `terminal attach --node`, `agent attach --node` | their tabs in `wdx tide --node` | Same | Both attach through the host daemon's relay (docs/ATTACH.md, "The relay") |
+| Open a session to a node | `hub session open`, or the code asked at a command's first stream | the code asked before the window, and again on the message when the session ends | Same | |
+| Settings of the host | refused with `--node`: `setting` has no such flag | not offered in a remote TIDE: the menu says `settings are changed on <name> itself` | Same | No session changes a setting, so that no `hub.*` setting can be loosened from afar |
+| A new project from a directory on the host | `project open --local <path> --node`, the host's absolute path | a field for the host's absolute path, in place of the directory browser | Same | The browser reads this machine's files; listing the host's would let a session read its directories anywhere |
+| Keep what tide showed across runs, remotely | none | none: a remote TIDE keeps its view in memory, `C-q r` keeps it through `--resume` | Later | The host's TIDE state is its own TIDE's (docs/TIDE_STATE.md, "A remote tide"); keeping it per node in the client's daemon waits for a need |
+| See the sessions open into this node | `hub session list` | `remote: <node>, ...` at the start of the bar, while any is open | Same | tide follows `GET /v1/hub/sessions/events`; the CLI lists them when asked, with the outgoing ones too |
+
 ## Only on one side
 
 | Feature | Only on | Status | Why |
@@ -181,10 +193,9 @@ The CLI and tide stay in sync, but not one to one. The CLI serves scripts and AI
 | `daemon`, `deps`, `observe`, `update`, `setting write`, `completion`, `version` | CLI | By design | They manage wdx itself, not the work in it |
 | Help topics (`wdx help json`, `settings`, `logs`, `agents`) | CLI | By design | They are for scripts and AI agents, which use the CLI; tide's keys are in its bar and `?` |
 | Pushing a project's docs to the hub, and what waits or was refused (`project sync`, `--on`, `--off`) | CLI | Later (tide) | Not in tide in the MVP (the wdx doc HUB_DOCS_PUSH): it is set once per project, and its state, a count and the docs refused, can come to tide with the hub's |
-| Joining a hub and its nodes (`hub login`, `logout`, `status`, `node list`, `get`, `remove`) | CLI | Later (tide) | Login needs a browser, or a code typed on another device, which a terminal command hands over best; tide's window is where a remote session will show, with step 9 of the hub (docs/HUB_ARCH.md), and the hub's state can come to it then |
+| Joining a hub and its nodes (`hub login`, `logout`, `status`, `node list`, `get`, `remove`) | CLI | Later (tide) | Login needs a browser, or a code typed on another device, which a terminal command hands over best; tide's bar shows the sessions open into this node since step 9 of the hub, and the hub's state can come to it later |
 | The host's authenticator code (`hub code setup`, `--replace`, `recover`) and its audit chain (`hub audit verify`) | CLI | By design | The secret and the recovery key are shown once, and must never reach a screen an AI reads: tide's panes show agents' terminals. Setting up a code is done once per node, which a terminal command does best; both commands are interactive only (the wdx doc HUB_TUNNEL) |
-| Sessions between one's own nodes (`hub session open`, `list`, `close`) | CLI | Later (tide) | `--node` runs commands through them since step 8 of the hub; tide shows that a session is open, and opens one for a remote tide, with step 9 (docs/HUB_ARCH.md) |
-| Running a command on another of one's nodes (`--node <name>` on `agent`, `terminal`, `project`, `doc`, `plan`, `worktree`, `message` and `version`) | CLI | Later (tide) | Step 8 of the hub (the wdx doc HUB_NODE_COMMANDS) gives the CLI's commands `--node`, asking the host's code when no session is open; `terminal attach` and `agent attach` refuse it with `usage` until step 9, which relays the holder's protocol and brings `wdx tide --node`, a whole tide on the host, rather than a flag per action |
+| Listing and closing sessions between one's own nodes (`hub session list`, `close`) | CLI | Later (tide) | Since step 9 of the hub tide shows the sessions open into this node and opens one for a remote TIDE (Another of one's nodes); listing the outgoing ones and closing one are the CLI's |
 
 ## `wdx project open`
 

@@ -50,6 +50,7 @@ Three fixed panes. No general split tree.
 - Shows the current project's name, the focused pane, the zoom indicator, a key hint and, later, fleet status. The open projects are listed in the project strip instead.
 - Ends with the version running, in bold: `[wdx 0.2.0-dev.163]`. tide can run for days, so this is the version of the process, not of the binary installed. It asks the daemon its version at start and every 30 s, logged at debug level on both sides since it never stops. When the daemon answers with another version the tag becomes `[wdx 0.2.0-dev.160 · daemon 0.2.0-dev.163]`, and takes the place of the key hint: on a narrow window it would otherwise have no room. A notice or a prompt keeps its place, as what the keys do right now matters more; the plain version is what goes first when the bar is full. A daemon that does not answer leaves the plain version. attach's status line does the same (docs/ATTACH_VIEW.md).
 - The bar's color does not change for versions that differ: yellow, cyan and red already say something else, and nothing has failed. Quitting a tide whose daemon differs warns, naming both ways out, since either may be the old one.
+- While a session from another node is open into this one, the bar starts with `remote: <node>` in the `Remote` style, naming each (`remote: laptop, work`), so the person at the host knows someone is in. TIDE follows `GET /v1/hub/sessions/events`, the incoming sessions as server-sent events, from start and on every event, never on a timer; it reopens the stream after a break as it does the project's. A remote TIDE does not follow it.
 
 ## Pane modes
 
@@ -137,7 +138,7 @@ Built to be obvious without help:
 - Create: a first entry "create the project here" asks for its name, then creates `<dir>/<name>`. It starts in `~/.wdx/projects`, or the closest directory above it that exists.
 - Moving with ← / → did not feel natural when tried by hand; how the browser moves is to be looked at again.
 - A directory that cannot be read says so where it is listed.
-- tide reads the directories itself and sends absolute paths, as the CLI does. A remote client (the web IDE) will need the daemon to list them.
+- tide reads the directories itself and sends absolute paths, as the CLI does. A remote TIDE has a field for the host's absolute path in its place (On another node); the web IDE will need the daemon to list them.
 
 ### Clone
 
@@ -289,6 +290,19 @@ Supported, though most users will mostly use the keyboard.
 - Dragging selects text inside the pane where the drag started, never past its edges, highlighted in reverse; releasing copies it, as terminals do on Linux. A click or a key clears it. The copy goes both through OSC 52, which works over ssh, and through the system's tool (`wl-copy`, `xclip` or `xsel` on Linux, `pbcopy` on macOS), since GNOME Terminal and Terminal.app ignore OSC 52. In a pane whose program takes the mouse, the program will get the drags instead.
 - The terminal's own selection, `Shift`-drag (Linux) or `Option`-drag (macOS), still works but crosses the panes, as the terminal knows nothing of them.
 
+## On another node
+
+`wdx tide --node <name>` opens TIDE on another of one's nodes through a session (the wdx doc HUB_REMOTE_TIDE, step 9 of the hub). It asks `code for <name>:` before the window when no session is open, is refused with `remote_not_for_agents` for an agent, and takes this machine's `tide.lock`, so one TIDE runs per machine, local or remote.
+
+- It shows only the host: its projects, agents and terminals, whose shells run there. Everything on this machine goes on running, untouched.
+- TIDE is handed two things: `Options.DialTerminal`, which attaches a terminal (locally the holder's socket under the home, as before; remotely the host daemon's relay, docs/ATTACH.md), and `Options.Node`, the host's name, empty when local. Nothing else in TIDE asks whether it is remote. A remote one also gets `Options.Link`, which opens a new session when a code is typed and tells TIDE each stream's outcome, and `Options.SessionLost`, the 30 seconds below.
+- The bar is in the `Remote` style, cyan in every `tide.theme`, and starts with the node's name (`desktop › app · project`); the window's title is `wdx tide · <name>`. So a remote TIDE is never taken for a local one.
+- Its view and tabs stay in memory, starting from the default view each time; `C-q r` keeps them through `--resume` as before (docs/TIDE_STATE.md). It never reads or writes the host's TIDE state, which would move the host's own TIDE, and the host refuses those routes through a session anyway.
+- It has no Settings tab: settings are refused through a session, so that no `hub.*` setting can be loosened from afar. The menu's entry says `settings are changed on <name> itself`, and `--resume` drops a settings tab.
+- A new project from a directory takes the host's absolute path in a field: the directory browser reads this machine's files, the wrong ones, and listing the host's would let a session read its directories anywhere.
+- The daemon version check is not made: the API version, checked between the nodes, stands in for it. Copying a selection goes to this machine's clipboard, where the person is; an editor runs on the host, through attach.
+- **When the session ends:** `session_closed` replaces the window at once with a message, `session to <name> closed`, saying why (closed, idle, the host's daemon restarted, remote access turned off, a logout). `node_offline` or `hub_unreachable` put `reconnecting to <name>` on the bar first, and the message comes after 30 seconds without a stream opening (an option, which tests shorten); any stream that opens clears both. On the message, a code typed opens a new session and TIDE goes on with its view; `C-q` quits.
+
 ## Phases
 
 - **Phase A, the layout skeleton.** Placeholder panes that show their name, size and the keys they receive; the layout state and pure sizing; focus, zoom and the terminal toggle; Alt+arrows; placeholder terminal tabs switched with ←/→; the `C-q` menu with only `q` (quit) and `Esc`; mouse: click to focus, `[⤢]` or double-click on a title to zoom, click a tab. Tested by table tests, action sequences and an invariant test over random actions and sizes (the panes tile the screen exactly, focus is always visible, leaving a zoom restores the layout). No daemon needed.
@@ -302,6 +316,7 @@ Supported, though most users will mostly use the keyboard.
 - **Agent info (implemented, docs/TIDE_INFO.md):** a tab of `key: value` rows per agent, opened with `C-q i` or `i` in the list, with the name editable in place.
 - **Code (implemented, docs/TIDE_CODE.md):** a Code section listing a worktree's files, chosen with `< worktree >`; `Enter` on a file opens it read-only and highlighted in a tab, `e` edits it there in the `editor` setting's editor, which runs under a holder in the daemon, and closing that tab asks to save or discard; `/` filters the whole list as you type.
 - **Agent tabs (implemented, docs/TIDE_TABS.md):** a tab per agent opened in the right pane, closed with `C-q -` or `(-)`, walked with `Alt+←/→`, on a strip that slides to keep the current one shown.
+- **On another node (implemented, the wdx doc HUB_REMOTE_TIDE):** `wdx tide --node`, and the host's `remote:` indicator.
 - **Later:** configurable keys, dragging dividers, the project detail screen, and how the directory browser moves. docs/IDE.md holds the wider direction: other tab types in the right pane, worktrees and diffs, code, docs and plans.
 
 ## Open questions

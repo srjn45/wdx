@@ -11,7 +11,7 @@ A daemon has one tide. Several tides on one daemon would need their changes reco
 | state | owner |
 |---|---|
 | tide's tabs and view | the daemon the tide is part of |
-| a remote tide's tabs and view (later) | its own daemon, per node; in the MVP a remote tide keeps them in memory (docs/HUB_ARCH.md, "Tide's state in a remote session") |
+| a remote tide's tabs and view | its own memory, since step 9 of the hub; later its own daemon, per node (docs/HUB_ARCH.md, "Tide's state in a remote session") |
 | a machine's agents, worktrees, docs, plans, code | that machine's daemon |
 
 Later, a wdx on another machine reaching this one through the hub keeps its own tide's state in its own daemon, while this machine's daemon keeps both in sync on the resources. Both see the same filesystem, so a change made outside wdx shows as missing in both. That is the hub's design, not this one. This design is local only, and its one part that will have to change for remote is noted below.
@@ -28,6 +28,11 @@ Later, a wdx on another machine reaching this one through the hub keeps its own 
 - `wdx tide` takes an exclusive lock on `<home>/tide.lock` (flock) and keeps it for as long as it runs. The operating system frees it when tide ends, even when killed, so a crash never leaves it stuck.
 - A second `wdx tide` fails with a new CLI-only error, `tide_running` (exit 1): `a tide is already running for this home`, with the pid of the one running.
 - `C-q r` execs the new release, which closes the lock's file and takes the lock again.
+- `wdx tide --node` takes the same lock, this machine's: one TIDE runs per machine, local or remote.
+
+## A remote tide
+
+A tide on another node (`wdx tide --node`, docs/TIDE.md "On another node") keeps its tabs and view in memory, as tide did before this design: it starts from the default view, `C-q r` hands the view on through `--resume`, and it neither reads nor writes the routes below, so the host's own tide keeps its tabs and cursor. The host refuses them through a session (`remoteOperations`) in any case, and the tabs the project's stream brings are ignored. A tab kept per node in the client's daemon would point at another daemon's resources, which no cascade reaches; that waits for a need.
 - `docs/TIDE_CODE.md`'s test of two tides on one editor goes.
 
 ## Tabs
@@ -55,7 +60,7 @@ An editor's tab is not a row: editors are terminals, and their tabs follow the t
 - A file or directory deleted through wdx (`RemoveWorktreeFile`): the daemon deletes the tabs of that path and of every path under it.
 - A file or directory renamed (`RenameWorktreeFile`): the tabs of that path and under it follow, with the new path.
 - A closed project keeps its tabs.
-- **Remote (later):** a tab will then point at another daemon's resources, which no cascade reaches. That part will be redesigned with remote access.
+- **Remote:** a remote tide keeps no rows (A remote tide); kept per node, a tab would point at another daemon's resources, which no cascade reaches, and that part is redesigned then.
 
 **API**
 - `PUT /v1/projects/{project}/tabs` (`replaceTabs`), body `{"tabs": [Tab]}`, replaces the project's whole list in one transaction. It answers 200 with `{"result": "updated", "tabs": [...]}`.

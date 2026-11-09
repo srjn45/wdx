@@ -35,8 +35,9 @@ The holder never draws. It keeps a headless vt (terminal emulator) to know what 
                           └──────────────────────────────────────────────────────────┘
                                    ▲ socket <home>/run/<id>.sock
             ┌──────────────────────┼─────────────────────────┐
-  wdx terminal attach          tide pane                 daemon relay (later)
-  → its own vt draws,          → tide's vt draws         → browser, xterm.js draws
+  wdx terminal attach          tide pane                 daemon relay
+  → its own vt draws,          → tide's vt draws         → another node: attach or tide
+                                                           (later the browser, xterm.js)
     full-window
 ```
 
@@ -44,9 +45,20 @@ The holder never draws. It keeps a headless vt (terminal emulator) to know what 
 |---|---|---|---|
 | `wdx terminal attach` | the holder's socket | its own vt, in a full-window pane (docs/ATTACH_VIEW.md) | inside the pane: the lines it saw scroll off, older ones page by page through the API |
 | tide (later) | the holder's socket | its own vt per pane | lazily, page by page through the API |
-| web (later) | the daemon (WebSocket), which relays to the holder | xterm.js | the last N lines on attach, older pages through the API |
+| another node (`attach --node`, `wdx tide --node`) | the host's daemon, `POST /v1/terminals/{terminal}/attach` through a session, which relays to the holder | its own vt, as locally | as locally, through the session |
+| web (later) | the daemon, through the same relay | xterm.js | the last N lines on attach, older pages through the API |
 
 Local clients go straight to the holder: an attached session survives `wdx daemon restart` and `wdx update`, and keystrokes take one hop. The daemon is only asked to resolve the terminal and check its state.
+
+## The relay
+
+A client on another node has no socket to dial, so the host's daemon relays, as the web's relay was planned to (the wdx doc HUB_REMOTE_TIDE, step 9 of the hub):
+
+- `POST /v1/terminals/{terminal}/attach` is an HTTP Upgrade (101) to a byte stream that speaks this protocol. The daemon dials the holder's socket, greets it, answers the client's `hello` with the holder's, then copies bytes both ways. It takes any kind of terminal by `id:`, so agents and editors are attached the same way. Like every stream it is exempt from the changes lock, and its log line counts the bytes, never shows them.
+- The holder learns a client's pid from its socket (`SO_PEERCRED`), which for a relayed client is the daemon's. So the relay's `hello` adds `"remote": true` and `"node"`, the client's node, and the holder logs both when the client attaches.
+- Through a session, the bytes count as activity: a person typing makes no request, so the relay moves the session's idle time on, at most once a minute while bytes flow either way.
+- `holder.AttachConn(ctx, conn, id, size, history)` attaches over the connection it is handed; `holder.Attach(ctx, socket, ...)` dials the socket and calls it. `client.AttachStream(ctx, terminal)` asks for the Upgrade through whatever the client dials. Without `--node`, attach and TIDE dial the holder's socket, as before.
+- A session that ends while attached closes the stream, which the client sees as `connection_lost`, as when a holder drops it.
 
 ## The holder
 
@@ -115,7 +127,7 @@ Frames as in version 1. The connecting side says what it is in its `hello`: `"ro
 
 **Slow clients**: each client has a queue of 4 MiB. One that falls further behind is disconnected ("too slow" in the holder's log); the client sees its connection closed, the CLI reports `connection_lost` and the user attaches again. Resyncing it with a fresh snapshot instead is for later, with the web.
 
-**Versions**: a holder keeps running the binary it started from. The daemon accepts holders of version 1 and 2 (today it accepts only its own: that check changes first, in its own release, so that rolling back from the release that brings version 2 keeps the terminals its holders run). A client needs version 2: on a version 1 holder it disconnects after the `hello` with `attach_unsupported`. That `hello` makes a version 1 holder drop the daemon's connection, which the daemon redials at once, as it does today.
+**Versions**: a holder keeps running the binary it started from. The daemon accepts holders of version 1 and 2 (today it accepts only its own: that check changes first, in its own release, so that rolling back from the release that brings version 2 keeps the terminals its holders run). A client needs version 2: on a version 1 holder it disconnects after the `hello` with `attach_unsupported`. That `hello` makes a version 1 holder drop the daemon's connection, which the daemon redials at once, as it does today. Version 5 knows the relay's remote `hello`: the relay refuses a holder older than that with `holder_version_unsupported` (409), since a holder keeps the binary it started from, and the terminal attaches remotely once restarted.
 
 ## API
 
@@ -198,7 +210,7 @@ wdx terminal history (--id <id> | --name <name>) [--project-id <id> | --project-
 
 ## Out of scope
 
-tide, the web relay, reflow of history, resyncing slow clients, recording with timing, read-only attach. `wdx terminal send` and `wdx agent send`, for scripts to give a terminal or an agent a message, came later: docs/SEND.md.
+tide, the web's use of the relay, reflow of history, resyncing slow clients, recording with timing, read-only attach. `wdx terminal send` and `wdx agent send`, for scripts to give a terminal or an agent a message, came later: docs/SEND.md.
 
 ## Implementation plan
 
@@ -217,7 +229,7 @@ Each step builds and passes `make check` and `make test` on its own. All of them
 
 Taken while designing and building it:
 
-1. Clients dial the holder directly; the daemon will relay only for the web.
+1. Clients dial the holder directly; the daemon will relay only for the web. Since step 9 of the hub, it relays for clients on another node too (see The relay).
 2. A headless vt in the holder keeps the screen; `charmbracelet/x/vt` upstream as is first, its fixes in the fork later (docs/VT.md).
 3. `/dev/tty` for attach, keeping stdout for the result so `--json` works.
 4. History on by default (0600, `terminal.history_lines: 0` turns it off).

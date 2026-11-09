@@ -77,7 +77,7 @@ Agreed on 2026-11-03.
 
 ### `--node <name>`
 
-- On `agent`, `terminal`, `project`, `doc`, `plan`, `worktree`, `message` and `version`, a persistent flag of each group, and on every later group the daemon serves; on `tide` with step 9. Never on `daemon`, `setting`, `update`, `observe`, `deps`, `completion` or `hub`, which manage this machine: there it is an unknown flag, a `usage` error. `terminal attach` and `agent attach` refuse it with `usage`, `attach with --node comes with remote tide`, until step 9 relays the holder's protocol (step 8, the wdx doc HUB_NODE_COMMANDS).
+- On `agent`, `terminal`, `project`, `doc`, `plan`, `worktree`, `message` and `version`, a persistent flag of each group, and on every later group the daemon serves; on `tide` since step 9. Never on `daemon`, `setting`, `update`, `observe`, `deps`, `completion` or `hub`, which manage this machine: there it is an unknown flag, a `usage` error. `terminal attach` and `agent attach` take it since step 9, attaching through the host daemon's relay of the holder's protocol (the wdx doc HUB_REMOTE_TIDE); a terminal whose holder is older than the relay's `hello` is `holder_version_unsupported` (409), hinting to restart its shell on the host. A session that ends while attached is `connection_lost`, as a holder dropping the client is.
 - The CLI asks its own daemon for a stream to the node; the daemon opens it through the hub, and it ends, encrypted end to end, at the host daemon's API. The CLI speaks the API over it, so output, `--json` and exit codes are the host's. The host serves only the operations its `remoteOperations` allows (docs/HUB_ARCH.md, "The host's rules for a remote session"); any other is `route_not_allowed`, and a route the host does not have hints to update it.
 - Node names complete from the account's nodes, through the daemon, within the completion timeout. Another flag's completion in a command line with `--node` asks the host through an open session, and offers nothing without one, never asking a code.
 - A path the host's daemon receives (`project create --path`, `project open --local`) must be absolute, `path must be absolute on node <name>` otherwise; files the CLI reads or writes itself (`--path`, `--out` of `doc` and `plan`) stay the client's. A command taking its project from the working directory needs `--project-id` or `--project-name`.
@@ -108,10 +108,12 @@ Closing an outgoing session ends one's own access; closing an incoming one, on t
 
 ### `wdx tide --node <name>`
 
-- Asks for the code in the terminal before tide's window starts, when no session is open.
-- Its bottom bar is cyan and its title names the node.
-- When the host closes the session, or the network is gone too long, a full-window message says `session to <name> closed` and offers to type a code again to reconnect, or quit.
-- The host's own tide shows that a remote session is open, and from which node.
+- Refused with `remote_not_for_agents` where `WDX_AGENT_ID` is set; then asks `code for <name>:` in the terminal before tide's window starts, when no session is open.
+- It shows only the host: its projects, agents and terminals, attached through the host daemon's relay.
+- Its bottom bar is cyan (the style `Remote`, in every `tide.theme`) and starts with the node, and its title is `wdx tide · <name>`. The daemon version check is not made: the API version stands in for it.
+- No Settings tab: the menu's entry says `settings are changed on <name> itself`, since no session changes a setting. A new project from a directory takes the host's absolute path in a field, in place of the directory browser, which reads the client's files.
+- When the session ends: `session_closed` replaces the window at once with a full-window message, `session to <name> closed`, and why; `node_offline` or `hub_unreachable` put `reconnecting to <name>` on the bar first, and the message comes after 30 seconds without a stream opening. On the message, a code typed opens a new session and tide goes on with its view; `C-q` quits.
+- The host's own tide shows `remote: <node>, ...` at the start of its bar while any session into it is open, following `GET /v1/hub/sessions/events`; `wdx hub session list` is the CLI's way to see them.
 - Its view is not saved: it starts with the default view each time, since tide's saved tabs and view are the host's own tide's (docs/HUB_ARCH.md, "Tide's state in a remote session"); `C-q r` keeps it as before. Keeping it in the client's daemon per node is later.
 - It takes the same `tide.lock` as a local tide, so one tide runs per machine, local or remote: leave one to start the other, or `tide_running` says which is running. A lock per node can come later. (Decided 2026-11-07.)
 
