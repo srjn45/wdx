@@ -36,7 +36,14 @@ var draftTextAtStep = []struct {
 		"multi_line_draft": "line one\nline two\nline three",
 		"shell_mode":       "! ls",
 	}},
-	{aca.CursorScreenParser{}, cursorRecordingDir("ready-40x24"), map[string]string{
+	{aca.CursorScreenParser{}, cursorRecordingDir("2026.11.05/ready-40x24"), map[string]string{
+		"draft":           "hello there",
+		"draft_multiline": "first line\nsecond line\nthird line",
+		// The box shows the paste's last lines.
+		"draft_pasted": "pasted line 34\npasted line 35\npasted line 36\npasted line 37\npasted line 38\npasted line 39",
+		"turn_draft":   "typed during the turn",
+	}},
+	{aca.CursorScreenParser{}, cursorRecordingDir("2026.11.05-wdx-status/ready-40x24"), map[string]string{
 		"draft":           "hello there",
 		"draft_multiline": "first line\nsecond line\nthird line",
 		// The box shows the paste's last lines.

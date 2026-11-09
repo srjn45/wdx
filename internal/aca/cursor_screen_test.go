@@ -11,8 +11,18 @@ import (
 )
 
 // cursorRecordings were made by testdata/cursor/record/ready.py, which records the
-// box, and turns.py, which records turns and, in ask mode, an approval.
-var cursorRecordings = []string{"ready-120x40", "ready-40x24", "turns-120x40", "turns-40x24", "approval-120x40"}
+// box, and turns.py, which records turns and, in ask mode, an approval: in
+// 2026.11.05 without a status line, Cursor drawing its own footer, and in
+// 2026.11.05-wdx-status under the status line wdx pins, which prints that footer,
+// in ready-user-120x40 with the user's own status line under it (the wdx doc
+// CURSOR_FOOTER).
+var cursorRecordings = []string{
+	"2026.11.05/ready-120x40", "2026.11.05/ready-40x24", "2026.11.05/turns-120x40", "2026.11.05/turns-40x24",
+	"2026.11.05/approval-120x40",
+	"2026.11.05-wdx-status/ready-120x40", "2026.11.05-wdx-status/ready-40x24", "2026.11.05-wdx-status/ready-user-120x40",
+	"2026.11.05-wdx-status/turns-120x40", "2026.11.05-wdx-status/turns-40x24",
+	"2026.11.05-wdx-status/approval-120x40", "2026.11.05-wdx-status/approval-40x24",
+}
 
 // cursorStep is what one step of those scripts left on Cursor's screen: whether a
 // message can go in, whether the box holds what a human put there, what Cursor was
@@ -83,9 +93,21 @@ var cursorAtStep = map[string]cursorStep{
 
 // cursorAtRecordedStep is a step whose screen differs between recordings.
 var cursorAtRecordedStep = map[string]cursorStep{
-	"ready-120x40/after_turn": cursorDraft,
+	"2026.11.05/ready-120x40/after_turn": cursorDraft,
 	// At 40x24 the mark came while Press Ctrl+C again to exit showed.
-	"ready-40x24/exit_armed": cursorNoBox,
+	"2026.11.05/ready-40x24/exit_armed": cursorNoBox,
+	// Under wdx's status line the & showed, and the mark came while Press Ctrl+C
+	// again to exit showed.
+	"2026.11.05-wdx-status/ready-120x40/cloud_mode":      cursorDraft,
+	"2026.11.05-wdx-status/ready-40x24/cloud_mode":       cursorDraft,
+	"2026.11.05-wdx-status/ready-user-120x40/cloud_mode": cursorDraft,
+	"2026.11.05-wdx-status/ready-120x40/exit_armed":      cursorNoBox,
+	"2026.11.05-wdx-status/ready-40x24/exit_armed":       cursorNoBox,
+	"2026.11.05-wdx-status/ready-user-120x40/exit_armed": cursorNoBox,
+	// At 40x24 the empty answer to the tell box had the agent ask again, which the
+	// script waited out to its timeout.
+	"2026.11.05-wdx-status/approval-40x24/timeout":      cursorWaitingOn,
+	"2026.11.05-wdx-status/approval-40x24/after_denial": cursorWaitingOn,
 }
 
 // cursorBeforeFirstTurn are the steps whose status line names the model alone, as
@@ -96,7 +118,7 @@ var cursorBeforeFirstTurn = map[string]bool{
 }
 
 func cursorRecordingDir(dir string) string {
-	return filepath.Join("..", "..", "cursor", "2026.11.05", dir)
+	return filepath.Join("..", "..", "cursor", dir)
 }
 
 func TestCursorOnRecordedScreens(t *testing.T) {
@@ -118,9 +140,10 @@ func TestCursorOnRecordedScreens(t *testing.T) {
 						got.InputBox, got.Draft, got.Activity, got.InTurn, got.SteerPending,
 						want.inputBox, want.draft, want.activity, want.inTurn, want.steerPending, bottom(step.lines))
 				}
-				// At 40 columns the status line wraps, and the model is not read.
+				// At 40 columns Cursor's own status line wraps, with the mode at its
+				// right, and the model is not read; wdx's has no mode.
 				wantModel := ""
-				if want.inputBox && !strings.HasSuffix(dir, "40x24") && !cursorBeforeFirstTurn[step.name] {
+				if want.inputBox && dir != "2026.11.05/ready-40x24" && dir != "2026.11.05/turns-40x24" && !cursorBeforeFirstTurn[step.name] {
 					wantModel = "Gemini 3.8 Flash Low"
 				}
 				if got.Model != wantModel {
@@ -135,7 +158,7 @@ func TestCursorOnRecordedScreens(t *testing.T) {
 // status line first shows: a message delivered then loses its Enter.
 func TestCursorNotReadyWhileLoading(t *testing.T) {
 	t.Parallel()
-	for _, dir := range []string{"ready-120x40", "ready-40x24"} {
+	for _, dir := range []string{"2026.11.05/ready-120x40", "2026.11.05/ready-40x24", "2026.11.05-wdx-status/ready-120x40", "2026.11.05-wdx-status/ready-40x24", "2026.11.05-wdx-status/ready-user-120x40"} {
 		t.Run(dir, func(t *testing.T) {
 			t.Parallel()
 			rep := replayed(t, cursorRecordingDir(dir))
@@ -238,11 +261,16 @@ var cursorTurns = []cursorTurn{
 func TestCursorNeverIdleInATurn(t *testing.T) {
 	t.Parallel()
 	ready := []cursorTurn{{from: "turn_tool", end: "DONE"}}
-	for dir, turns := range map[string][]cursorTurn{
-		"turns-120x40": cursorTurns, "turns-40x24": cursorTurns,
-		"ready-120x40": ready, "ready-40x24": ready,
-		"approval-120x40": {{from: "approval", end: "DONE"}},
-	} {
+	turnsIn := map[string][]cursorTurn{}
+	for _, version := range []string{"2026.11.05", "2026.11.05-wdx-status"} {
+		turnsIn[version+"/turns-120x40"] = cursorTurns
+		turnsIn[version+"/turns-40x24"] = cursorTurns
+		turnsIn[version+"/ready-120x40"] = ready
+		turnsIn[version+"/ready-40x24"] = ready
+		turnsIn[version+"/approval-120x40"] = []cursorTurn{{from: "approval", end: "DONE"}}
+	}
+	turnsIn["2026.11.05-wdx-status/ready-user-120x40"] = ready
+	for dir, turns := range turnsIn {
 		t.Run(dir, func(t *testing.T) {
 			t.Parallel()
 			rep := replayed(t, cursorRecordingDir(dir))

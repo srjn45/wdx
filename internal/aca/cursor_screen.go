@@ -115,11 +115,13 @@ func cursorStatusLines(footer []string) (int, bool) {
 }
 
 // cursorWaiting is true when the last block of the screen is an approval, or the
-// box Esc on one gives, whose lines a narrow screen may wrap.
+// box Esc on one gives, whose lines a narrow screen may wrap: at 40 columns the
+// box's first line ends in "ctrl+c to stop" before the rest of its text, on lines of
+// its own (2026.11.05 under wdx's status line, approval-40x24).
 func cursorWaiting(block []string) bool {
 	trimmed := make([]string, len(block))
 	for i, line := range block {
-		trimmed[i] = strings.TrimSpace(line)
+		trimmed[i] = strings.TrimSpace(cursorInTurn.ReplaceAllString(line, ""))
 	}
 	text := strings.Join(trimmed, " ")
 	for _, prompt := range cursorPrompts {
