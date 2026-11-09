@@ -78,9 +78,10 @@ test-hub-install:
 	scripts/test-hub-install.sh
 
 # Deploy wdx-hub on Fly.io from a clean checkout of a release tag: make
-# hub-fly-deploy APP=<name>. Needs flyctl and a Fly account: never in CI.
+# hub-fly-deploy APP=<name> REGION=<region>, REGION needed only at the first
+# deploy. Needs flyctl and a Fly account: never in CI.
 hub-fly-deploy:
-	APP="$(APP)" scripts/hub-fly-deploy.sh
+	APP="$(APP)" REGION="$(REGION)" scripts/hub-fly-deploy.sh
 
 # Run the tests once with coverage: bin/cover.out, bin/cover.html and the
 # per-package summary.

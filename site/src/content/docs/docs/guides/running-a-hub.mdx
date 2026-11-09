@@ -187,20 +187,14 @@ You need [flyctl](https://fly.io/docs/flyctl/install/), a Fly account and a chec
    $ fly apps create <name>
    ```
 
-2. Create the volume the hub's home lives on:
-
-   ```console
-   $ fly volumes create wdx_hub_data --app <name> --region <region> --size 1
-   ```
-
-3. Give the app its addresses. The node endpoint is raw TCP, which only a dedicated IPv4 carries; IPv6 alone is free, but many offices, cafés and hotels have none. The IPv4 costs about $2 a month, and flyctl asks before allocating it:
+2. Give the app its addresses. The node endpoint is raw TCP, which only a dedicated IPv4 carries; IPv6 alone is free, but many offices, cafés and hotels have none. The IPv4 costs about $2 a month, and flyctl asks before allocating it:
 
    ```console
    $ fly ips allocate-v4 --app <name>
    $ fly ips allocate-v6 --app <name>
    ```
 
-4. Make the master key, **save it in your password manager first**, then set it with the public url as the app's secrets:
+3. Make the master key, **save it in your password manager first**, then set it with the public url as the app's secrets:
 
    ```console
    $ head -c 32 /dev/urandom | base64
@@ -209,14 +203,16 @@ You need [flyctl](https://fly.io/docs/flyctl/install/), a Fly account and a chec
 
    A Fly secret cannot be read back. Without the master key, a restored volume's docs and authenticator secrets cannot be read.
 
-5. From a clean checkout of a release tag, deploy:
+4. From a clean checkout of a release tag, deploy to your region (`fly platform regions` lists them):
 
    ```console
    $ git checkout v0.5.0
-   $ make hub-fly-deploy APP=<name>
+   $ make hub-fly-deploy APP=<name> REGION=<region>
    ```
 
-6. Invite yourself, as the image's user, `nonroot`, which reaches the hub's admin socket:
+   The first deploy creates the hub's machine there, and its volume beside it, the one `fly.toml` mounts. Later deploys need no `REGION`: the machine stays where it is.
+
+5. Invite yourself, as the image's user, `nonroot`, which reaches the hub's admin socket:
 
    ```console
    $ fly ssh console --app <name> --user nonroot -C "wdx-hub user invite"
@@ -224,7 +220,7 @@ You need [flyctl](https://fly.io/docs/flyctl/install/), a Fly account and a chec
 
    Open the link it prints, sign up and set up your authenticator.
 
-7. On each machine, log in:
+6. On each machine, log in:
 
    ```console
    $ wdx hub login --url https://<name>.fly.dev
@@ -242,7 +238,8 @@ Setting a secret restarts the machine; the next approval page shows your own add
 
 `make hub-fly-deploy APP=<name>`, `scripts/hub-fly-deploy.sh`, refuses before anything reaches Fly unless flyctl is on the PATH, `APP` is set, the tree is clean and `HEAD` is exactly a release tag: a hub always runs a release's version. Then:
 
-- **When the app has a machine,** it snapshots the volume and prints the snapshot's id: note it, since it is what a rollback across a migration needs.
+- **When the app has no machine yet,** it refuses unless `REGION` is set, before anything changes on Fly, and deploys the machine and its volume there.
+- **When the app has a machine,** it snapshots the volume and prints the snapshot's id: note it, since it is what a rollback across a migration needs. A `REGION` given then is ignored, and it says so: the machine stays where it is.
 - **It deploys** the tag with `fly deploy`, the image built by Fly's builder from `deploy/hub/Dockerfile` with the tag's version and commit, on one machine.
 - **It waits** until `https://<name>.fly.dev/v1/version` answers the tag's version, at most 5 minutes, and fails with its last answer otherwise.
 

@@ -1,7 +1,7 @@
 #!/bin/sh
 # Deploy wdx-hub on Fly.io from a clean checkout of a release tag.
 #
-#   make hub-fly-deploy APP=<name>
+#   make hub-fly-deploy APP=<name> REGION=<region>
 #
 # Snapshots the app's volume when it has a machine already, deploys the
 # tag with deploy/hub/fly.toml, built by Fly's builder from
@@ -10,7 +10,9 @@
 # runs in CI or in tests. The wdx doc HUB_FLY designs it.
 #
 # Env:
-#   APP    the Fly app's name, as fly apps create made it
+#   APP     the Fly app's name, as fly apps create made it
+#   REGION  where the first deploy puts the app's machine and its volume;
+#           needed only then, since a machine stays where it is
 set -eu
 
 info() { printf '==> %s\n' "$*"; }
@@ -34,6 +36,7 @@ else
 fi
 
 APP="${APP:-}"
+REGION="${REGION:-}"
 [ -n "$APP" ] || die "APP is not set: run make hub-fly-deploy APP=<name>, the name fly apps create made"
 
 [ -z "$(git status --porcelain)" ] || die "the tree has changes: deploy from a clean checkout of a release tag (git status lists them)"
@@ -48,7 +51,11 @@ URL="https://$APP.fly.dev"
 # A deploy across a breaks-older migration can be rolled back only onto the
 # database as it was before it.
 machines="$("$FLY" machines list --app "$APP" --json)" || die "could not list the machines of $APP: is it the name fly apps create made?"
+# fly.toml names no region, so without one Fly would choose where the first
+# machine and its volume go, far from the admin's machines perhaps.
+set --
 if printf '%s' "$machines" | grep -q '"id"'; then
+	[ -z "$REGION" ] || info "$APP has a machine already: REGION=$REGION ignored, the machine stays where it is"
 	volumes="$("$FLY" volumes list --app "$APP" --json)" || die "could not list the volumes of $APP"
 	ids="$(printf '%s' "$volumes" | grep -o '"id": *"vol_[^"]*"' | sed 's/.*"\(vol_[^"]*\)"/\1/')"
 	[ -n "$ids" ] || die "$APP has a machine but no volume: fly volumes list --app $APP"
@@ -63,7 +70,10 @@ if printf '%s' "$machines" | grep -q '"id"'; then
 		fi
 	done
 else
-	info "$APP has no machine yet: no volume to snapshot"
+	[ -n "$REGION" ] ||
+		die "$APP has no machine yet, so its first deploy needs a region: run make hub-fly-deploy APP=$APP REGION=<region>, the city closest to your machines (fly platform regions lists them)"
+	info "$APP has no machine yet: no volume to snapshot; its machine and volume go to $REGION"
+	set -- --primary-region "$REGION"
 fi
 
 # --- the deploy -----------------------------------------------------------
@@ -76,7 +86,8 @@ info "deploying $tag ($COMMIT) to $APP"
 	--ignorefile "$ROOT/deploy/hub/Dockerfile.dockerignore" \
 	--ha=false \
 	--build-arg "VERSION=$VERSION" \
-	--build-arg "COMMIT=$COMMIT" ||
+	--build-arg "COMMIT=$COMMIT" \
+	"$@" ||
 	die "fly deploy failed; fly releases --app $APP --image lists the images to roll back to"
 
 # --- the wait -------------------------------------------------------------
