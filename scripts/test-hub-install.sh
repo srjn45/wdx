@@ -42,6 +42,9 @@ if [ -e "/usr/local/bin/$NAME" ] || id -u "$NAME" >/dev/null 2>&1; then
 fi
 
 WORK="$(mktemp -d /tmp/wdx-hub-install.XXXXXX)"
+# mktemp makes it 0700, but wdx-hub update without --apply runs as the hub's
+# user, which must read the releases in it.
+chmod 0755 "$WORK"
 DIST="$WORK/dist"
 cleanup() {
 	sudo sh scripts/install-hub.sh --purge --yes >/dev/null 2>&1 || true
