@@ -58,10 +58,21 @@ func (g *nodesGone) removed(ctx context.Context, n hublink.NodeRef) {
 	}
 }
 
-// listed closes the sessions with every node not among the account's.
-func (g *nodesGone) listed(ctx context.Context, nodes []hublink.NodeRef) {
-	if r := g.wait(ctx); r != nil {
-		if err := r.AccountNodes(ctx, nodes); err != nil {
+// listed takes the sessions open before the account's nodes are asked
+// for, and returns what closes those with every node not among them; nil
+// when there is nothing to check them with.
+func (g *nodesGone) listed(ctx context.Context) func([]hublink.NodeRef) {
+	r := g.wait(ctx)
+	if r == nil {
+		return nil
+	}
+	asked, err := r.AskingNodes(ctx)
+	if err != nil {
+		logging.FromContext(ctx).Error("sessions with removed nodes not checked", "err", err)
+		return nil
+	}
+	return func(nodes []hublink.NodeRef) {
+		if err := r.AccountNodes(ctx, asked, nodes); err != nil {
 			logging.FromContext(ctx).Error("sessions with removed nodes not closed", "err", err)
 		}
 	}

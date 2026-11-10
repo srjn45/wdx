@@ -254,13 +254,17 @@ func (l *Link) connectOnce(ctx context.Context, c *credentials, client *http.Cli
 }
 
 // catchUp gives Options.AccountNodes the account's nodes as the hub lists
-// them, once per welcome: a node removed while this one was not connected
-// is not among them.
+// them, once per welcome, calling it before it asks: a node removed while
+// this one was not connected is not among them.
 func (l *Link) catchUp(ctx context.Context, c *credentials, client *http.Client) {
 	log := logging.FromContext(ctx)
 	hc, err := hubapi.NewClientWithResponses(c.NodesURL, hubapi.WithHTTPClient(client), hubapi.WithRequestEditorFn(versionHeader))
 	if err != nil {
 		log.Error("account nodes not listed", "err", err)
+		return
+	}
+	listed := l.opts.AccountNodes(ctx)
+	if listed == nil {
 		return
 	}
 	r, err := hc.ListNodesWithResponse(ctx)
@@ -277,7 +281,7 @@ func (l *Link) catchUp(ctx context.Context, c *credentials, client *http.Client)
 		nodes = append(nodes, NodeRef{ID: n.Id, Name: n.Name})
 	}
 	log.Info("account nodes listed", "count", len(nodes))
-	l.opts.AccountNodes(ctx, nodes)
+	listed(nodes)
 }
 
 // closedWith is what a control connection that ended with err after bye

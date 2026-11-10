@@ -255,40 +255,54 @@ func (r *Remote) NodeGone(ctx context.Context, nodeID string) error {
 	return err
 }
 
-// AccountNodes takes the account's nodes as the hub lists them now, and
-// calls NodeGone for every node with a session open that is not among
-// them: one removed while this node heard nothing of it.
-func (r *Remote) AccountNodes(ctx context.Context, nodes []hublink.NodeRef) error {
+// NodesAsked is the sessions open, by id with their node's, as the
+// account's nodes were asked of the hub.
+type NodesAsked map[string]string
+
+// AskingNodes is the sessions open now, before the account's nodes are
+// asked of the hub, for AccountNodes.
+func (r *Remote) AskingNodes(ctx context.Context) (NodesAsked, error) {
+	list, err := r.Sessions(ctx)
+	if err != nil {
+		return nil, err
+	}
+	asked := NodesAsked{}
+	for _, s := range list {
+		asked[s.ID] = s.Node.ID
+	}
+	return asked, nil
+}
+
+// AccountNodes takes the account's nodes as the hub listed them when asked,
+// and closes, for ReasonNodeRemoved, each session open then whose node is
+// not among them: one removed while this node heard nothing of it. A
+// session opened since is left to the next list, as its node may have
+// joined the account after the list was taken.
+func (r *Remote) AccountNodes(ctx context.Context, asked NodesAsked, nodes []hublink.NodeRef) error {
+	log := logging.FromContext(ctx)
 	listed := map[string]bool{}
 	for _, n := range nodes {
 		listed[n.ID] = true
 	}
-	rows, err := r.opts.DB.QueryContext(ctx, "SELECT DISTINCT node_id FROM hub_sessions WHERE closed_at IS NULL")
-	if err != nil {
-		return err
-	}
-	var gone []string
-	for rows.Next() {
-		var id string
-		if err := rows.Scan(&id); err != nil {
-			rows.Close()
-			return err
-		}
-		if !listed[id] {
-			gone = append(gone, id)
+	var where []string
+	var ids []any
+	gone := map[string]bool{}
+	for id, node := range asked {
+		if !listed[node] {
+			gone[node] = true
+			where = append(where, "?")
+			ids = append(ids, id)
 		}
 	}
-	rows.Close()
-	if err := rows.Err(); err != nil {
-		return err
+	log.Info("account nodes checked", "nodes", len(nodes), "sessions", len(asked), "gone", len(gone))
+	if len(ids) == 0 {
+		return nil
 	}
-	logging.FromContext(ctx).Info("account nodes checked", "nodes", len(nodes), "gone", len(gone))
-	for _, id := range gone {
-		if err := r.NodeGone(ctx, id); err != nil {
-			return err
-		}
+	for node := range gone {
+		log.Info("node removed from the account", "node_id", node)
 	}
-	return nil
+	_, err := r.closeWhere(ctx, ReasonNodeRemoved, "id IN ("+strings.Join(where, ", ")+")", ids...)
+	return err
 }
 
 // knownKey is the key pinned for nodeID, nil when none is.

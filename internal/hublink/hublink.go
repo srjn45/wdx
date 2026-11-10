@@ -95,12 +95,16 @@ type Options struct {
 	// connected; nil pushes none.
 	Outbox Outbox
 	// NodeRemoved, when not nil, is given each node the hub says was
-	// removed from the account, and AccountNodes the account's nodes as the
-	// hub lists them after each welcome, this one among them, so that the
-	// node also learns of those removed while it was not connected. Either
-	// may be called again with what it was given before.
+	// removed from the account. AccountNodes, when not nil, is called after
+	// each welcome before the hub is asked for the account's nodes, and the
+	// function it returns, when not nil, is given them as the hub listed
+	// them, this one among them, so that the node also learns of those
+	// removed while it was not connected; it is not called when the hub
+	// could not be asked. Asked first, it can leave what changed while the
+	// hub answered. Either may be called again with what it was given
+	// before.
 	NodeRemoved  func(ctx context.Context, n NodeRef)
-	AccountNodes func(ctx context.Context, nodes []NodeRef)
+	AccountNodes func(ctx context.Context) func(nodes []NodeRef)
 	// WrapNodes, when not nil, wraps the transport to the node endpoint:
 	// tests lose the hub's answers with it.
 	WrapNodes func(http.RoundTripper) http.RoundTripper

@@ -1155,7 +1155,7 @@ func TestNodeGone(t *testing.T) {
 	if err := laptop.remote.NodeGone(laptop.ctx, desktop.ref.ID); err != nil {
 		t.Fatal(err)
 	}
-	if err := laptop.remote.AccountNodes(laptop.ctx, []hublink.NodeRef{laptop.ref, phone.ref}); err != nil {
+	if err := laptop.remote.AccountNodes(laptop.ctx, laptop.asking(), []hublink.NodeRef{laptop.ref, phone.ref}); err != nil {
 		t.Fatal(err)
 	}
 	if changes.Load() != before || len(laptop.audited()) != audited || laptop.closedReason(kept.ID) != "" {
@@ -1163,7 +1163,7 @@ func TestNodeGone(t *testing.T) {
 	}
 
 	// The catch-up: the phone is not among the account's nodes any more.
-	if err := laptop.remote.AccountNodes(laptop.ctx, []hublink.NodeRef{laptop.ref}); err != nil {
+	if err := laptop.remote.AccountNodes(laptop.ctx, laptop.asking(), []hublink.NodeRef{laptop.ref}); err != nil {
 		t.Fatal(err)
 	}
 	if got := laptop.closedReason(kept.ID); got != ReasonNodeRemoved || !laptop.keyKnown(phone) {
@@ -1179,4 +1179,42 @@ func TestNodeGone(t *testing.T) {
 	w.clock.Advance(authcode.Period)
 	_, _, err := laptop.open(desktop, desktop.code(0))
 	wantCode(t, err, CodeNodeKeyMismatch)
+}
+
+// asking is the node's sessions open as it asks the hub for the account's
+// nodes.
+func (n *node) asking() NodesAsked {
+	n.t.Helper()
+	asked, err := n.remote.AskingNodes(n.ctx)
+	if err != nil {
+		n.t.Fatal(err)
+	}
+	return asked
+}
+
+// Codex's proof (REVIEW_COR_CODEX C6): a list the hub took before a node
+// joined, arriving after that node opened a session, leaves the session.
+func TestAccountNodesLeavesLaterSessions(t *testing.T) {
+	t.Parallel()
+	w := newWorld(t)
+	desktop := w.newNode(w.hub.User, "desktop")
+	phone := w.newNode(w.hub.User, "phone")
+	desktop.setUp()
+	gone := phone.mustOpen(desktop)
+	w.hub.RemoveNode(desktop.hn, "id:"+phone.ref.ID)
+
+	// The hub lists the account: the desktop alone, the laptop not yet a
+	// node. The laptop joins and opens a session before the list arrives.
+	asked := desktop.asking()
+	nodes := []hublink.NodeRef{desktop.ref}
+	laptop := w.newNode(w.hub.User, "laptop")
+	w.clock.Advance(authcode.Period)
+	s := laptop.mustOpen(desktop)
+	if err := desktop.remote.AccountNodes(desktop.ctx, asked, nodes); err != nil {
+		t.Fatal(err)
+	}
+	if got := desktop.closedReason(s.ID); got != "" {
+		t.Errorf("the laptop's session closed %q, want it open", got)
+	}
+	desktop.wantClosedFor(gone.ID, ReasonNodeRemoved)
 }
