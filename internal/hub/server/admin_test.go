@@ -101,11 +101,27 @@ func TestHousekeeping(t *testing.T) {
 	}
 }
 
+// An invite expires the life asked after it was made, by the hub's clock.
+func TestInviteExpires(t *testing.T) {
+	t.Parallel()
+	now := time.Now().Truncate(time.Second)
+	th := start(t, func(o *Options) { o.Now = func() time.Time { return now } })
+	hour := int64(3600)
+	inv, err := th.adminClient(t).CreateInviteWithResponse(context.Background(), hubapi.CreateInvite{ExpiresSeconds: &hour})
+	if err != nil || inv.JSON201 == nil {
+		t.Fatalf("invite: %v %s", err, inv.Body)
+	}
+	if got := inv.JSON201.Invite.ExpiresAt; !got.Equal(now.Add(time.Hour)) {
+		t.Fatalf("want an hour from %s, got %s", now, got)
+	}
+}
+
 // An invite's link and a reset's are measured in the log, never logged, nor
 // is their token.
 func TestLinksNeverLogged(t *testing.T) {
 	t.Parallel()
-	th := start(t, nil)
+	now := time.Now().Truncate(time.Second)
+	th := start(t, func(o *Options) { o.Now = func() time.Time { return now } })
 	ctx := context.Background()
 	admin := th.adminClient(t)
 	inv, err := admin.CreateInviteWithResponse(ctx, hubapi.CreateInvite{})
@@ -116,8 +132,8 @@ func TestLinksNeverLogged(t *testing.T) {
 	if !strings.HasPrefix(link, "http://localhost:8080/signup?invite=") {
 		t.Fatalf("unexpected link %q", link)
 	}
-	if got := time.Until(inv.JSON201.Invite.ExpiresAt); got < 23*time.Hour || got > DefaultInviteLife {
-		t.Fatalf("want 24 hours by default, got %s", got)
+	if got := inv.JSON201.Invite.ExpiresAt; !got.Equal(now.Add(DefaultInviteLife)) {
+		t.Fatalf("want 24 hours by default, from %s, got %s", now, got)
 	}
 	_, _, err = th.server.Accounts().SignUp(ctx, account.By{Actor: audit.ActorUser},
 		account.SignUp{Invite: tokenOf(t, link, "invite"), Username: "alice", Password: "a password long enough"})

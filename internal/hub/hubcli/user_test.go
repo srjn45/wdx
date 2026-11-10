@@ -97,19 +97,15 @@ func wantLinkSecret(t *testing.T, home, link, path, key string) {
 
 func TestUserInvite(t *testing.T) {
 	t.Parallel()
-	home := newHub(t)
+	now := time.Now().Truncate(time.Second)
+	home, _ := newHubAt(t, func() time.Time { return now })
 	v, exit := hubJSON(t, home, "user", "invite")
 	want(t, v, exit, clikit.ExitOK, "result", string(hubapi.ResultInvited))
 	wantLinkSecret(t, home, linkOf(t, v, "invite"), "/signup", "invite")
-	expires, err := time.Parse(time.RFC3339, v["invite"].(map[string]any)["expires_at"].(string))
-	if err != nil || time.Until(expires) < 23*time.Hour || time.Until(expires) > 24*time.Hour {
-		t.Fatalf("want 24 hours, got %v: %v", v, err)
-	}
+	wantExpires(t, v, now.Add(24*time.Hour))
 	v, exit = hubJSON(t, home, "user", "invite", "--expires", "72h")
 	want(t, v, exit, clikit.ExitOK, "result", string(hubapi.ResultInvited))
-	if expires, _ := time.Parse(time.RFC3339, v["invite"].(map[string]any)["expires_at"].(string)); time.Until(expires) < 71*time.Hour {
-		t.Fatalf("want 72 hours, got %v", v)
-	}
+	wantExpires(t, v, now.Add(72*time.Hour))
 
 	out := hub(t, home, "user", "invite")
 	lines := strings.Split(out.Stdout, "\n")
@@ -117,6 +113,16 @@ func TestUserInvite(t *testing.T) {
 		t.Fatalf("unexpected text %+v", out)
 	}
 	wantLinkSecret(t, home, lines[1], "/signup", "invite")
+}
+
+// wantExpires checks the invite printed in v expires at want.
+func wantExpires(t *testing.T, v map[string]any, want time.Time) {
+	t.Helper()
+	invite, _ := v["invite"].(map[string]any)
+	s, _ := invite["expires_at"].(string)
+	if got, err := time.Parse(time.RFC3339, s); err != nil || !got.Equal(want) {
+		t.Fatalf("want the invite to expire at %s, got %v: %v", want, v, err)
+	}
 }
 
 func TestUserInviteRefused(t *testing.T) {

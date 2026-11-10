@@ -110,6 +110,12 @@ func newHub(t *testing.T) string {
 // newHubServer is newHub, with the hub.
 func newHubServer(t *testing.T) (string, *server.Server) {
 	t.Helper()
+	return newHubAt(t, nil)
+}
+
+// newHubAt is newHubServer, with the hub's clock now, or time.Now when nil.
+func newHubAt(t *testing.T, now func() time.Time) (string, *server.Server) {
+	t.Helper()
 	home := newHome(t)
 	sqlitetest.Seed(t, hubconfig.DBPath(home), hubdb.Open)
 	logs := logging.NewDailyFile(hubconfig.LogsDir(home), name, 7, time.Now)
@@ -121,6 +127,7 @@ func newHubServer(t *testing.T) (string, *server.Server) {
 		Reload:   func() (hubconfig.Config, error) { return hubconfig.Load(getenv) },
 		Settings: settingStore{getenv: getenv},
 		Argon2:   account.Argon2{Memory: 8, Time: 1, Threads: 1},
+		Now:      now,
 	})
 	if err != nil {
 		stop()
