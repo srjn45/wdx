@@ -195,6 +195,8 @@ It puts the kept version back, with the config file as it was. The database stay
 $ sudo wdx-hub backup --out /var/lib/wdx-hub/.wdx-hub/backups/nightly.db
 ```
 
+It writes the database's copy to that path and the certificate authority the nodes trust, `<home>/ca/`, to the directory beside it with `.ca` added, here `backups/nightly.db.ca/`; neither may be there already, and a backup that fails leaves neither. That directory holds the certificate authority's private key: keep the backup as safe as the master key, which it still does not hold. To restore it, with the hub stopped, put the copy at `<home>/hub.db` and its `.ca` directory at `<home>/ca/`, both owned by `wdx-hub`, and the master key in the config file as before. A hub whose database has nodes refuses to start without its certificate authority (`ca_missing`), rather than make a new one that would log every node out. On Fly.io the volume's snapshots hold `ca/` with the database already.
+
 To move the hub to another machine, install it there, stop both (`sudo systemctl stop wdx-hub`), copy the old home, `/var/lib/wdx-hub/.wdx-hub`, over the new one, owned by `wdx-hub`, and start it: the database, the certificate authority the nodes trust and the master key go together.
 
 ## Uninstalling

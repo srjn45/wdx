@@ -26,6 +26,12 @@ func problem(err error) (clikit.Problem, bool) {
 		p.Hint = &hint
 		return toProblem(p), true
 	}
+	if e, ok := errors.AsType[*server.CAMissingError](err); ok {
+		p := hubapi.NewProblem(hubapi.ErrorCodeCaMissing, err.Error())
+		hint := "restore the certificate authority to " + e.Dir + ", from the <path>.ca/ directory beside the backup of the database: a new one would log every node out"
+		p.Hint = &hint
+		return toProblem(p), true
+	}
 	if unavailable(err) {
 		p := hubapi.NewProblem(hubapi.ErrorCodeHubUnavailable, err.Error())
 		hint := "run " + name + " serve"

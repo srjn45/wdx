@@ -590,7 +590,7 @@ func TestBackup(t *testing.T) {
 	admin := th.adminClient(t)
 	out := filepath.Join(t.TempDir(), "copy.db")
 	r, err := admin.BackupWithResponse(ctx, hubapi.Backup{Path: out})
-	if err != nil || r.JSON201 == nil || r.JSON201.Result != hubapi.ResultBackedUp || r.JSON201.Path != out {
+	if err != nil || r.JSON201 == nil || r.JSON201.Result != hubapi.ResultBackedUp || r.JSON201.Path != out || r.JSON201.CaPath != out+".ca" {
 		t.Fatalf("backup: %v %d %s", err, r.StatusCode(), r.Body)
 	}
 	db, err := hubdb.Open(ctx, out)
@@ -598,6 +598,29 @@ func TestBackup(t *testing.T) {
 		t.Fatalf("the copy does not open: %v", err)
 	}
 	db.Close()
+	wantMode(t, out+".ca", os.ModeDir|0o700)
+	for _, name := range []string{"ca.key", "ca.crt", "nodes.key", "nodes.crt"} {
+		wantMode(t, filepath.Join(out+".ca", name), 0o600)
+		got, err := os.ReadFile(filepath.Join(out+".ca", name))
+		if want, _ := os.ReadFile(filepath.Join(hubconfig.CADir(th.home), name)); err != nil || string(got) != string(want) {
+			t.Errorf("%s: the copy differs from the hub's: %v", name, err)
+		}
+	}
+	if left, _ := filepath.Glob(filepath.Join(filepath.Dir(out), ".*")); len(left) != 0 {
+		t.Errorf("left beside the backup: %v", left)
+	}
+	// Nothing is written when the CA's path is taken.
+	taken := filepath.Join(t.TempDir(), "taken.db")
+	if err := os.Mkdir(taken+".ca", 0o700); err != nil {
+		t.Fatal(err)
+	}
+	refused, err := admin.BackupWithResponse(ctx, hubapi.Backup{Path: taken})
+	if err != nil || refused.StatusCode() != http.StatusConflict || problemCode(t, refused.Body) != hubapi.ErrorCodePathExists {
+		t.Errorf("a backup where its CA's copy is: want path_exists, got %v %d %s", err, refused.StatusCode(), refused.Body)
+	}
+	if left, _ := os.ReadDir(filepath.Dir(taken)); len(left) != 1 {
+		t.Errorf("want only the directory there, got %v", left)
+	}
 
 	again, err := admin.BackupWithResponse(ctx, hubapi.Backup{Path: out})
 	if err != nil || again.StatusCode() != http.StatusConflict || problemCode(t, again.Body) != hubapi.ErrorCodePathExists {
@@ -607,6 +630,70 @@ func TestBackup(t *testing.T) {
 	if err != nil || relative.StatusCode() != http.StatusUnprocessableEntity || problemCode(t, relative.Body) != hubapi.ErrorCodeInvalidArgument {
 		t.Errorf("a relative path: want invalid_argument, got %v %d %s", err, relative.StatusCode(), relative.Body)
 	}
+
+	// Restored, the copy and its CA start a hub its nodes still trust.
+	restored := testConfig(t)
+	if err := os.Rename(out, hubconfig.DBPath(restored.Home)); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Rename(out+".ca", hubconfig.CADir(restored.Home)); err != nil {
+		t.Fatal(err)
+	}
+	restored.MasterKey = th.server.opts.Config.MasterKey
+	s, err := Listen(ctx, Options{Config: restored, Log: slog.New(slog.DiscardHandler)})
+	if err != nil {
+		t.Fatalf("the restored hub: %v", err)
+	}
+	if !s.CA().Certificate().Equal(th.server.CA().Certificate()) {
+		t.Error("the restored hub has another CA")
+	}
+	s.close()
+}
+
+// wantMode checks path's type and permissions are mode.
+func wantMode(t *testing.T, path string, mode os.FileMode) {
+	t.Helper()
+	info, err := os.Stat(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := info.Mode() & (os.ModeType | os.ModePerm); got != mode {
+		t.Errorf("%s: mode %v, want %v", path, got, mode)
+	}
+}
+
+// A hub whose database has nodes refuses to start without the CA they trust,
+// rather than make another; with only removed nodes, it makes one.
+func TestCAMissing(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	cfg := testConfig(t)
+	sqlitetest.Seed(t, hubconfig.DBPath(cfg.Home), hubdb.Open)
+	db, err := hubdb.Open(ctx, hubconfig.DBPath(cfg.Home))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+	if _, err := db.Exec(`INSERT INTO users (id, username, created_at) VALUES ('usr-1', 'alice', 1);
+		INSERT INTO nodes (id, user_id, name, public_key, os, version, created_at) VALUES ('node-1', 'usr-1', 'desktop', x'00', 'linux/amd64', '0.5.0', 1)`); err != nil {
+		t.Fatal(err)
+	}
+	_, err = Listen(ctx, Options{Config: cfg, Log: slog.New(slog.DiscardHandler)})
+	if e, ok := errors.AsType[*CAMissingError](err); !ok || e.Nodes != 1 || e.Dir != hubconfig.CADir(cfg.Home) {
+		t.Fatalf("want *CAMissingError, got %v", err)
+	}
+	if made, err := ca.Made(hubconfig.CADir(cfg.Home)); made || err != nil {
+		t.Fatalf("a CA was made: %v", err)
+	}
+
+	if _, err := db.Exec(`UPDATE nodes SET revoked_at = 2`); err != nil {
+		t.Fatal(err)
+	}
+	s, err := Listen(ctx, Options{Config: cfg, Log: slog.New(slog.DiscardHandler)})
+	if err != nil {
+		t.Fatalf("with only removed nodes: %v", err)
+	}
+	s.close()
 }
 
 func TestAlreadyRunning(t *testing.T) {

@@ -82,18 +82,41 @@ func (a *api) Reload(ctx context.Context, _ hubapi.ReloadRequestObject) (hubapi.
 	return hubapi.Reload200JSONResponse{Result: hubapi.ResultReloaded, NotApplied: notApplied}, nil
 }
 
+// caSuffix names the certificate authority's copy after the database's.
+const caSuffix = ".ca"
+
 func (a *api) Backup(ctx context.Context, req hubapi.BackupRequestObject) (hubapi.BackupResponseObject, error) {
 	path := req.Body.Path
 	log := logging.FromContext(ctx)
 	if !filepath.IsAbs(path) {
 		return nil, &InvalidPathError{Path: path, Reason: "not absolute"}
 	}
-	if _, err := os.Lstat(path); !errors.Is(err, fs.ErrNotExist) {
-		log.Info("backup refused", "path", path, "reason", "path exists")
-		return nil, &PathExistsError{Path: path}
+	caPath := path + caSuffix
+	for _, p := range []string{path, caPath} {
+		if _, err := os.Lstat(p); !errors.Is(err, fs.ErrNotExist) {
+			log.Info("backup refused", "path", p, "reason", "path exists")
+			return nil, &PathExistsError{Path: p}
+		}
+	}
+	// The CA is written apart and renamed into place once the database is
+	// copied, so that a backup is whole or not there.
+	tmp, err := os.MkdirTemp(filepath.Dir(path), "."+filepath.Base(caPath)+"-")
+	if err != nil {
+		return nil, err
+	}
+	defer os.RemoveAll(tmp) // gone once renamed
+	if err := a.server.ca.CopyTo(tmp); err != nil {
+		return nil, err
 	}
 	if err := sqlite.Backup(ctx, hubconfig.DBPath(a.server.opts.Config.Home), path); err != nil {
 		return nil, err
 	}
-	return hubapi.Backup201JSONResponse{Result: hubapi.ResultBackedUp, Path: path}, nil
+	if err := os.Rename(tmp, caPath); err != nil {
+		if err := os.Remove(path); err != nil {
+			log.Error("backup not removed", "path", path, "err", err)
+		}
+		return nil, err
+	}
+	log.Info("ca backed up", "path", caPath)
+	return hubapi.Backup201JSONResponse{Result: hubapi.ResultBackedUp, Path: path, CaPath: caPath}, nil
 }

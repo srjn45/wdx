@@ -103,6 +103,34 @@ func Load(ctx context.Context, dir string, opts ...Option) (*CA, error) {
 
 func (c *CA) path(name string) string { return filepath.Join(c.dir, name) }
 
+// Made says whether dir holds a CA's key: Load makes one when it does not.
+func Made(dir string) (bool, error) {
+	_, err := os.Stat(filepath.Join(dir, keyFile))
+	if errors.Is(err, fs.ErrNotExist) {
+		return false, nil
+	}
+	return err == nil, err
+}
+
+// CopyTo copies the CA's files into dir, which must exist: its key and
+// certificate, and the node endpoint's once issued, each only the user may
+// read.
+func (c *CA) CopyTo(dir string) error {
+	for _, name := range []string{keyFile, certFile, nodesKeyFile, nodesCrtFile} {
+		b, err := os.ReadFile(c.path(name))
+		if errors.Is(err, fs.ErrNotExist) && (name == nodesKeyFile || name == nodesCrtFile) {
+			continue // issued again at the next start
+		}
+		if err != nil {
+			return err
+		}
+		if err := atomicfile.Write(filepath.Join(dir, name), b, 0o600); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
 // create makes the CA's key and certificate and writes them, the certificate
 // first: a key on disk means the CA is whole.
 func (c *CA) create() error {

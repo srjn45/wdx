@@ -209,6 +209,34 @@ type Server struct {
 	requestDuration atomic.Pointer[metric.Float64Histogram]
 }
 
+// CAMissingError is a home with no certificate authority whose database has
+// nodes, which trust the one it had: a new one would log every node out.
+type CAMissingError struct {
+	Dir   string
+	Nodes int
+}
+
+func (e *CAMissingError) Error() string {
+	return fmt.Sprintf("%s holds no certificate authority, and the %d nodes of the database trust the one it held", e.Dir, e.Nodes)
+}
+
+// caFound fails with a *CAMissingError when dir holds no CA and the database
+// has nodes.
+func (s *Server) caFound(ctx context.Context, dir string) error {
+	made, err := ca.Made(dir)
+	if err != nil || made {
+		return err
+	}
+	nodes, err := s.nodes.Count(ctx)
+	if err != nil {
+		return err
+	}
+	if nodes > 0 {
+		return &CAMissingError{Dir: dir, Nodes: nodes}
+	}
+	return nil
+}
+
 // Listen takes the lock of the home, so that no other hub serves it, opens
 // the database, loads the certificate authority, making them at the first
 // start, and listens on the three endpoints.
@@ -265,6 +293,9 @@ func Listen(ctx context.Context, opts Options) (_ *Server, err error) {
 		Registration:   func() string { return s.registration.Load().(string) },
 		Now:            opts.Now,
 	}); err != nil {
+		return nil, err
+	}
+	if err := s.caFound(ctx, hubconfig.CADir(cfg.Home)); err != nil {
 		return nil, err
 	}
 	if s.ca, err = ca.Load(ctx, hubconfig.CADir(cfg.Home), ca.WithClock(opts.Now)); err != nil {

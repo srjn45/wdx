@@ -206,6 +206,13 @@ func (s *Store) SetState(ctx context.Context, id string, remoteAccess, codeSetup
 	return err
 }
 
+// Count is how many nodes the hub's accounts have, the removed left out.
+func (s *Store) Count(ctx context.Context) (int, error) {
+	var n int
+	err := s.db.QueryRowContext(ctx, "SELECT COUNT(*) FROM nodes WHERE revoked_at IS NULL").Scan(&n)
+	return n, err
+}
+
 // Seen records that the node id is connected now: at its close, and at most
 // once a minute between, which its connection decides.
 func (s *Store) Seen(ctx context.Context, id string) error {

@@ -617,14 +617,15 @@ components:
       required: [path]
       additionalProperties: false
       properties:
-        path: { type: string, minLength: 1, description: "Absolute path of the copy, on the hub's filesystem; nothing may be there." }
+        path: { type: string, minLength: 1, description: "Absolute path of the copy, on the hub's filesystem; nothing may be there, nor at the path with .ca added, where the certificate authority goes." }
 
     BackupResult:
       type: object
-      required: [result, path]
+      required: [result, path, ca_path]
       properties:
         result: { $ref: "#/components/schemas/Result" }
         path: { type: string }
+        ca_path: { type: string, description: "The directory the certificate authority was copied to, the path with .ca added: restored at <home>/ca/ with the copy." }
 
     CreateInvite:
       type: object
@@ -1038,7 +1039,7 @@ components:
       type: string
       description: |
         Stable error code; never changed or reused. already_running,
-        hub_unavailable and cancelled are reported by the CLI, never by the
+        ca_missing, hub_unavailable and cancelled are reported by the CLI, never by the
         hub, and so are the codes of wdx-hub update, from download_failed
         on.
       enum:
@@ -1083,6 +1084,7 @@ components:
         - not_installed
         - update_source_untrusted
         - home_unsafe
+        - ca_missing
 
     Problem:
       type: object

@@ -468,16 +468,19 @@ func TestBackup(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "hub.db")
 	v, exit := hubJSON(t, home, "backup", "--out", path)
 	want(t, v, exit, clikit.ExitOK, "result", string(hubapi.ResultBackedUp))
-	if v["path"] != path {
-		t.Fatalf("want the path, got %v", v)
+	if v["path"] != path || v["ca_path"] != path+".ca" {
+		t.Fatalf("want the paths, got %v", v)
 	}
-	if _, err := os.Stat(path); err != nil {
-		t.Fatal(err)
+	for _, p := range []string{path, filepath.Join(path+".ca", "ca.key")} {
+		if _, err := os.Stat(p); err != nil {
+			t.Fatal(err)
+		}
 	}
 	v, exit = hubJSON(t, home, "backup", "--out", path)
 	want(t, v, exit, clikit.ExitRejected, "code", string(hubapi.ErrorCodePathExists))
 	// Relative to the working directory, the home in these runs.
-	if out := hub(t, home, "backup", "--out", "copy.db"); out.Stdout != "backed up the database to "+filepath.Join(home, "copy.db")+"\n" {
+	copied := filepath.Join(home, "copy.db")
+	if out := hub(t, home, "backup", "--out", "copy.db"); out.Stdout != "backed up the database to "+copied+" and the certificate authority to "+copied+".ca\n" {
 		t.Fatalf("unexpected text %+v", out)
 	}
 }
@@ -634,6 +637,28 @@ func TestServe(t *testing.T) {
 	}
 	if !strings.Contains(out.Stdout, `"msg":"hub stopped"`) || !strings.Contains(out.Stdout, `"process":"hub"`) {
 		t.Fatalf("want the hub's own lines on stdout too, got %s", out.Stdout)
+	}
+}
+
+// A hub whose database has nodes and whose home lost its CA does not start.
+func TestServeCAMissing(t *testing.T) {
+	t.Parallel()
+	home := newHome(t)
+	path := hubconfig.DBPath(home)
+	sqlitetest.Seed(t, path, hubdb.Open)
+	db, err := hubdb.Open(context.Background(), path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, err = db.Exec(`INSERT INTO users (id, username, created_at) VALUES ('usr-1', 'alice', 1);
+		INSERT INTO nodes (id, user_id, name, public_key, os, version, created_at) VALUES ('node-1', 'usr-1', 'desktop', x'00', 'linux/amd64', '0.5.0', 1)`)
+	db.Close()
+	if err != nil {
+		t.Fatal(err)
+	}
+	out := serve(t, home, nil).exit(t)
+	if out.Exit != clikit.ExitSystem || !strings.Contains(out.Stderr, "[ca_missing]") || !strings.Contains(out.Stderr, "hint: restore ") {
+		t.Fatalf("want ca_missing with its hint, got %+v", out)
 	}
 }
 

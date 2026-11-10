@@ -17,17 +17,20 @@ func newBackupCmd() *cobra.Command {
 	var out string
 	cmd := &cobra.Command{
 		Use:   "backup --out <path>",
-		Short: "Copy the hub's database while it runs",
-		Long: "The running hub writes a consistent copy of its database to the path, which\n" +
-			"must not exist, on the filesystem it runs on: in a container, the container's.",
+		Short: "Copy the hub's database and certificate authority while it runs",
+		Long: "The running hub writes a consistent copy of its database to the path, and its\n" +
+			"certificate authority to the directory <path>.ca beside it, neither of which\n" +
+			"may exist, on the filesystem it runs on: in a container, the container's. The\n" +
+			"directory holds the certificate authority's private key: keep the backup as\n" +
+			"safe as the master key, which it does not hold.",
 		Example: clikit.Examples(
 			"Back up the database", name+" backup --out /backups/hub.db",
 		),
 		Args: cobra.NoArgs,
 		Annotations: map[string]string{
 			clikit.FailurePrefix: "not backed up",
-			clikit.OutputNote: "The path of the copy.\n" +
-				`With --json: {"result": "backed_up", "path": ...}`,
+			clikit.OutputNote: "The paths of the copy and of the certificate authority's.\n" +
+				`With --json: {"result": "backed_up", "path": ..., "ca_path": ...}`,
 			clikit.Results: clikit.Annotation(string(hubapi.ResultBackedUp)),
 			clikit.Errors:  clikit.CodeList(hubapi.ErrorCodeHubUnavailable, hubapi.ErrorCodePathExists),
 		},
@@ -52,7 +55,7 @@ func newBackupCmd() *cobra.Command {
 type backupResult hubapi.BackupResult
 
 func (r backupResult) Text(w io.Writer, st style.Style) {
-	fmt.Fprintf(w, "%s the database to %s\n", st.Success("backed up"), st.Name(r.Path))
+	fmt.Fprintf(w, "%s the database to %s and the certificate authority to %s\n", st.Success("backed up"), st.Name(r.Path), st.Name(r.CaPath))
 }
 
 // topics are wdx-hub's help topics.

@@ -53,6 +53,7 @@ var Codes = map[ErrorCode]clikit.CodeInfo{
 	ErrorCodeNotInstalled:          codeInfo(http.StatusUnprocessableEntity, clikit.ExitUsage, "the hub is not installed as install-hub.sh installs it: update it the way it was installed"),
 	ErrorCodeUpdateSourceUntrusted: codeInfo(http.StatusForbidden, clikit.ExitRejected, "root does not update from a release address the hub's own config file names"),
 	ErrorCodeHomeUnsafe:            codeInfo(http.StatusInternalServerError, clikit.ExitSystem, "the hub's home, or a directory root writes in it, is a symlink or not the hub's user's"),
+	ErrorCodeCaMissing:             codeInfo(http.StatusInternalServerError, clikit.ExitSystem, "the home has no certificate authority and the database has nodes that trust one: restore its ca/"),
 }
 
 func codeInfo(status, exit int, description string) clikit.CodeInfo {

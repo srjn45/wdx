@@ -25,8 +25,10 @@ func newServeCmd() *cobra.Command {
 		Long: "The hub serves its web endpoint on listen.web, its node endpoint on listen.nodes\n" +
 			"and its admin socket in the home, until SIGINT or SIGTERM; then it lets the\n" +
 			"requests in flight finish. Its first start creates the database and the\n" +
-			"certificate authority. It logs JSON lines to stdout, where a container or a\n" +
-			"service manager keeps them, so it has no --json. One hub serves a home.",
+			"certificate authority; a later start without the certificate authority, when\n" +
+			"the database has nodes, fails rather than make another. It logs JSON lines to\n" +
+			"stdout, where a container or a service manager keeps them, so it has no\n" +
+			"--json. One hub serves a home.",
 		Example: clikit.Examples(
 			"Run the hub", name+" serve",
 		),
@@ -35,7 +37,7 @@ func newServeCmd() *cobra.Command {
 			clikit.FailurePrefix: "not serving",
 			clikit.OutputNote: "Its log, as JSON lines on stdout; on stderr, once it listens:\n" +
 				"serving on <web> (web), <nodes> (nodes) and <socket> (admin)",
-			clikit.Errors: clikit.CodeList(hubapi.ErrorCodeAlreadyRunning),
+			clikit.Errors: clikit.CodeList(hubapi.ErrorCodeAlreadyRunning, hubapi.ErrorCodeCaMissing),
 		},
 		RunE: runServe,
 	}
