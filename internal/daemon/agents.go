@@ -43,9 +43,11 @@ func (s *server) CreateAgent(ctx context.Context, req api.CreateAgentRequestObje
 	if b.Prompt != nil && strings.TrimSpace(*b.Prompt) == "" {
 		return nil, &requestError{err: errors.New("prompt is empty")}
 	}
-	// With a project, an empty dir starts in its clone path: a client on
-	// another node sends one, its working directory meaning nothing here.
-	if b.Dir != "" || b.Project == nil {
+	// With a project, an empty dir starts in its clone path, and with a parent
+	// named by id in the parent's: a client on another node sends one, its
+	// working directory meaning nothing here.
+	parentByID := b.Parent != nil && strings.HasPrefix(*b.Parent, idPrefix)
+	if b.Dir != "" || b.Project == nil && !parentByID {
 		if err := absolute(b.Dir); err != nil {
 			return nil, err
 		}

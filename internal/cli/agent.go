@@ -52,7 +52,9 @@ func newAgentCreateCmd() *cobra.Command {
 			"among agents and terminals.\n\n" +
 			"With a parent flag it is a child of that agent: it belongs to the parent's\n" +
 			"project and starts in the parent's dir. Without one it is at the top level,\n" +
-			"even when an agent creates it: an agent finds its own id in " + identity.Env("AGENT_ID") + ".\n\n" +
+			"even when an agent creates it: an agent finds its own id in " + identity.Env("AGENT_ID") + ".\n" +
+			"With --node, --parent-id needs no project flag; --parent-name does, as a\n" +
+			"name is unique only within its project.\n\n" +
 			"With --worktree it starts in that worktree of the project instead: main is\n" +
 			"the clone, and any other name matches the last part of a worktree's path. A\n" +
 			"name that matches none creates the worktree in <project root>/.worktrees/<name>,\n" +
@@ -107,7 +109,7 @@ func newAgentCreateCmd() *cobra.Command {
 				}
 				mode = ptr(api.AgentPermissions(permissions))
 			}
-			dir, err := workDir(cmd)
+			dir, err := createDir(cmd, parentID, parentName)
 			if err != nil {
 				return err
 			}
@@ -757,6 +759,21 @@ func detail(err error, key string) string {
 	}
 	v, _ := (*e.Problem.Details)[key].(string)
 	return v
+}
+
+// createDir is the dir agent create sends: with --node and a parent named by
+// id none, as the host takes the project and dir from the parent; else the
+// working directory, which --node needs a project flag for, a parent's name
+// being unique only in its project.
+func createDir(cmd *cobra.Command, parentID, parentName string) (string, error) {
+	if nodeOf(cmd) != "" && parentID != "" {
+		return "", nil
+	}
+	dir, err := workDir(cmd)
+	if err != nil && nodeOf(cmd) != "" && parentName != "" {
+		return "", &clikit.Hinted{Err: err, Hint: "or name the parent by --parent-id, which needs no project flag"}
+	}
+	return dir, err
 }
 
 // agentResult is an agent a command changed.

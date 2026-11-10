@@ -578,6 +578,16 @@ func TestChildAgents(t *testing.T) {
 		t.Fatalf("project: %v %s", err, p.Body)
 	}
 
+	// With no dir and no project, as a client on another node sends it, an id
+	// is enough: the child starts in the parent's dir.
+	r, err = child(api.CreateAgent{Parent: &byID, Name: optional("from-afar")})
+	if err != nil || r.JSON201 == nil {
+		t.Fatalf("by id with no dir: %v %s", err, r.Body)
+	}
+	if a := r.JSON201.Agent; a.ProjectName != "app" || a.Dir != app {
+		t.Fatalf("by id with no dir: %+v", a)
+	}
+
 	// A removed parent stays, as removed, and refuses what needs a live one.
 	stop := true
 	d, err := td.client.DeleteAgentWithResponse(ctx, "id:"+parent.Id, &api.DeleteAgentParams{StopRunning: &stop})
@@ -604,7 +614,7 @@ func TestChildAgents(t *testing.T) {
 	wantProblem(t, r.ApplicationproblemJSONDefault, http.StatusConflict, api.ErrorCodeAgentRemoved)
 
 	// It goes with its last child.
-	for _, name := range []string{"by-id", "by-name"} {
+	for _, name := range []string{"by-id", "by-name", "from-afar"} {
 		if d, err := td.client.DeleteAgentWithResponse(ctx, name, &api.DeleteAgentParams{Project: optional("app"), StopRunning: &stop}); err != nil || d.JSON200 == nil {
 			t.Fatalf("remove %s: %v %s", name, err, d.Body)
 		}

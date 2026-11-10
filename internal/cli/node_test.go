@@ -324,6 +324,7 @@ func TestNodeCreatesInTheProject(t *testing.T) {
 	t.Parallel()
 	p := openPair(t)
 	app := newProjectDir(t, p.desktop.home, "app")
+	var parent *api.Agent
 	for _, args := range [][]string{
 		{"terminal", "create", "--project-name", "app", "--node", "desktop", "--json"},
 		{"agent", "create", "--project-name", "app", "--aca", "claude_code", "--node", "desktop", "--json"},
@@ -336,11 +337,31 @@ func TestNodeCreatesInTheProject(t *testing.T) {
 		case v.Terminal != nil:
 			dir = v.Terminal.Dir
 		case v.Agent != nil:
-			dir = v.Agent.Dir
+			dir, parent = v.Agent.Dir, v.Agent
 		}
 		if out.Exit != clikit.ExitOK || dir != app {
 			t.Errorf("%v: exit %d, dir %q, want %s: %s", args, out.Exit, dir, app, out.Stdout)
 		}
+	}
+	if parent == nil {
+		t.Fatal("no agent created to be a parent")
+	}
+
+	// A parent named by id gives the project, which needs no project flag.
+	args := []string{"agent", "create", "--parent-id", parent.Id, "--node", "desktop", "--json"}
+	out := p.onLaptop(laptopDir(t), nil, args...)
+	var v jsonOutput
+	_ = json.Unmarshal(clikittest.JSON(t, args, out, codes), &v)
+	if out.Exit != clikit.ExitOK || v.Agent == nil || v.Agent.ProjectName != "app" || v.Agent.Dir != app || v.Agent.ParentAgentId == nil || *v.Agent.ParentAgentId != parent.Id {
+		t.Errorf("%v: %+v", args, out)
+	}
+	// A parent's name is unique only in its project, which must be named.
+	args = []string{"agent", "create", "--parent-name", parent.Name, "--node", "desktop", "--json"}
+	out = p.onLaptop(laptopDir(t), nil, args...)
+	_ = json.Unmarshal(clikittest.JSON(t, args, out, codes), &v)
+	wantError(t, v, out.Exit, clikit.CodeUsage, clikit.ExitUsage)
+	if !strings.Contains(out.Stdout, "pass --project-id or --project-name with --node") || !strings.Contains(out.Stdout, "--parent-id, which needs no project flag") {
+		t.Errorf("%v: %s", args, out.Stdout)
 	}
 }
 

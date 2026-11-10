@@ -137,7 +137,7 @@ Without a project flag, the agent belongs to the project the working directory i
 
 Agents get a generated name such as swift-falcon unless `--name` is given; names have letters, numbers and - only, and are unique within a project, among agents and terminals.
 
-With a parent flag it is a child of that agent: it belongs to the parent's project and starts in the parent's dir. Without one it is at the top level, even when an agent creates it: an agent finds its own id in WDX\_AGENT\_ID.
+With a parent flag it is a child of that agent: it belongs to the parent's project and starts in the parent's dir. Without one it is at the top level, even when an agent creates it: an agent finds its own id in WDX\_AGENT\_ID. With `--node`, `--parent-id` needs no project flag; `--parent-name` does, as a name is unique only within its project.
 
 With `--worktree` it starts in that worktree of the project instead: main is the clone, and any other name matches the last part of a worktree's path. A name that matches none creates the worktree in &lt;project root&gt;/.worktrees/&lt;name&gt;, on a new branch of that name from the HEAD of where it would otherwise start. Removing the agent leaves the worktree.
 
