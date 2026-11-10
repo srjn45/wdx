@@ -43,11 +43,11 @@ func idleIn(t *testing.T, serve func(net.Conn)) (w *world, host, client *node, s
 	return w, host, client, s, conn
 }
 
-// wantUsedNow checks the host's row of s says it was used now, and is open.
+// wantUsedNow checks both rows of s say it was used now, and are open.
 func wantUsedNow(t *testing.T, w *world, host, client *node, s Session) {
 	t.Helper()
 	now := w.clock.Now()
-	for _, n := range []*node{host} {
+	for _, n := range []*node{host, client} {
 		if got := n.closedReason(s.ID); got != "" {
 			t.Fatalf("%s's row closed %q, want it open", n.ref.Name, got)
 		}
@@ -58,7 +58,8 @@ func wantUsedNow(t *testing.T, w *world, host, client *node, s Session) {
 }
 
 // An attach typed into every 30 seconds, at the shortest idle timeout,
-// stays open. The first bytes count, however soon after the stream opened.
+// stays open, and the client's row moves with the host's. The first bytes
+// count, however soon after the stream opened.
 func TestAttachInUseStaysOpen(t *testing.T) {
 	t.Parallel()
 	w, host, client, s, conn := idleIn(t, func(c net.Conn) { _, _ = io.Copy(c, c) })

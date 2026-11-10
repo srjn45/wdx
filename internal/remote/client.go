@@ -111,18 +111,27 @@ func (r *Remote) Stream(ctx context.Context, nodeID string) (net.Conn, Session, 
 		conn.Close()
 		return nil, Session{}, refusal(CodeSessionNotFound, "the session into node %s closed meanwhile", s.Node.Name)
 	}
-	return &carried{Conn: conn, r: r, id: s.ID}, s, nil
+	// The host moves its row on as bytes pass, and this node its own at the
+	// same pace, so that both show the same times.
+	log := logging.FromContext(ctx).With("session_id", s.ID)
+	used := &usedConn{Conn: conn, now: r.opts.Clock.Now, timeout: func() time.Duration { return s.idleTimeout }, used: func() {
+		if err := r.touch(context.WithoutCancel(ctx), s.ID, r.opts.Clock.Now()); err != nil {
+			log.Error("session idle time not moved on", "err", err)
+		}
+	}}
+	return &carried{Conn: used, stream: conn, r: r, id: s.ID}, s, nil
 }
 
 // carried is a stream of the outgoing session id, carried until closed.
 type carried struct {
 	net.Conn
-	r  *Remote
-	id string
+	stream net.Conn // the one carried, under Conn
+	r      *Remote
+	id     string
 }
 
 func (c *carried) Close() error {
-	c.r.dropped(c.id, c.Conn)
+	c.r.dropped(c.id, c.stream)
 	return c.Conn.Close()
 }
 
