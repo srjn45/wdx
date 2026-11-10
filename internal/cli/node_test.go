@@ -364,6 +364,12 @@ func TestNodeVersion(t *testing.T) {
 	if text.Exit != clikit.ExitOK || text.Stderr != "on node desktop\n" || !strings.Contains(text.Stdout, "daemon dev (none), API 1") {
 		t.Errorf("text: %+v", text)
 	}
+
+	// usage, the other command at the root the daemon serves, is the desktop's too.
+	args = []string{"usage", "--node", "desktop", "--json"}
+	if out := p.onLaptop("", nil, args...); out.Exit != clikit.ExitOK || served(t, p.desktop.home, runID(t, p.laptop.home, args)) != 1 {
+		t.Errorf("%v: not the desktop's: %+v", args, out)
+	}
 }
 
 func TestNodeSessionClosedMidCommand(t *testing.T) {

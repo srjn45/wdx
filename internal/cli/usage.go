@@ -25,7 +25,7 @@ func newUsageCmd() *cobra.Command {
 			"agent on this machine draws on the same one. A window used 100% or more is\n" +
 			"limited, and a bucket can be used while none of its windows is. Nothing is\n" +
 			"shown until an AI coding agent has told something; one on a plan without\n" +
-			"limits never does.",
+			"limits never does. With --node, the usage is the other node's.",
 		Example: clikit.Examples(
 			"Every limit", identity.Name+" usage",
 			"As JSON, for a script", identity.Name+" usage --json",

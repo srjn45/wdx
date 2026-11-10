@@ -286,7 +286,7 @@ func newRoot(cfg config.Config) *cobra.Command {
 		Color:   cfg.Color,
 		Topics:  topics,
 	}, addNodeFlag(newVersionCmd()), addNodeFlag(newProjectCmd(cfg.Home)), addNodeFlag(newTerminalCmd()), addNodeFlag(newAgentCmd()),
-		addNodeFlag(newWorktreeCmd()), addNodeFlag(newMessageCmd()), newDaemonCmd(cfg.Home), newObserveCmd(), newSettingCmd(), newUpdateCmd(cfg), newCompletionCmd(), newHolderCmd(), newCodesignCmd(), addNodeFlag(newTideCmd()), newDepsCmd(), addNodeFlag(newDocCmd()), newHubCmd(), addNodeFlag(newPlanCmd()), newUsageCmd())
+		addNodeFlag(newWorktreeCmd()), addNodeFlag(newMessageCmd()), newDaemonCmd(cfg.Home), newObserveCmd(), newSettingCmd(), newUpdateCmd(cfg), newCompletionCmd(), newHolderCmd(), newCodesignCmd(), addNodeFlag(newTideCmd()), newDepsCmd(), addNodeFlag(newDocCmd()), newHubCmd(), addNodeFlag(newPlanCmd()), addNodeFlag(newUsageCmd()))
 	wrapNode(root)
 	return root
 }
