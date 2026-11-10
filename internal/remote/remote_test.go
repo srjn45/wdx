@@ -169,8 +169,6 @@ type node struct {
 
 	access  atomic.Bool
 	timeout atomic.Int64
-	// checked has a value each time the idle timer looked.
-	checked chan struct{}
 	// secret is the code's secret, once set up.
 	secret string
 	serve  sync.WaitGroup
@@ -194,17 +192,11 @@ func (w *world) newNode(u hubtest.User, name string, adjust ...func(*Options)) *
 	if err != nil {
 		t.Fatal(err)
 	}
-	n := &node{t: t, w: w, ref: hublink.NodeRef{ID: hn.ID, Name: name}, hn: hn, home: home, db: d, link: link, files: authcode.Open(identity.HubDir(home)), ctx: ctx, checked: make(chan struct{}, 64)}
+	n := &node{t: t, w: w, ref: hublink.NodeRef{ID: hn.ID, Name: name}, hn: hn, home: home, db: d, link: link, files: authcode.Open(identity.HubDir(home)), ctx: ctx}
 	n.access.Store(true)
 	n.timeout.Store(int64(time.Hour))
 	n.opts = Options{DB: d, Link: link, Code: n.files, Clock: w.clock,
-		RemoteAccess: n.access.Load, IdleTimeout: func() time.Duration { return time.Duration(n.timeout.Load()) },
-		idleChecked: func() {
-			select {
-			case n.checked <- struct{}{}:
-			default:
-			}
-		}}
+		RemoteAccess: n.access.Load, IdleTimeout: func() time.Duration { return time.Duration(n.timeout.Load()) }}
 	for _, a := range adjust {
 		a(&n.opts)
 	}
@@ -744,12 +736,13 @@ func TestIdleSessionCloses(t *testing.T) {
 	if err := laptop.stream(desktop); err != nil {
 		t.Fatal(err)
 	}
-	drain(desktop.checked)
+	// At its expiry it is open still: it expires only once that passed.
 	w.clock.Advance(time.Minute)
-	desktop.idleChecked(t)
-	if got := desktop.closedReason(s.ID); got != ReasonIdle {
-		t.Fatalf("closed %q, want idle", got)
+	if err := laptop.stream(desktop); err != nil {
+		t.Fatal(err)
 	}
+	w.clock.Advance(time.Minute + time.Millisecond)
+	desktop.wantClosedFor(s.ID, ReasonIdle)
 	err := laptop.stream(desktop)
 	wantCode(t, err, CodeSessionClosed)
 	if got := laptop.closedReason(s.ID); got != ReasonIdle {
@@ -757,26 +750,6 @@ func TestIdleSessionCloses(t *testing.T) {
 	}
 	if got := desktop.audited(); got[len(got)-1] != nodeaudit.ActionSessionClosed {
 		t.Errorf("the desktop's audit chain %v", got)
-	}
-}
-
-func drain(ch chan struct{}) {
-	for {
-		select {
-		case <-ch:
-		default:
-			return
-		}
-	}
-}
-
-// idleChecked waits for the idle timer to have looked.
-func (n *node) idleChecked(t *testing.T) {
-	t.Helper()
-	select {
-	case <-n.checked:
-	case <-waittest.After(t):
-		t.Fatal("the idle timer did not look")
 	}
 }
 

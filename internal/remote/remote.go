@@ -120,9 +120,6 @@ type Options struct {
 	// Changed, when not nil, is called after a session opened or closed,
 	// either way, and after a wrong code; it must not block.
 	Changed func()
-	// idleChecked, when not nil, is called each time the idle timer has
-	// looked, for tests to wait on.
-	idleChecked func()
 	// linkCut, when not nil, is called in place of CutOff once the link
 	// is cut off, for tests.
 	linkCut func(ctx context.Context)

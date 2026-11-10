@@ -338,9 +338,6 @@ func (r *Remote) keepIdle() {
 		if err != nil && r.ctx.Err() == nil {
 			log.Error("idle sessions not closed", "err", err)
 		}
-		if r.opts.idleChecked != nil {
-			r.opts.idleChecked()
-		}
 		var wake <-chan time.Time
 		if !next.IsZero() {
 			wake = r.opts.Clock.After(next.Sub(r.opts.Clock.Now()))
@@ -354,12 +351,13 @@ func (r *Remote) keepIdle() {
 	}
 }
 
-// expireIdle closes the incoming sessions expired by now and returns when
-// the next expires, zero when none is open.
+// expireIdle closes the incoming sessions expired by now, those whose
+// expiry has passed, and returns when the next expires, zero when none is
+// open.
 func (r *Remote) expireIdle(ctx context.Context) (time.Time, error) {
 	now := r.opts.Clock.Now()
 	cutoff := now.Add(-r.opts.IdleTimeout()).UnixMilli()
-	if _, err := r.closeWhere(ctx, ReasonIdle, "direction = 'incoming' AND last_used_at <= ?", cutoff); err != nil {
+	if _, err := r.closeWhere(ctx, ReasonIdle, "direction = 'incoming' AND last_used_at < ?", cutoff); err != nil {
 		return time.Time{}, err
 	}
 	var oldest sql.NullInt64
@@ -369,5 +367,5 @@ func (r *Remote) expireIdle(ctx context.Context) (time.Time, error) {
 	if !oldest.Valid {
 		return time.Time{}, nil
 	}
-	return time.UnixMilli(oldest.Int64).Add(r.opts.IdleTimeout()), nil
+	return time.UnixMilli(oldest.Int64).Add(r.opts.IdleTimeout() + time.Millisecond), nil
 }

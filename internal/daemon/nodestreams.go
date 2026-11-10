@@ -73,7 +73,7 @@ func (c connectResponse) VisitConnectHubNodeResponse(w http.ResponseWriter) erro
 		c.stream.Close()
 		return nil
 	}
-	c.streams.copy(c.log, conn, in, c.stream, nil)
+	c.streams.copy(c.log, conn, in, c.stream)
 	return nil
 }
 
@@ -125,8 +125,7 @@ func newNodeStreams() *nodeStreams {
 
 // copy copies bytes between the CLI's connection, read through in, and
 // stream until either ends, then closes both and logs the bytes counted.
-// active, when not nil, is called before bytes are passed on either way.
-func (n *nodeStreams) copy(log *slog.Logger, conn net.Conn, in io.Reader, stream net.Conn, active func()) {
+func (n *nodeStreams) copy(log *slog.Logger, conn net.Conn, in io.Reader, stream net.Conn) {
 	n.mu.Lock()
 	if n.closed {
 		n.mu.Unlock()
@@ -138,10 +137,6 @@ func (n *nodeStreams) copy(log *slog.Logger, conn net.Conn, in io.Reader, stream
 	n.copying.Add(1)
 	n.mu.Unlock()
 	start := time.Now()
-	var to, from io.Writer = stream, conn
-	if active != nil {
-		to, from = activeWriter{stream, active}, activeWriter{conn, active}
-	}
 	go func() {
 		defer n.copying.Done()
 		var sent, received int64 // read once both copies ended
@@ -154,11 +149,11 @@ func (n *nodeStreams) copy(log *slog.Logger, conn net.Conn, in io.Reader, stream
 		}
 		var both sync.WaitGroup
 		both.Go(func() {
-			sent, _ = io.Copy(to, in)
+			sent, _ = io.Copy(stream, in)
 			end()
 		})
 		both.Go(func() {
-			received, _ = io.Copy(from, stream)
+			received, _ = io.Copy(conn, stream)
 			end()
 		})
 		both.Wait()
@@ -167,17 +162,6 @@ func (n *nodeStreams) copy(log *slog.Logger, conn net.Conn, in io.Reader, stream
 		n.mu.Unlock()
 		log.Info("stream closed", "bytes_sent", sent, "bytes_received", received, logging.Duration(start))
 	}()
-}
-
-// activeWriter calls active before each write.
-type activeWriter struct {
-	w      io.Writer
-	active func()
-}
-
-func (a activeWriter) Write(p []byte) (int, error) {
-	a.active()
-	return a.w.Write(p)
 }
 
 // close closes every stream and waits for their copies to end.

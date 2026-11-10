@@ -87,7 +87,8 @@ func (r *Remote) refuseStream(ctx context.Context, w io.Writer, e *Error, reason
 }
 
 // hostSession serves a stream of a session open: a stream, which moves
-// the idle timer on and is handed to Options.ServeStream, or a close.
+// the idle timer on as it opens and as bytes pass, and is handed to
+// Options.ServeStream, or a close.
 func (r *Remote) hostSession(ctx context.Context, conn *tls.Conn, client hublink.NodeRef, m message) {
 	log := logging.FromContext(ctx).With("session_id", m.Session)
 	ctx = logging.NewContext(ctx, log)
@@ -120,7 +121,13 @@ func (r *Remote) hostSession(ctx context.Context, conn *tls.Conn, client hublink
 		return
 	}
 	defer r.dropped(s.ID, conn)
-	r.opts.ServeStream(ctx, conn, s)
+	used := &usedConn{Conn: conn, now: r.opts.Clock.Now, timeout: r.opts.IdleTimeout, used: func() {
+		// A session closed closes the stream too.
+		if _, err := r.Use(ctx, s.ID, client); err != nil {
+			log.Info("session idle time not moved on", "err", err)
+		}
+	}}
+	r.opts.ServeStream(ctx, used, s)
 }
 
 // Use checks the session id, incoming from client, is open and not idle,
@@ -156,7 +163,7 @@ func (r *Remote) Use(ctx context.Context, id string, client hublink.NodeRef) (Se
 		return Session{}, err
 	}
 	now := r.opts.Clock.Now()
-	if !now.Before(s.IdleExpiresAt) {
+	if now.After(s.IdleExpiresAt) {
 		// Before the idle timer got to it.
 		if _, err := r.closeWhere(ctx, ReasonIdle, "id = ?", s.ID); err != nil {
 			return Session{}, err
