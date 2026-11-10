@@ -23,7 +23,11 @@ import (
 func newLogger(env Env, debugID string) (io.Closer, *slog.Logger) {
 	var w io.WriteCloser = nopCloser{env.Logs.Writer}
 	if env.Logs.Writer == nil {
-		w = logging.NewDailyFile(env.Logs.Dir, env.Program.Name, env.Logs.RetentionDays, time.Now)
+		f := logging.NewDailyFile(env.Logs.Dir, env.Program.Name, env.Logs.RetentionDays, time.Now)
+		if env.Logs.Owner != nil {
+			f.SetOwner(*env.Logs.Owner)
+		}
+		w = f
 	}
 	return w, logging.New(w, env.Logs.Level).With("debug_id", debugID, "pid", os.Getpid(), "process", cmp.Or(env.Logs.Process, "cli"))
 }

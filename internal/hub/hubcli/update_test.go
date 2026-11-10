@@ -14,6 +14,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"regexp"
 	"runtime"
 	"slices"
 	"strings"
@@ -40,18 +41,23 @@ import (
 const newVersion = "0.6.0"
 
 // release is a wdx-hub of version %[1]s, as an update runs it: it writes the
-// settings of its home anew unchanged, says its version and prints its unit
-// and completions.
+// settings of its home anew unchanged, says its version and prints its unit,
+// unitOf where it is installed, and completions.
 const release = `#!/bin/sh
 case "$1 $2" in
 "settings write") cp "$WDX_HUB_HOME/config.yaml" "$5"
 	echo '{"result": "written", "settings": {"path": "'"$5"'", "added": [], "dropped": []}}' ;;
 "version --json") echo '{"cli": {"name": "wdx-hub", "version": "%[1]s", "commit": "none"}, "hub": null}' ;;
-"service unit") echo '{"unit": "unit of %[1]s"}' ;;
+"service unit") printf '{"unit": "[Service]\\nExecStart=%%s serve\\nUser=tester\\n# unit of %[1]s\\n"}' "$0" ;;
 "completion "*) echo "$2 completion of %[1]s" ;;
 *) echo "release %[1]s: $*" >&2; exit 1 ;;
 esac
 `
+
+// unitOf is the unit release prints as version, installed as binary.
+func unitOf(binary, version string) string {
+	return "[Service]\nExecStart=" + binary + " serve\nUser=tester\n# unit of " + version + "\n"
+}
 
 // releaseOf is release as version.
 func releaseOf(version string) string { return fmt.Sprintf(release, version) }
@@ -155,7 +161,7 @@ func installHub(t *testing.T, base string) *installedHub {
 	}
 	in.account = hubconfig.Account{Name: "tester", UID: os.Getuid(), GID: os.Getgid(), Groups: groups, Home: t.TempDir()}
 	writeTestFile(t, in.layout.Binary, releaseOf(identity.Version))
-	writeTestFile(t, in.layout.Unit, "unit of "+identity.Version)
+	writeTestFile(t, in.layout.Unit, unitOf(in.layout.Binary, identity.Version))
 	in.service = &testService{t: t, home: home, binary: in.layout.Binary}
 	t.Cleanup(in.service.halt)
 	return in
@@ -191,7 +197,7 @@ func (in *installedHub) want(t *testing.T, version string) {
 	if got := readTestFile(t, in.layout.Binary); got != releaseOf(version) {
 		t.Errorf("want %s installed, got\n%s", version, got)
 	}
-	if got := readTestFile(t, in.layout.Unit); got != "unit of "+version {
+	if got := readTestFile(t, in.layout.Unit); got != unitOf(in.layout.Binary, version) {
 		t.Errorf("want the unit of %s, got %q", version, got)
 	}
 	v, exit := hubJSON(t, in.home, "version")
@@ -786,5 +792,156 @@ func TestServiceUnit(t *testing.T) {
 	}
 	if strings.Contains(out.Stdout, "CAP_NET_BIND_SERVICE") {
 		t.Fatal("want no capability without --" + privilegedPortFlag)
+	}
+}
+
+// rootUnitRelease is the release of REVIEW_SEC_CODEX S3: its unit runs a
+// command of its own as root.
+var rootUnitRelease = regexp.MustCompile(`"service unit"\)[^\n]*`).
+	ReplaceAllLiteralString(releaseOf(newVersion), `"service unit") printf '%s\n' '{"unit": "[Service]\nUser=root\nExecStart=/usr/bin/id\n"}' ;;`)
+
+// TestUpdateSourceFromConfig is REVIEW_SEC_CODEX S3: the hub's user sets
+// update.base_url in the config file to releases of its own, and root's
+// update refuses them, installing nothing.
+func TestUpdateSourceFromConfig(t *testing.T) {
+	t.Parallel()
+	base, _ := publishHub(t, map[string]string{newVersion: rootUnitRelease})
+	in := installHub(t, base)
+	in.start(t)
+	if _, exit := hubJSON(t, in.home, "setting", "set", "--name", "update.base_url", "--value", base); exit != clikit.ExitOK {
+		t.Fatal("update.base_url not set")
+	}
+	v, exit := hubJSONWith(t, in.home, func(env *Env) {
+		in.env(identity.Version)(env)
+		env.Config = load(t, in.home)
+		env.Update.BaseURL = ""
+	}, "update", "--apply")
+	wantCode(t, v, exit, hubapi.ErrorCodeUpdateSourceUntrusted, clikit.ExitRejected)
+	if details, _ := v["details"].(map[string]any); details["url"] != base || !strings.HasPrefix(details["from"].(string), hubconfig.ConfigPath(in.home)+":") {
+		t.Fatalf("want the address and the config file's line, got %v", v)
+	}
+	if hint, _ := v["hint"].(string); !strings.Contains(hint, "sudo WDX_HUB_UPDATE_BASE_URL="+base+" wdx-hub update --apply") {
+		t.Fatalf("want the variable in the hint, got %q", hint)
+	}
+	in.want(t, identity.Version)
+}
+
+// TestUpdateSourceFromEnvironment updates from an address root gives in its
+// own environment.
+func TestUpdateSourceFromEnvironment(t *testing.T) {
+	t.Parallel()
+	base, _ := publishHub(t, map[string]string{newVersion: releaseOf(newVersion)})
+	in := installHub(t, base)
+	in.start(t)
+	getenv := func(key string) string {
+		if key == "WDX_HUB_UPDATE_BASE_URL" {
+			return base
+		}
+		return homeVars(in.home)(key)
+	}
+	v, exit := hubJSONWith(t, in.home, func(env *Env) {
+		in.env(identity.Version)(env)
+		cfg, err := hubconfig.Load(getenv)
+		if err != nil {
+			t.Fatal(err)
+		}
+		env.Config, env.Getenv = cfg, getenv
+		env.Update.BaseURL = ""
+	}, "update", "--apply")
+	if exit != clikit.ExitOK || v["result"] != resultUpdated {
+		t.Fatalf("want updated, got exit %d: %v", exit, v)
+	}
+	in.want(t, newVersion)
+}
+
+// TestUpdateUnitRefused updates to a release whose unit runs as root, from
+// an address root chose: the old version is put back.
+func TestUpdateUnitRefused(t *testing.T) {
+	t.Parallel()
+	base, _ := publishHub(t, map[string]string{newVersion: rootUnitRelease})
+	in := installHub(t, base)
+	in.start(t)
+	v, exit := in.json(t, identity.Version, "--apply")
+	wantCode(t, v, exit, hubapi.ErrorCodeUpdateFailed, clikit.ExitSystem)
+	if details, _ := v["details"].(map[string]any); details["step"] != "start" || details["undone"] != true {
+		t.Fatalf("want the start undone, got %v", v)
+	}
+	in.want(t, identity.Version)
+}
+
+func TestUnitSafe(t *testing.T) {
+	t.Parallel()
+	l := hubconfig.Installed
+	if err := unitSafe(unit(l, false), l); err != nil {
+		t.Fatalf("the hub's own unit refused: %v", err)
+	}
+	if err := unitSafe(unit(l, true), l); err != nil {
+		t.Fatalf("the hub's own unit with the capability refused: %v", err)
+	}
+	for _, text := range []string{
+		"[Service]\nUser=root\nExecStart=/usr/bin/id\n",
+		"[Service]\nExecStart=/usr/local/bin/wdx-hub serve\n",
+		"[Service]\nExecStart=/usr/local/bin/wdx-hub serve\nUser=wdx-hub\nUser=root\n",
+		"[Service]\nExecStart=+/usr/local/bin/wdx-hub serve\nUser=wdx-hub\n",
+		"[Service]\nExecStart=/usr/local/bin/wdx-hub serve\nExecStart=/bin/sh\nUser=wdx-hub\n",
+		"[Service]\nExecStart=\nUser=wdx-hub\n",
+		"[Service]\nExecStart=/usr/local/bin/wdx-hub serve\nUser=wdx-hub\nGroup=root\n",
+		"[Unit]\nExecStart=/usr/local/bin/wdx-hub serve\nUser=wdx-hub\n",
+	} {
+		if err := unitSafe(text, l); err == nil {
+			t.Errorf("want refused:\n%s", text)
+		}
+	}
+}
+
+// TestUpdateHomeUnsafe updates a hub whose logs/ the hub's user made a
+// symlink, or a file: refused before root writes anything there, the log
+// of the run's included.
+func TestUpdateHomeUnsafe(t *testing.T) {
+	t.Parallel()
+	for _, kind := range []string{"symlink", "file"} {
+		t.Run(kind, func(t *testing.T) {
+			t.Parallel()
+			base, _ := publishHub(t, map[string]string{newVersion: releaseOf(newVersion)})
+			in := installHub(t, base)
+			logs := hubconfig.LogsDir(in.home)
+			if err := os.RemoveAll(logs); err != nil {
+				t.Fatal(err)
+			}
+			target := t.TempDir()
+			if kind == "symlink" {
+				if err := os.Symlink(target, logs); err != nil {
+					t.Fatal(err)
+				}
+			} else if err := os.WriteFile(logs, nil, 0o600); err != nil {
+				t.Fatal(err)
+			}
+			// Not through hubWith, which reads the run's log: there is none.
+			var stdout, stderr bytes.Buffer
+			env := testEnv(t, in.home, &stdout, &stderr)
+			in.env(identity.Version)(&env)
+			args := []string{"update", "--apply", "--json"}
+			exit := Run(context.Background(), args, env)
+			var v map[string]any
+			if err := json.Unmarshal(clikittest.JSON(t, args, clikittest.Output{Exit: exit, Stdout: stdout.String(), Stderr: stderr.String()}, codes), &v); err != nil {
+				t.Fatal(err)
+			}
+			wantCode(t, v, exit, hubapi.ErrorCodeHomeUnsafe, clikit.ExitSystem)
+			if details, _ := v["details"].(map[string]any); details["path"] != logs {
+				t.Fatalf("want %s named, got %v", logs, v)
+			}
+			if entries, err := os.ReadDir(target); err != nil || len(entries) != 0 {
+				t.Fatalf("want nothing written through the symlink, got %v, %v", entries, err)
+			}
+			if info, err := os.Lstat(logs); err != nil || info.Size() != 0 && kind == "file" {
+				t.Fatalf("want %s left as it was, got %v, %v", logs, info, err)
+			}
+			if got := readTestFile(t, in.layout.Binary); got != releaseOf(identity.Version) {
+				t.Fatalf("want nothing installed, got\n%s", got)
+			}
+			if _, err := os.Stat(hubconfig.BackupsDir(in.home)); !os.IsNotExist(err) {
+				t.Fatalf("want no backup made, got %v", err)
+			}
+		})
 	}
 }

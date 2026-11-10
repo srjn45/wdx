@@ -41,6 +41,9 @@ type Logs struct {
 	RetentionDays int
 	// Process names the process on every line; cli when empty.
 	Process string
+	// Owner, when set, is given the files and Dir: those of a run as root
+	// in another user's home.
+	Owner *logging.Owner
 }
 
 // SettingValue is one setting as command received logs it: its value, as

@@ -1050,6 +1050,8 @@ components:
         - settings_invalid
         - root_required
         - not_installed
+        - update_source_untrusted
+        - home_unsafe
 
     Problem:
       type: object

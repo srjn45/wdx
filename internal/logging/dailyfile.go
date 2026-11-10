@@ -21,6 +21,7 @@ type DailyFile struct {
 	prefix        string
 	retentionDays int
 	now           func() time.Time
+	owner         *Owner
 
 	mu   sync.Mutex
 	day  string
@@ -32,6 +33,18 @@ type DailyFile struct {
 // tells the day.
 func NewDailyFile(dir, name string, retentionDays int, now func() time.Time) *DailyFile {
 	return &DailyFile{dir: dir, prefix: name + "-", retentionDays: retentionDays, now: now}
+}
+
+// Owner is the user and group a file is made to belong to.
+type Owner struct{ UID, GID int }
+
+// SetOwner gives the directory and the files from the next one opened on to
+// owner: a run as root writing in another user's home leaves what it made
+// that user's.
+func (d *DailyFile) SetOwner(owner Owner) {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	d.owner = &owner
 }
 
 // SetRetentionDays changes the days kept from the next file opened on.
@@ -77,6 +90,12 @@ func (d *DailyFile) open(day string) {
 	f, err := os.OpenFile(filepath.Join(d.dir, d.prefix+day+fileSuffix), os.O_WRONLY|os.O_APPEND|os.O_CREATE, 0o600)
 	if err != nil {
 		return
+	}
+	if o := d.owner; o != nil {
+		if os.Lchown(d.dir, o.UID, o.GID) != nil || f.Chown(o.UID, o.GID) != nil {
+			f.Close()
+			return
+		}
 	}
 	d.file = f
 	d.deleteOld()

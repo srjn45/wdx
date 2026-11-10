@@ -19,7 +19,9 @@
 #                         channel wdx-hub update follows
 #   WDX_VERSION           release to install (e.g. 0.5.0), whatever the channel
 #   WDX_DOWNLOAD_BASE     where releases live; default: GitHub Releases. Saved
-#                         as the hub's update.base_url
+#                         as the hub's update.base_url, which wdx-hub update
+#                         --apply, as root, takes only from its environment:
+#                         run again, the script gives it there
 #   WDX_HUB_PUBLIC_URL    the address browsers and nodes reach the hub at,
 #                         instead of asking
 #   WDX_HUB_WEB_TLS       off (a proxy in front terminates TLS) or files,

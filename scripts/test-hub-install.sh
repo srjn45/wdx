@@ -3,7 +3,10 @@
 # update it with wdx-hub update, see an update to a release that does not
 # serve put back, roll it back, update it through the script again and
 # uninstall it, with the shells' completions: the tests of the wdx docs
-# HUB_INSTALL and HUB_COMPLETION. Its releases are this tree, built by dist.sh
+# HUB_INSTALL and HUB_COMPLETION. On the way it checks an update as root
+# trusts only what root chose (SEC_FIXES F5, F15): not the release address in
+# the hub's config file, nor a logs/ that is a symlink, and that the log file
+# it opens is the hub's user's. Its releases are this tree, built by dist.sh
 # as three versions for this machine and read from file://; the third runs but
 # never serves.
 #
@@ -54,8 +57,10 @@ cleanup() {
 }
 trap cleanup EXIT
 
-# hub runs the installed wdx-hub as root, which becomes the hub's user.
-hub() { sudo "$NAME" "$@"; }
+# hub runs the installed wdx-hub as root, which becomes the hub's user, with
+# the releases' address in root's environment, the one update --apply takes
+# it from.
+hub() { sudo env WDX_HUB_UPDATE_BASE_URL="file://$DIST" "$NAME" "$@"; }
 
 # want <jq filter> <command...>: runs the installed wdx-hub with --json and
 # checks the filter holds on its output.
@@ -125,10 +130,40 @@ want ".update.current == \"$V1\" and .update.available" update
 completions
 owned
 
+echo "refusing the release address the config file names, which install-hub.sh saved"
+# So that the update's own run opens the day's log file.
+sudo sh -c "rm -f $HUB_HOME/logs/*.log"
+if out="$(sudo "$NAME" update --apply --version "$V2" --json)"; then
+	die "the update from the config file's address succeeded: $out"
+fi
+echo "$out" | jq -e '.code == "update_source_untrusted"' >/dev/null || die "want update_source_untrusted, got $out"
+sudo sh -c "ls $HUB_HOME/logs/*.log" >/dev/null || die "the refused update logged nothing"
+answers "$V1"
+owned
+
+echo "refusing a logs/ that is a symlink"
+elsewhere="$WORK/elsewhere"
+mkdir "$elsewhere"
+sudo mv "$HUB_HOME/logs" "$HUB_HOME/logs.kept"
+sudo -u "$NAME" ln -s "$elsewhere" "$HUB_HOME/logs"
+if out="$(hub update --apply --version "$V2" --json)"; then
+	die "the update through a symlinked logs/ succeeded: $out"
+else
+	status=$?
+fi
+[ "$status" -eq 3 ] || die "want exit 3, got $status: $out"
+echo "$out" | jq -e '.code == "home_unsafe"' >/dev/null || die "want home_unsafe, got $out"
+[ -z "$(ls -A "$elsewhere")" ] || die "the update wrote through the symlink: $(ls -A "$elsewhere")"
+sudo rm "$HUB_HOME/logs"
+sudo mv "$HUB_HOME/logs.kept" "$HUB_HOME/logs"
+answers "$V1"
+
 echo "updating to $V2"
+sudo sh -c "rm -f $HUB_HOME/logs/*.log"
 want ".result == \"updated\" and .update.from == \"$V1\" and .update.to == \"$V2\"" update --apply --version "$V2"
 answers "$V2"
 sudo test -f "$HUB_HOME/backups/hub-$V1.db" || die "no backup of the database of $V1"
+# The update's own run opened the day's log file: owned checks it is the hub's user's.
 owned
 
 echo "updating to $V3, which does not serve"

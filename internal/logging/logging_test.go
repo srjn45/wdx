@@ -12,6 +12,7 @@ import (
 	"slices"
 	"strings"
 	"sync"
+	"syscall"
 	"testing"
 	"time"
 )
@@ -83,6 +84,39 @@ func TestDailyFileRollsOverAtMidnight(t *testing.T) {
 	}
 	if got := read(t, filepath.Join(dir, "wdx-2026-10-28.log")); got != "two\n" {
 		t.Fatalf("unexpected second file %q", got)
+	}
+}
+
+// TestDailyFileOwner gives the directory and the file to another group, as
+// a run as root gives them to the hub's user: a group of the test's user is
+// the one change of owner it may make.
+func TestDailyFileOwner(t *testing.T) {
+	t.Parallel()
+	groups, err := os.Getgroups()
+	if err != nil {
+		t.Fatal(err)
+	}
+	other := slices.IndexFunc(groups, func(g int) bool { return g != os.Getgid() })
+	if other < 0 {
+		t.Skip("the test's user is in no group but its own")
+	}
+	owner := Owner{UID: os.Getuid(), GID: groups[other]}
+	dir := filepath.Join(t.TempDir(), "logs")
+	f := NewDailyFile(dir, "wdx", 7, (&clock{t: day("2026-10-27 10:00:00")}).now)
+	f.SetOwner(owner)
+	fmt.Fprintln(f, "one")
+	f.Close()
+	for _, path := range []string{dir, filepath.Join(dir, "wdx-2026-10-27.log")} {
+		info, err := os.Lstat(path)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if st := info.Sys().(*syscall.Stat_t); int(st.Uid) != owner.UID || int(st.Gid) != owner.GID {
+			t.Errorf("want %s owned by %d:%d, got %d:%d", path, owner.UID, owner.GID, st.Uid, st.Gid)
+		}
+	}
+	if got := read(t, filepath.Join(dir, "wdx-2026-10-27.log")); got != "one\n" {
+		t.Fatalf("unexpected file %q", got)
 	}
 }
 

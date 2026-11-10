@@ -17,6 +17,7 @@ import (
 	"github.com/srjn45/wdx/internal/hub/server"
 	"github.com/srjn45/wdx/internal/hubapi"
 	"github.com/srjn45/wdx/internal/identity"
+	"github.com/srjn45/wdx/internal/logging"
 	"github.com/srjn45/wdx/internal/style"
 )
 
@@ -74,6 +75,16 @@ func Run(ctx context.Context, args []string, env Env) int {
 		run.output = &lockedWriter{w: env.Stdout}
 		run.level.Set(env.Config.LogLevel)
 		fw.Logs = clikit.Logs{Writer: run.output, Level: &run.level, Process: "hub"}
+	}
+	if env.Root && env.Account != nil && switchesRelease(args) {
+		// Root writes the run's log in the hub's home: only once it is safe
+		// to, and leaving the file the hub's user's.
+		if err := homeSafe(env.Config.Home, *env.Account); err != nil {
+			run.homeErr = err
+			fw.Logs.Writer = io.Discard
+		} else {
+			fw.Logs.Owner = &logging.Owner{UID: env.Account.UID, GID: env.Account.GID}
+		}
 	}
 	return clikit.Run(context.WithValue(ctx, runKey{}, run), args, fw, newRoot)
 }
@@ -142,6 +153,9 @@ type runState struct {
 	output *lockedWriter
 	level  slog.LevelVar
 	client *client // the run's, made by clientOf
+	// homeErr is why root may not write in the hub's home, which an update
+	// or rollback fails with before it does.
+	homeErr error
 }
 
 type runKey struct{}

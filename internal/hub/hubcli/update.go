@@ -91,6 +91,113 @@ type notInstalledError struct{ detail string }
 
 func (e *notInstalledError) Error() string { return e.detail }
 
+// untrustedSourceError is an update as root from a release address the
+// config file names: the hub's user may have written it there.
+type untrustedSourceError struct{ url, from string }
+
+func (e *untrustedSourceError) Error() string {
+	return fmt.Sprintf("update.base_url %s is set in %s, which the hub's user can change, and root does not install from it", e.url, e.from)
+}
+
+// homeUnsafeError is a hub's home that root may not write in: path is a
+// symlink, not a directory, or not the hub's user's.
+type homeUnsafeError struct{ path, reason string }
+
+func (e *homeUnsafeError) Error() string {
+	return fmt.Sprintf("%s %s, so root writes nothing in the hub's home", e.path, e.reason)
+}
+
+// homeSafe checks that home, its logs/ and backups/ are directories of a's,
+// not symlinks, before root writes in them; logs/ and backups/ may be
+// missing, which root then makes as a's.
+func homeSafe(home string, a hubconfig.Account) error {
+	for _, path := range []string{home, hubconfig.LogsDir(home), hubconfig.BackupsDir(home)} {
+		info, err := os.Lstat(path)
+		if errors.Is(err, fs.ErrNotExist) && path != home {
+			continue
+		}
+		if err != nil {
+			return &homeUnsafeError{path: path, reason: "cannot be read: " + err.Error()}
+		}
+		if info.Mode()&fs.ModeSymlink != 0 {
+			return &homeUnsafeError{path: path, reason: "is a symlink"}
+		}
+		if !info.IsDir() {
+			return &homeUnsafeError{path: path, reason: "is not a directory"}
+		}
+		if st, ok := info.Sys().(*syscall.Stat_t); !ok || int(st.Uid) != a.UID {
+			return &homeUnsafeError{path: path, reason: "is not owned by " + a.Name}
+		}
+	}
+	return nil
+}
+
+// baseURLTrusted fails when update.base_url is set to other than its default
+// in the config file, which root takes only from its own environment.
+func baseURLTrusted(env Env) error {
+	if env.Update.BaseURL != "" || env.Config.UpdateBaseURL == hubconfig.ReleasesURL {
+		return nil
+	}
+	from := env.Config.From[baseURLKey]
+	if from == "default" || from == baseURLVar() {
+		return nil
+	}
+	return &untrustedSourceError{url: env.Config.UpdateBaseURL, from: from}
+}
+
+const baseURLKey = "update.base_url"
+
+// baseURLVar is the variable update.base_url is taken from in the
+// environment.
+func baseURLVar() string {
+	for _, s := range hubconfig.Settings() {
+		if s.Key == baseURLKey {
+			return s.EnvVar
+		}
+	}
+	panic("no setting " + baseURLKey)
+}
+
+// unitSafe checks the unit text, printed by the release, starts binary as
+// user: a release built wrong must not run as root.
+func unitSafe(text string, l hubconfig.Layout) error {
+	var section string
+	var execStarts, users, groups []string
+	for line := range strings.Lines(text) {
+		line = strings.TrimSpace(line)
+		if strings.HasPrefix(line, "[") {
+			section = line
+			continue
+		}
+		key, value, ok := strings.Cut(line, "=")
+		if !ok || section != "[Service]" {
+			continue
+		}
+		value = strings.TrimSpace(value)
+		switch strings.TrimSpace(key) {
+		case "ExecStart":
+			execStarts = append(execStarts, value)
+		case "User":
+			users = append(users, value)
+		case "Group":
+			groups = append(groups, value)
+		}
+	}
+	var command string
+	if len(execStarts) == 1 {
+		command, _, _ = strings.Cut(execStarts[0], " ")
+	}
+	switch {
+	case command != l.Binary:
+		return fmt.Errorf("its unit does not start %s, with one ExecStart: %q", l.Binary, execStarts)
+	case !slices.Equal(users, []string{l.User}):
+		return fmt.Errorf("its unit does not run as the user %s, with one User: %q", l.User, users)
+	case len(groups) > 1 || len(groups) == 1 && groups[0] != l.User:
+		return fmt.Errorf("its unit does not run in the group %s: %q", l.User, groups)
+	}
+	return nil
+}
+
 func newUpdateCmd() *cobra.Command {
 	var apply, rollback, discardChanges, cancel bool
 	var channel, version string
@@ -114,7 +221,13 @@ func newUpdateCmd() *cobra.Command {
 			"and --cancel refuses. Only one previous version is kept.\n\n" +
 			"--apply and --rollback need root, and a hub installed by install-hub.sh: the\n" +
 			"service " + hubconfig.Service + " running " + hubconfig.Installed.Binary + ". They restart it, which\n" +
-			"closes the nodes' connections; the nodes connect again on their own.",
+			"closes the nodes' connections; the nodes connect again on their own.\n\n" +
+			"As root, update trusts only what root chose. --apply refuses an\n" +
+			"update.base_url the config file sets, which the hub's user can write: give\n" +
+			"it as " + hubconfig.EnvPrefix + "UPDATE_BASE_URL in root's environment instead. Both refuse a\n" +
+			"home, logs/ or backups/ that is a symlink or not the hub's user's, before\n" +
+			"writing anything, and a release whose unit does not start " + hubconfig.Installed.Binary + "\n" +
+			"as the hub's user.",
 		Example: clikit.Examples(
 			"Show whether a newer release is available", name+" update",
 			"Install it, as root: with sudo", name+" update --apply",
@@ -134,7 +247,8 @@ func newUpdateCmd() *cobra.Command {
 			clikit.JSONRequires: "rollback:" + clikit.Annotation("discard-changes", "cancel"),
 			clikit.Errors: clikit.CodeList(hubapi.ErrorCodeChecksumMismatch, hubapi.ErrorCodeDownloadFailed, hubapi.ErrorCodeNoPreviousVersion,
 				hubapi.ErrorCodeNotInstalled, hubapi.ErrorCodeOlderVersion, hubapi.ErrorCodeRestoreRequired, hubapi.ErrorCodeRootRequired,
-				hubapi.ErrorCodeSettingsInvalid, hubapi.ErrorCodeUpdateFailed, hubapi.ErrorCodeUpdateRunning),
+				hubapi.ErrorCodeSettingsInvalid, hubapi.ErrorCodeUpdateFailed, hubapi.ErrorCodeUpdateRunning,
+				hubapi.ErrorCodeUpdateSourceUntrusted, hubapi.ErrorCodeHomeUnsafe),
 		},
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			channel = cmp.Or(channel, envOf(cmd).Config.UpdateChannel)
@@ -225,6 +339,15 @@ func switchOptions(cmd *cobra.Command, flag string) (update.Options, error) {
 	}
 	if env.Account == nil {
 		return update.Options{}, &notInstalledError{detail: fmt.Sprintf("%s is installed, but its user %s is not on this machine", name, layout.User)}
+	}
+	if err := runOf(cmd).homeErr; err != nil {
+		return update.Options{}, err
+	}
+	if flag == "apply" {
+		if err := baseURLTrusted(env); err != nil {
+			log.Info("update refused: the release address is from the config file", "url", env.Config.UpdateBaseURL, "from", env.Config.From[baseURLKey])
+			return update.Options{}, err
+		}
 	}
 	a := *env.Account
 	home := env.Config.Home
@@ -350,6 +473,10 @@ func (s hubService) start(ctx context.Context) (string, error) {
 	}
 	if err != nil {
 		return "", fmt.Errorf("%s does not print its unit: %w", s.layout.Binary, err)
+	}
+	if err := unitSafe(u.Unit, s.layout); err != nil {
+		log.Error("unit refused", "err", err)
+		return "", fmt.Errorf("%s: %w", s.layout.Binary, err)
 	}
 	if err := atomicfile.Write(s.layout.Unit, []byte(u.Unit), 0o644); err != nil {
 		return "", err
@@ -623,6 +750,14 @@ func updateProblem(err error) (p hubapi.Problem, ok bool) {
 	if e, found := errors.AsType[*rootRequiredError](err); found {
 		p = hubapi.NewProblem(hubapi.ErrorCodeRootRequired, err.Error())
 		hint("run sudo " + name + " update --" + e.flag)
+	} else if e, found := errors.AsType[*untrustedSourceError](err); found {
+		p = hubapi.NewProblem(hubapi.ErrorCodeUpdateSourceUntrusted, err.Error())
+		p.Details = &map[string]any{"url": e.url, "from": e.from}
+		hint("to update from it, set it in root's environment for this run: sudo " + baseURLVar() + "=" + e.url + " " + name + " update --apply")
+	} else if e, found := errors.AsType[*homeUnsafeError](err); found {
+		p = hubapi.NewProblem(hubapi.ErrorCodeHomeUnsafe, err.Error())
+		p.Details = &map[string]any{"path": e.path}
+		hint("make " + e.path + " a directory of " + hubconfig.Installed.User + "'s again, then run the update again")
 	} else if _, found := errors.AsType[*notInstalledError](err); found {
 		p = hubapi.NewProblem(hubapi.ErrorCodeNotInstalled, err.Error())
 		hint("update it the way it was installed: a container is built again, a binary copied by hand copied again")
