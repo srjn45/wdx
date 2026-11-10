@@ -830,8 +830,8 @@ func TestHubNodes(t *testing.T) {
 
 	v, exit = hh.hubJSON(nil, "hub", "node", "remove", "--name", "desk", "--yes")
 	wantError(t, v.jsonOutput, exit, api.ErrorCodeNodeIsThis, clikit.ExitRejected)
-	if v.Hint == nil || !strings.Contains(*v.Hint, "wdx hub logout") {
-		t.Fatalf("hint %v", v.Hint)
+	if v.Hint == nil || !strings.Contains(*v.Hint, "wdx hub logout") || v.Detail != "the node is this one" {
+		t.Fatalf("detail %q, hint %v: want what is so, and the advice in the hint", v.Detail, v.Hint)
 	}
 	v, exit = hh.hubJSON(nil, "hub", "node", "remove", "--id", laptop.ID, "--yes")
 	if exit != clikit.ExitOK || v.Result != "removed" || v.Node.Name != "laptop" {

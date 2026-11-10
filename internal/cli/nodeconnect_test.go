@@ -365,7 +365,15 @@ func TestNodeConnectRefusesRoutes(t *testing.T) {
 		if r.method == http.MethodPatch {
 			body = map[string]any{"value": "false"}
 		}
-		c.want(r.method, r.path, body, http.StatusForbidden, api.ErrorCodeRouteNotAllowed)
+		b := c.want(r.method, r.path, body, http.StatusForbidden, api.ErrorCodeRouteNotAllowed)
+		if r.path == "/v1/nothing" {
+			// What is so, naming the host; the advice is the cli's hint.
+			var problem api.Problem
+			_ = json.Unmarshal(b, &problem)
+			if want := "node desktop has no GET /v1/nothing"; problem.Detail != want {
+				t.Errorf("an operation the host has not: %q, want %q", problem.Detail, want)
+			}
+		}
 	}
 	// The setting the session was refused is unchanged, and the hub's
 	// routes are served locally.
@@ -440,7 +448,7 @@ func TestNodeConnectVersions(t *testing.T) {
 		b := c.want(http.MethodGet, "/v1/projects", nil, http.StatusConflict, api.ErrorCodeNodeVersionUnsupported)
 		var problem api.Problem
 		_ = json.Unmarshal(b, &problem)
-		if problem.Details == nil || (*problem.Details)["update"] != "client" || !strings.Contains(problem.Detail, "update wdx on laptop") {
+		if problem.Details == nil || (*problem.Details)["update"] != "client" || problem.Detail != fmt.Sprintf("node laptop speaks API version %q, older than %d, the oldest node desktop speaks", version, api.OldestCompatible) {
 			t.Errorf("version %q: %+v, want the client named to update", version, problem)
 		}
 	}

@@ -39,7 +39,7 @@ func (r *Remote) Serve(ctx context.Context, s hublink.Stream) {
 	}
 	cs := conn.ConnectionState()
 	clientKey, _ := peerKey(cs) // VerifyConnection checked it
-	first, err := read(conn, msgOpen, msgStream, msgClose)
+	first, err := read(conn, s.Node, msgOpen, msgStream, msgClose)
 	if err != nil {
 		log.Info("stream refused", "reason", "first message unreadable", "err", err)
 		return
@@ -152,7 +152,7 @@ func (r *Remote) Use(ctx context.Context, id string, client hublink.NodeRef) (Se
 		err = refusal(CodeSessionNotFound, "the session is another node's")
 	}
 	if e, ok := asError(err); ok && e.Code == CodeSessionNotFound {
-		closed := refusal(CodeSessionClosed, "session %s is not open on this node: open one again with a code", id)
+		closed := refusal(CodeSessionClosed, "session %s is not open", id)
 		reason, err := r.closedReason(ctx, id, client.ID)
 		if err != nil {
 			return Session{}, err
@@ -171,7 +171,7 @@ func (r *Remote) Use(ctx context.Context, id string, client hublink.NodeRef) (Se
 		if _, err := r.closeWhere(ctx, ReasonIdle, "id = ?", s.ID); err != nil {
 			return Session{}, err
 		}
-		closed := refusal(CodeSessionClosed, "session %s went idle: open one again with a code", s.ID)
+		closed := refusal(CodeSessionClosed, "session %s went idle", s.ID)
 		closed.Details = map[string]any{"reason": string(ReasonIdle)}
 		return Session{}, closed
 	}
@@ -209,21 +209,21 @@ func (r *Remote) hostOpen(ctx context.Context, conn *tls.Conn, host self, client
 	defer r.opening.Unlock()
 	now := r.opts.Clock.Now()
 	if !r.opts.RemoteAccess() {
-		r.refuseStream(ctx, conn, refusal(CodeRemoteAccessOff, "remote access is off on this node: turn hub.remote_access on there"), "")
+		r.refuseStream(ctx, conn, refusal(CodeRemoteAccessOff, "remote access is off"), "")
 		return
 	}
 	if wait := r.tooSoon(client.ID, now); wait > 0 {
 		log.Info("code refused unread", "reason", "too soon after a wrong code", "wait_ms", wait.Milliseconds())
-		r.refuseStream(ctx, conn, refusal(CodeCodeWrong, "too soon after a wrong code: try again in %s", wait.Round(time.Second)), "")
+		r.refuseStream(ctx, conn, refusal(CodeCodeWrong, "too soon after a wrong code; the next try waits %s", wait.Round(time.Second)), "")
 		return
 	}
 	password, err := r.opts.Code.CodeAt(ctx, m.Step, now)
 	switch {
 	case errors.Is(err, authcode.ErrNotSetUp):
-		r.refuseStream(ctx, conn, refusal(CodeCodeNotSetUp, "no code is set up on this node: run wdx hub code setup there"), "")
+		r.refuseStream(ctx, conn, refusal(CodeCodeNotSetUp, "no code is set up"), "")
 		return
 	case errors.Is(err, authcode.ErrStepRefused):
-		r.refuseStream(ctx, conn, refusal(CodeCodeWrong, "the code is of a time step too old or too new, or used already: check both clocks, and type a new code"), "")
+		r.refuseStream(ctx, conn, refusal(CodeCodeWrong, "the code is of a time step too old or too new, or used already"), "")
 		return
 	case err != nil:
 		log.Error("code not read", "err", err)
@@ -247,7 +247,7 @@ func (r *Remote) hostOpen(ctx context.Context, conn *tls.Conn, host self, client
 	}
 	// The open lock is held: a confirm that does not come in time is a
 	// wrong code, so that a stall cannot hold it again at once.
-	confirm, err := r.readConfirm(conn)
+	confirm, err := r.readConfirm(conn, client)
 	if err != nil {
 		log.Info("no confirmation", "err", err)
 		r.codeWrong(ctx, conn, client, r.opts.Clock.Now(), "no confirmation came in time")
@@ -259,7 +259,7 @@ func (r *Remote) hostOpen(ctx context.Context, conn *tls.Conn, host self, client
 	}
 	if err := r.opts.Code.Use(ctx, m.Step); err != nil {
 		if errors.Is(err, authcode.ErrStepRefused) {
-			r.refuseStream(ctx, conn, refusal(CodeCodeWrong, "the code was used already: type a new one"), "")
+			r.refuseStream(ctx, conn, refusal(CodeCodeWrong, "the code was used already"), "")
 		} else {
 			log.Error("code step not recorded", "err", err)
 		}
@@ -303,12 +303,12 @@ func (r *Remote) hostOpen(ctx context.Context, conn *tls.Conn, host self, client
 // It is checked under the open lock, which Apply and CutOff take too.
 func (r *Remote) closingAll() *Error {
 	if cutOff(r.opts.Link.Status().Connection) {
-		e := refusal(CodeSessionClosed, "this node was cut off by the hub while the session opened")
+		e := refusal(CodeSessionClosed, "cut off by the hub while the session opened")
 		e.Details = map[string]any{"reason": string(ReasonCutOff)}
 		return e
 	}
 	if !r.opts.RemoteAccess() {
-		e := refusal(CodeRemoteAccessOff, "remote access was turned off on this node while the session opened: turn hub.remote_access on there")
+		e := refusal(CodeRemoteAccessOff, "remote access was turned off while the session opened")
 		e.Details = map[string]any{"reason": string(ReasonRemoteAccessOff)}
 		return e
 	}
@@ -319,14 +319,14 @@ func (r *Remote) closingAll() *Error {
 // Not with a read deadline: the stream through the hub closes when one
 // passes, and the refusal could not be sent. Once it gives up, the read
 // ends when conn closes.
-func (r *Remote) readConfirm(conn *tls.Conn) (message, error) {
+func (r *Remote) readConfirm(conn *tls.Conn, client hublink.NodeRef) (message, error) {
 	type result struct {
 		m   message
 		err error
 	}
 	got := make(chan result, 1)
 	go func() {
-		m, err := read(conn, msgConfirm)
+		m, err := read(conn, client, msgConfirm)
 		got <- result{m, err}
 	}()
 	timer := time.NewTimer(r.opts.Limits.Confirm)

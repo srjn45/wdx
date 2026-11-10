@@ -11,6 +11,8 @@ import (
 	"strconv"
 
 	"filippo.io/cpace"
+
+	"github.com/srjn45/wdx/internal/hublink"
 )
 
 // The versions of what the two nodes speak inside a stream: protocolVersion
@@ -72,9 +74,9 @@ func write(w io.Writer, m message) error {
 	return err
 }
 
-// read reads one message, of type want or a refusal, which it returns as
-// an *Error.
-func read(r io.Reader, want ...string) (message, error) {
+// read reads one message from the node named peer, of type want or a
+// refusal, which it returns as an *Error naming peer.
+func read(r io.Reader, peer hublink.NodeRef, want ...string) (message, error) {
 	var size [4]byte
 	if _, err := io.ReadFull(r, size[:]); err != nil {
 		return message{}, err
@@ -92,7 +94,7 @@ func read(r io.Reader, want ...string) (message, error) {
 		return message{}, fmt.Errorf("a message unreadable: %w", err)
 	}
 	if m.Type == msgRefused {
-		return message{}, m.refusal()
+		return message{}, m.refusal(peer)
 	}
 	for _, w := range want {
 		if m.Type == w {
@@ -108,13 +110,13 @@ var known = map[Code]bool{
 	CodeNodeVersionUnsupported: true, CodeSessionClosed: true,
 }
 
-// refusal is the *Error of a refused message.
-func (m message) refusal() *Error {
+// refusal is the *Error of a message refused by the node named peer.
+func (m message) refusal(peer hublink.NodeRef) *Error {
 	code, detail := m.Code, m.Detail
 	if !known[code] {
-		code, detail = CodeNodeVersionUnsupported, fmt.Sprintf("the node refused with %q, which this wdx does not know: update it", m.Code)
+		code, detail = CodeNodeVersionUnsupported, fmt.Sprintf("a code this wdx does not know, %q", m.Code)
 	}
-	e := refusal(code, "the node refused: %s", detail)
+	e := refusal(code, "node %s refused: %s", peer.Name, detail)
 	if m.Reason != "" {
 		e.Details = map[string]any{"reason": string(m.Reason)}
 	}

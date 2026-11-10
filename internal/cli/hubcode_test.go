@@ -228,6 +228,10 @@ func TestHubCodeSetupThreeWrong(t *testing.T) {
 	if out.Exit != clikit.ExitRejected || !strings.Contains(out.Stderr, "[code_wrong]") || strings.Count(out.Stderr, "code from the app: ") != 3 {
 		t.Fatalf("%+v", out)
 	}
+	// The advice is the hint's, given once.
+	if !strings.Contains(out.Stderr, "wdx: no code set up: the code is not the new entry's  [code_wrong]") || strings.Count(out.Stderr, "clock") != 1 {
+		t.Fatalf("stderr %q", out.Stderr)
+	}
 	if v, _ := hh.hubJSON(nil, "hub", "status"); v.Hub.CodeSetup {
 		t.Fatal("want no code set up")
 	}

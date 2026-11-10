@@ -313,14 +313,14 @@ func (d *Daemon) remoteRules(router routers.Router, next http.Handler) http.Hand
 		version, err := strconv.Atoi(r.Header.Get(api.APIVersionHeader))
 		if err != nil || version < api.OldestCompatible {
 			failed(w, r, &hubError{code: api.ErrorCodeNodeVersionUnsupported,
-				err:     fmt.Errorf("node %s speaks API version %q, older than %d, the oldest this node speaks: update wdx on %s", session.Node.Name, r.Header.Get(api.APIVersionHeader), api.OldestCompatible, session.Node.Name),
+				err:     fmt.Errorf("node %s speaks API version %q, older than %d, the oldest node %s speaks", session.Node.Name, r.Header.Get(api.APIVersionHeader), api.OldestCompatible, d.hub.Status().Node.Name),
 				details: map[string]any{"update": "client", "node": session.Node.Name, "client_version": r.Header.Get(api.APIVersionHeader), "oldest_compatible": api.OldestCompatible}})
 			return
 		}
 		if oldest := r.Header.Get(api.APIOldestHeader); oldest != "" {
 			if n, err := strconv.Atoi(oldest); err != nil || n > api.CurrentVersion {
 				failed(w, r, &hubError{code: api.ErrorCodeNodeVersionUnsupported,
-					err:     fmt.Errorf("node %s speaks API versions from %q, newer than %d, the newest this node speaks", session.Node.Name, oldest, api.CurrentVersion),
+					err:     fmt.Errorf("node %s speaks API versions from %q, newer than %d, the newest node %s speaks", session.Node.Name, oldest, api.CurrentVersion, d.hub.Status().Node.Name),
 					details: map[string]any{"update": "host", "node": session.Node.Name, "client_oldest": oldest, "host_version": api.CurrentVersion}})
 				return
 			}
@@ -328,7 +328,7 @@ func (d *Daemon) remoteRules(router routers.Router, next http.Handler) http.Hand
 		route, _, err := router.FindRoute(r)
 		if err != nil {
 			failed(w, r, &hubError{code: api.ErrorCodeRouteNotAllowed,
-				err:     fmt.Errorf("this node has no %s %s: update wdx on this node, the host", r.Method, r.URL.Path),
+				err:     fmt.Errorf("node %s has no %s %s", d.hub.Status().Node.Name, r.Method, r.URL.Path),
 				details: map[string]any{"update": "host"}})
 			return
 		}

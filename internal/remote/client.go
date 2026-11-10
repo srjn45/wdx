@@ -49,7 +49,7 @@ func (r *Remote) Open(ctx context.Context, node hublink.NodeRef, code string) (s
 	if err := write(conn, message{Type: msgOpen, Version: b.version, Step: b.step, CPace: msgA}); err != nil {
 		return Session{}, false, ended(node, err)
 	}
-	exchange, err := read(conn, msgExchange)
+	exchange, err := read(conn, node, msgExchange)
 	if err != nil {
 		return Session{}, false, ended(node, err)
 	}
@@ -60,7 +60,7 @@ func (r *Remote) Open(ctx context.Context, node hublink.NodeRef, code string) (s
 	if err := write(conn, message{Type: msgConfirm, MAC: b.mac(key, "client")}); err != nil {
 		return Session{}, false, ended(node, err)
 	}
-	answer, err := read(conn, msgOpened)
+	answer, err := read(conn, node, msgOpened)
 	if err != nil {
 		return Session{}, false, ended(node, err)
 	}
@@ -183,7 +183,7 @@ func (r *Remote) sessionStream(ctx context.Context, s Session, kind string) (*tl
 		conn.Close()
 		return nil, ended(s.Node, err)
 	}
-	_, err = read(conn, msgOK)
+	_, err = read(conn, s.Node, msgOK)
 	if e, ok := asError(err); ok && e.Code == CodeSessionClosed {
 		conn.Close()
 		reason := ReasonClosed

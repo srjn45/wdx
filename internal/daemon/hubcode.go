@@ -138,7 +138,7 @@ func (a *hubAccess) verify(ctx context.Context, status hublink.Status, code stri
 	step, err := authcode.Match(p.secret, code, a.now(), 0)
 	if err != nil {
 		log.Info("code refused", "reason", "not the pending secret's")
-		return pendingCode{}, "", &hubError{code: api.ErrorCodeCodeWrong, err: errors.New("the code is not the new entry's: check the app's clock, and type the code it shows now")}
+		return pendingCode{}, "", &hubError{code: api.ErrorCodeCodeWrong, err: errors.New("the code is not the new entry's")}
 	}
 	key, err := a.files.Write(ctx, p.secret, step)
 	if err != nil {

@@ -163,7 +163,7 @@ var (
 	// ErrAlreadyLoggedIn is a login started while logged in.
 	ErrAlreadyLoggedIn = errors.New("this node is logged in to a hub already")
 	// ErrNodeIsThis is removing this node, which is logging out.
-	ErrNodeIsThis = errors.New("the node is this one: log out instead")
+	ErrNodeIsThis = errors.New("the node is this one")
 	// ErrClosed is an act on a link closed.
 	ErrClosed = errors.New("the link is closed")
 )

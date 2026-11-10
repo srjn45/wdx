@@ -330,6 +330,14 @@ func (n *node) mustOpen(host *node) Session {
 	return s
 }
 
+// wantMessage checks err says exactly want.
+func wantMessage(t *testing.T, err error, want string) {
+	t.Helper()
+	if err == nil || err.Error() != want {
+		t.Errorf("got %v, want %q", err, want)
+	}
+}
+
 func wantCode(t *testing.T, err error, want Code) {
 	t.Helper()
 	e, ok := asError(err)
@@ -468,13 +476,17 @@ func TestOpenRefused(t *testing.T) {
 	desktop := w.newNode(w.hub.User, "desktop")
 	laptop := w.newNode(w.hub.User, "laptop")
 
+	// What the host says is so is shown naming it, the advice left to
+	// the cli's hints.
 	_, _, err := laptop.open(desktop, "123456")
 	wantCode(t, err, CodeCodeNotSetUp)
+	wantMessage(t, err, "node desktop refused: no code is set up")
 
 	desktop.setUp()
 	desktop.access.Store(false)
 	_, _, err = laptop.open(desktop, desktop.code(0))
 	wantCode(t, err, CodeRemoteAccessOff)
+	wantMessage(t, err, "node desktop refused: remote access is off")
 
 	if len(laptop.sessions(Outgoing)) != 0 || len(desktop.sessions(Incoming)) != 0 {
 		t.Error("a session opened")
@@ -600,10 +612,10 @@ func TestConfirmStalls(t *testing.T) {
 	if err := write(conn, message{Type: msgOpen, Version: protocolVersion, Step: b.step, CPace: msgA}); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := read(conn, msgExchange); err != nil {
+	if _, err := read(conn, desktop.ref, msgExchange); err != nil {
 		t.Fatal(err)
 	}
-	_, err = read(conn, msgOpened)
+	_, err = read(conn, desktop.ref, msgOpened)
 	wantCode(t, err, CodeCodeWrong)
 
 	// A wrong code: the next try waits, and the session streams are told.
@@ -1114,7 +1126,7 @@ func TestVersionUnsupported(t *testing.T) {
 		if err := write(conn, message{Type: msgOpen, Version: version}); err != nil {
 			t.Fatal(err)
 		}
-		_, err = read(conn, msgExchange)
+		_, err = read(conn, desktop.ref, msgExchange)
 		conn.Close()
 		wantCode(t, err, CodeNodeVersionUnsupported)
 		e, _ := asError(err)
@@ -1135,7 +1147,7 @@ func TestRefusalFromNewerHost(t *testing.T) {
 		{message{Type: msgRefused, Code: CodeNodeVersionUnsupported, Version: protocolVersion + 2, Oldest: protocolVersion + 1}, "client"},
 		{message{Type: msgRefused, Code: CodeNodeVersionUnsupported, Version: oldestProtocolVersion, Oldest: oldestProtocolVersion}, "host"},
 	} {
-		e := c.m.refusal()
+		e := c.m.refusal(hublink.NodeRef{Name: "desktop"})
 		if e.Code != CodeNodeVersionUnsupported || e.Details["update"] != c.update || e.Details["host_version"] != c.m.Version || e.Details["host_oldest"] != c.m.Oldest {
 			t.Errorf("%+v: %+v, want update %s", c.m, e, c.update)
 		}
