@@ -43,8 +43,17 @@ var (
 	errLines  = errors.New("the thing has 2 problems")
 )
 
+// newerError is a problem whose code kit does not know, as a newer
+// server's would be.
+type newerError struct{ status int }
+
+func (e *newerError) Error() string { return "a newer failure" }
+
 // kitProblem maps kit's own errors, as a program's Problem hook does.
 func kitProblem(err error) (clikit.Problem, bool) {
+	if e, ok := errors.AsType[*newerError](err); ok {
+		return clikit.NewProblem("newer_code", clikit.CodeInfo{Status: e.status, Description: "a code from a newer release"}, err.Error()), true
+	}
 	switch {
 	case errors.Is(err, errFailed):
 		return clikit.NewProblem("failed", codes["failed"], err.Error()), true

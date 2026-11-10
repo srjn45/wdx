@@ -14,6 +14,7 @@ import (
 	"fmt"
 	"io"
 	"log/slog"
+	"net/http"
 	"regexp"
 	"runtime/debug"
 	"slices"
@@ -74,6 +75,23 @@ type Env struct {
 func (env Env) code(code string) CodeInfo {
 	info, _ := env.Codes(code)
 	return info
+}
+
+// exitOf is the exit code of p. A code this build does not know, such as
+// one a newer daemon, host or hub added, takes it from the problem's status,
+// so that a failure never exits 0.
+func (env Env) exitOf(p Problem) int {
+	if info, ok := env.Codes(p.Code); ok {
+		return info.Exit
+	}
+	switch {
+	case p.Status == http.StatusBadRequest:
+		return ExitUsage
+	case p.Status >= 400 && p.Status < 500:
+		return ExitRejected
+	default:
+		return ExitSystem
+	}
 }
 
 func (env Env) newProblem(code, detail string) Problem {
@@ -144,7 +162,7 @@ func Run(ctx context.Context, args []string, env Env, newRoot func() *cobra.Comm
 	}
 
 	p := problemOf(env, err)
-	exit := env.code(p.Code).Exit
+	exit := env.exitOf(p)
 	p.DebugId = debugID
 	if p.Code == CodeUsage {
 		p.Hint = withHelpHint(p.Hint, cmd)

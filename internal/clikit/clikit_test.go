@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"io"
+	"net/http"
 	"os"
 	"path/filepath"
 	"slices"
@@ -149,6 +150,27 @@ func TestProgramError(t *testing.T) {
 	out = kitFailing(t, kitHome(t), errLines, nil, "fail")
 	if !strings.HasPrefix(out.Stderr, "kit: not done: the thing has 2 problems  [failed]\n  thing:1: one\n  thing:2: two\n  debug_id: dbg-") {
 		t.Fatalf("want the problem's lines, got %q", out.Stderr)
+	}
+}
+
+func TestUnknownCodeExit(t *testing.T) {
+	t.Parallel()
+	for _, tc := range []struct{ status, exit int }{
+		{http.StatusBadRequest, clikit.ExitUsage},
+		{http.StatusNotFound, clikit.ExitRejected},
+		{http.StatusConflict, clikit.ExitRejected},
+		{http.StatusUnprocessableEntity, clikit.ExitRejected},
+		{http.StatusInternalServerError, clikit.ExitSystem},
+		{http.StatusServiceUnavailable, clikit.ExitSystem},
+	} {
+		out := kitFailing(t, kitHome(t), &newerError{tc.status}, nil, "fail", "--json")
+		var v struct{ Code string }
+		if err := json.Unmarshal([]byte(out.Stdout), &v); err != nil {
+			t.Fatal(err)
+		}
+		if out.Exit != tc.exit || v.Code != "newer_code" {
+			t.Errorf("status %d: want exit %d, got %d: %s", tc.status, tc.exit, out.Exit, out.Stdout)
+		}
 	}
 }
 
