@@ -10,6 +10,7 @@ import (
 	"log/slog"
 	"net/http"
 	"runtime/debug"
+	"slices"
 	"strings"
 	"sync"
 	"time"
@@ -208,7 +209,7 @@ func refuseTooLarge(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if tooLarge, _ := r.Context().Value(tooLargeKey{}).(bool); tooLarge {
 			op, _ := r.Context().Value(operationKey{}).(string)
-			failed(w, r, &requestError{err: fmt.Errorf("the body is over %d bytes, the most %s takes", bodyLimits[op], op)})
+			failed(w, r, &requestError{err: fmt.Errorf("the body is over %d bytes, the most %s takes", bodyLimit(op), op)})
 			return
 		}
 		next.ServeHTTP(w, r)
@@ -258,24 +259,31 @@ func (s *Server) logRequests(e endpoint, next http.Handler) http.Handler {
 		if route, _, err := sp.router.FindRoute(r); err == nil && sp.endpoints[route.Operation.OperationID] == e {
 			operation = route.Operation.OperationID
 		}
-		body, tooLarge, err := readBody(r.Body, bodyLimits[operation])
-		if err != nil {
-			log.Error("request body unreadable", "err", err)
+		// The body of a request that is no operation of the endpoint is
+		// never read: it is answered 404 whatever it holds.
+		received := []any{"body_length", r.ContentLength}
+		var tooLarge bool
+		if operation != "" {
+			var body []byte
+			var err error
+			body, tooLarge, err = readBody(w, r.Body, bodyLimit(operation))
+			if err != nil {
+				log.Error("request body unreadable", "err", err)
+			}
+			r.Body = io.NopCloser(bytes.NewReader(body))
+			received = []any{"body", requestLogged(operation, body), "body_too_large", tooLarge}
 		}
-		r.Body = io.NopCloser(bytes.NewReader(body))
 		ctx := context.WithValue(context.WithValue(r.Context(), debugIDKey{}, id), operationKey{}, operation)
 		ctx = context.WithValue(ctx, tooLargeKey{}, tooLarge)
 		ctx = context.WithValue(ctx, addressKey{}, s.pages.Address(r))
 		r = r.WithContext(logging.NewContext(ctx, log))
 		origin := s.origin(e, r)
-		log.Info("request received", append([]any{
+		log.Info("request received", slices.Concat([]any{
 			"operation", operation,
 			"method", r.Method,
 			"path", r.URL.Path,
 			"query", r.URL.RawQuery,
-			"client_version", r.Header.Get(hubapi.VersionHeader),
-			"body", requestLogged(operation, body),
-			"body_too_large", tooLarge}, origin...)...)
+			"client_version", r.Header.Get(hubapi.VersionHeader)}, received, origin)...)
 
 		w.Header().Set(hubapi.DebugIDHeader, id)
 		w.Header().Set(hubapi.VersionHeader, s.version())
@@ -329,23 +337,32 @@ func (s *Server) origin(e endpoint, r *http.Request) []any {
 	return nil
 }
 
-// bodyLimits are the most a request's body may hold, by operation id; the
-// others' are not limited.
+// maxBody is the most a request's body may hold when its operation has no
+// limit of its own: every operation of api/hub.yaml but pushDocChanges takes
+// a few short strings.
+const maxBody = 64 << 10
+
+// bodyLimits are the most a request's body may hold, by operation id, for
+// the operations that take more than maxBody.
 var bodyLimits = map[string]int64{
 	"pushDocChanges": maxDocChangesBody,
 }
 
-// readBody reads body whole, or up to limit bytes and one more when limit is
-// not 0; tooLarge says there was more than limit, and what was read is then
-// dropped.
-func readBody(body io.Reader, limit int64) (b []byte, tooLarge bool, err error) {
-	if limit == 0 {
-		b, err = io.ReadAll(body)
-		return b, false, err
+// bodyLimit is the most the body of a request of operation may hold.
+func bodyLimit(operation string) int64 {
+	if limit, ok := bodyLimits[operation]; ok {
+		return limit
 	}
-	b, err = io.ReadAll(io.LimitReader(body, limit+1))
-	if int64(len(b)) > limit {
-		return nil, true, err
+	return maxBody
+}
+
+// readBody reads body up to limit bytes, through http.MaxBytesReader on w
+// so that the connection is closed rather than drained when there is more;
+// tooLarge says there was, and what was read is then dropped.
+func readBody(w http.ResponseWriter, body io.ReadCloser, limit int64) (b []byte, tooLarge bool, err error) {
+	b, err = io.ReadAll(http.MaxBytesReader(w, body, limit))
+	if _, ok := errors.AsType[*http.MaxBytesError](err); ok {
+		return nil, true, nil
 	}
 	return b, false, err
 }

@@ -50,6 +50,10 @@ const DefaultShutdownTimeout = 30 * time.Second
 // say otherwise.
 const DefaultHousekeepingInterval = time.Hour
 
+// idleTimeout is how long the web and admin endpoints keep a connection
+// open with no request on it.
+const idleTimeout = 2 * time.Minute
+
 // Options configure a hub.
 type Options struct {
 	// Config is the settings the hub starts with.
@@ -437,19 +441,31 @@ func (s *Server) reload(ctx context.Context) ([]string, error) {
 	return notApplied, nil
 }
 
+// httpServer is the server of endpoint e.
+func (s *Server) httpServer(e endpoint) *http.Server {
+	srv := &http.Server{
+		Handler:           s.handler(e),
+		ReadHeaderTimeout: 10 * time.Second,
+		// A refused handshake, as a node without its certificate, is
+		// told here; the logger is the hub's, never stderr.
+		ErrorLog: slog.NewLogLogger(connectionErrors{s.log.With("endpoint", string(e)).Handler()}, slog.LevelInfo),
+	}
+	// A connection left idle is closed on the endpoints that never hijack
+	// one. The node endpoint hijacks its WebSockets, and has no ReadTimeout
+	// either: its deadline would stay on them.
+	if e != endpointNodes {
+		srv.IdleTimeout = idleTimeout
+	}
+	return srv
+}
+
 // Serve serves requests until ctx is done, then lets the requests in flight
 // finish, closes the database and gives up the socket and the lock.
 func (s *Server) Serve(ctx context.Context) error {
 	servers := map[endpoint]*http.Server{}
 	served := make(chan error, len(s.listeners))
 	for e, ln := range s.listeners {
-		srv := &http.Server{
-			Handler:           s.handler(e),
-			ReadHeaderTimeout: 10 * time.Second,
-			// A refused handshake, as a node without its certificate, is
-			// told here; the logger is the hub's, never stderr.
-			ErrorLog: slog.NewLogLogger(connectionErrors{s.log.With("endpoint", string(e)).Handler()}, slog.LevelInfo),
-		}
+		srv := s.httpServer(e)
 		servers[e] = srv
 		go func() { served <- srv.Serve(ln) }()
 	}
