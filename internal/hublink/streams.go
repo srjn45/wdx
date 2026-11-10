@@ -256,6 +256,12 @@ func (l *Link) keepState(ctx context.Context, conn *websocket.Conn) {
 	for {
 		l.mu.Lock()
 		s := l.state
+		// The state read is the one a pending notice is for: sent now, it
+		// is not to be sent again.
+		select {
+		case <-l.stateChanged:
+		default:
+		}
 		l.mu.Unlock()
 		if s != nil {
 			err := write(ctx, conn, hubapi.ControlState{Type: hubapi.ControlStateTypeState, RemoteAccess: s.RemoteAccess, CodeSetup: s.CodeSetup})

@@ -190,6 +190,28 @@ func TestSendState(t *testing.T) {
 	saved(3, State{RemoteAccess: true, CodeSetup: true})
 }
 
+func TestStateSentOnce(t *testing.T) {
+	t.Parallel()
+	h := hubtest.Start(t)
+	desktop := newNode(t, h, nil)
+
+	// Given while logged out, as the daemon does at its start: its notice
+	// is still pending at the connect.
+	desktop.link.SendState(State{RemoteAccess: true})
+	desktop.loggedIn("desktop")
+	waittest.For(t, "the first state saved", func() bool { return len(h.Logged("node state saved")) >= 1 })
+	// The hub saves the states in the order sent, so that when it has saved
+	// the second all sent before it are saved.
+	desktop.link.SendState(State{RemoteAccess: true, CodeSetup: true})
+	waittest.For(t, "the second state saved", func() bool {
+		saved := h.Logged("node state saved")
+		return saved[len(saved)-1]["code_setup"] == true
+	})
+	if saved := h.Logged("node state saved"); len(saved) != 2 {
+		t.Errorf("the hub saved %d states, want 2 (each sent once): %v", len(saved), saved)
+	}
+}
+
 // silentHub stands for a hub that accepts the requests to paths starting
 // with prefix, of method, and never answers them: each waits until its
 // request is given up, and says so on stalled first.
