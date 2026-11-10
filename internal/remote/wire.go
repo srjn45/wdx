@@ -13,9 +13,15 @@ import (
 	"filippo.io/cpace"
 )
 
-// protocolVersion is what the two nodes speak inside a stream; a host
-// refuses another with node_version_unsupported.
-const protocolVersion = 1
+// The versions of what the two nodes speak inside a stream: protocolVersion
+// is this build's, which a client sends, and oldestProtocolVersion the oldest
+// a host still accepts. A host refuses one outside its range with
+// node_version_unsupported, giving both in the refusal, so that a later
+// client can tell whether to speak the host's version or have it updated.
+const (
+	protocolVersion       = 1
+	oldestProtocolVersion = 1
+)
 
 // maxMessage bounds a message's size, so that a peer cannot make the other
 // read without end.
@@ -37,8 +43,11 @@ const (
 // message is every message, each type using some of the fields. It is never
 // logged: CPace's messages and the MACs are in it.
 type message struct {
-	Type    string `json:"type"`
-	Version int    `json:"version,omitempty"`
+	Type string `json:"type"`
+	// Version is the protocol's: the client's in its first message, the
+	// host's in a refusal, which gives Oldest, the oldest it accepts, too.
+	Version int `json:"version,omitempty"`
+	Oldest  int `json:"oldest,omitempty"`
 	// Step is the 30-second step the client computed the code for.
 	Step  int64  `json:"step,omitempty"`
 	CPace []byte `json:"cpace,omitempty"`
@@ -109,12 +118,19 @@ func (m message) refusal() *Error {
 	if m.Reason != "" {
 		e.Details = map[string]any{"reason": string(m.Reason)}
 	}
+	if code == CodeNodeVersionUnsupported && m.Version > 0 {
+		update := "host"
+		if m.Oldest > protocolVersion {
+			update = "client"
+		}
+		e.Details = map[string]any{"update": update, "host_version": m.Version, "host_oldest": m.Oldest}
+	}
 	return e
 }
 
-// refuse sends e as a refusal.
+// refuse sends e as a refusal, with this host's protocol range.
 func refuse(w io.Writer, e *Error, reason Reason) error {
-	return write(w, message{Type: msgRefused, Code: e.Code, Detail: e.Err.Error(), Reason: reason})
+	return write(w, message{Type: msgRefused, Code: e.Code, Detail: e.Err.Error(), Reason: reason, Version: protocolVersion, Oldest: oldestProtocolVersion})
 }
 
 // binding is what both sides agree a session is between: the TLS channel's
@@ -123,13 +139,14 @@ type binding struct {
 	exporter     []byte
 	client, host ed25519.PublicKey
 	step         int64
+	version      int // the protocol's, the client's
 }
 
 // context is CPace's context: the two keys as its identities, and the
 // exporter, the protocol and the step as its additional data, so that keys
 // derived in another channel, between other keys or for another step differ.
 func (b binding) context() *cpace.ContextInfo {
-	ad := append([]byte("wdx remote v"+strconv.Itoa(protocolVersion)+" step "+strconv.FormatInt(b.step, 10)+" "), b.exporter...)
+	ad := append([]byte("wdx remote v"+strconv.Itoa(b.version)+" step "+strconv.FormatInt(b.step, 10)+" "), b.exporter...)
 	return cpace.NewContextInfo(string(b.client), string(b.host), ad)
 }
 

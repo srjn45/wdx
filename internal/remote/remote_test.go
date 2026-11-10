@@ -558,7 +558,7 @@ func TestConfirmStalls(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	b := binding{exporter: ex, client: me.key, host: hostKey, step: authcode.Step(w.clock.Now())}
+	b := binding{exporter: ex, client: me.key, host: hostKey, step: authcode.Step(w.clock.Now()), version: protocolVersion}
 	msgA, _, err := cpace.Start(desktop.code(0), b.context())
 	if err != nil {
 		t.Fatal(err)
@@ -1062,6 +1062,9 @@ func TestLoggedOut(t *testing.T) {
 	}
 }
 
+// TestVersionUnsupported sends versions outside the host's range: the
+// refusal gives the host's range as fields. TestRefusalFromNewerHost reads
+// the side to update from them.
 func TestVersionUnsupported(t *testing.T) {
 	t.Parallel()
 	w := newWorld(t)
@@ -1069,16 +1072,40 @@ func TestVersionUnsupported(t *testing.T) {
 	laptop := w.newNode(w.hub.User, "laptop")
 	desktop.setUp()
 
-	conn, _, _, _, err := laptop.remote.dial(laptop.ctx, desktop.ref)
-	if err != nil {
-		t.Fatal(err)
+	for _, version := range []int{protocolVersion + 1, oldestProtocolVersion - 1} {
+		conn, _, _, _, err := laptop.remote.dial(laptop.ctx, desktop.ref)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := write(conn, message{Type: msgOpen, Version: version}); err != nil {
+			t.Fatal(err)
+		}
+		_, err = read(conn, msgExchange)
+		conn.Close()
+		wantCode(t, err, CodeNodeVersionUnsupported)
+		e, _ := asError(err)
+		if e == nil || e.Details["host_version"] != protocolVersion || e.Details["host_oldest"] != oldestProtocolVersion {
+			t.Errorf("version %d: %v, details %v, want the host's range", version, e, e.Details)
+		}
 	}
-	defer conn.Close()
-	if err := write(conn, message{Type: msgOpen, Version: protocolVersion + 1}); err != nil {
-		t.Fatal(err)
+}
+
+// TestRefusalFromNewerHost reads a refusal of a host whose range is past
+// this client's, and one whose range ends before it.
+func TestRefusalFromNewerHost(t *testing.T) {
+	t.Parallel()
+	for _, c := range []struct {
+		m      message
+		update string
+	}{
+		{message{Type: msgRefused, Code: CodeNodeVersionUnsupported, Version: protocolVersion + 2, Oldest: protocolVersion + 1}, "client"},
+		{message{Type: msgRefused, Code: CodeNodeVersionUnsupported, Version: oldestProtocolVersion, Oldest: oldestProtocolVersion}, "host"},
+	} {
+		e := c.m.refusal()
+		if e.Code != CodeNodeVersionUnsupported || e.Details["update"] != c.update || e.Details["host_version"] != c.m.Version || e.Details["host_oldest"] != c.m.Oldest {
+			t.Errorf("%+v: %+v, want update %s", c.m, e, c.update)
+		}
 	}
-	_, err = read(conn, msgExchange)
-	wantCode(t, err, CodeNodeVersionUnsupported)
 }
 
 func TestAuditChainChanged(t *testing.T) {

@@ -43,7 +43,7 @@ func (r *Remote) Serve(ctx context.Context, s hublink.Stream) {
 		log.Info("stream refused", "reason", "first message unreadable", "err", err)
 		return
 	}
-	if first.Version != protocolVersion {
+	if first.Version < oldestProtocolVersion || first.Version > protocolVersion {
 		r.refuseStream(ctx, conn, versionRefusal(first.Version), "")
 		return
 	}
@@ -68,14 +68,10 @@ func (r *Remote) Serve(ctx context.Context, s hublink.Stream) {
 	}
 }
 
-// versionRefusal refuses a client of another protocol version, naming the
-// side to update.
+// versionRefusal refuses a client of a protocol version outside this
+// host's range, which the refusal carries.
 func versionRefusal(v int) *Error {
-	side := "this node, the host"
-	if v < protocolVersion {
-		side = "the client"
-	}
-	return refusal(CodeNodeVersionUnsupported, "the client speaks version %d between nodes, the host %d: update %s", v, protocolVersion, side)
+	return refusal(CodeNodeVersionUnsupported, "the client speaks version %d between nodes, the host versions %d to %d", v, oldestProtocolVersion, protocolVersion)
 }
 
 // refuseStream sends e and logs it.
@@ -230,7 +226,7 @@ func (r *Remote) hostOpen(ctx context.Context, conn *tls.Conn, host self, client
 		log.Error("tls exporter not read", "err", err)
 		return
 	}
-	b := binding{exporter: ex, client: clientKey, host: host.key, step: m.Step}
+	b := binding{exporter: ex, client: clientKey, host: host.key, step: m.Step, version: m.Version}
 	msgB, key, err := cpace.Exchange(password, b.context(), m.CPace)
 	if err != nil {
 		log.Info("stream refused", "reason", "cpace message unreadable", "err", err)

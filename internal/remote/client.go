@@ -44,12 +44,12 @@ func (r *Remote) Open(ctx context.Context, node hublink.NodeRef, code string) (s
 	if err != nil {
 		return Session{}, false, err
 	}
-	b := binding{exporter: ex, client: me.key, host: hostKey, step: authcode.Step(now)}
+	b := binding{exporter: ex, client: me.key, host: hostKey, step: authcode.Step(now), version: protocolVersion}
 	msgA, state, err := cpace.Start(code, b.context())
 	if err != nil {
 		return Session{}, false, err
 	}
-	if err := write(conn, message{Type: msgOpen, Version: protocolVersion, Step: b.step, CPace: msgA}); err != nil {
+	if err := write(conn, message{Type: msgOpen, Version: b.version, Step: b.step, CPace: msgA}); err != nil {
 		return Session{}, false, ended(node, err)
 	}
 	exchange, err := read(conn, msgExchange)
