@@ -575,7 +575,9 @@ func (s *serving) exit(t *testing.T) clikittest.Output {
 // logs to its output, where WantLogged does not look.
 func wantAnswering(t *testing.T, home string) {
 	t.Helper()
-	v, err := newClient(hubconfig.SocketPath(home), logging.NewDebugID(), false).version(context.Background())
+	c := newClient(hubconfig.SocketPath(home), logging.NewDebugID(), false)
+	defer c.close()
+	v, err := c.version(context.Background())
 	if err != nil || v.Name != name {
 		t.Fatalf("want the hub answering, got %+v, %v", v, err)
 	}

@@ -61,6 +61,10 @@ func newClient(socket, debugID string, quiet bool) *client {
 	return &client{api: c, doer: d}
 }
 
+// close closes the connections the client keeps open to the hub, which its
+// transport, the client's own, would otherwise hold for as long as the hub.
+func (c *client) close() { c.doer.http.CloseIdleConnections() }
+
 // doer sends requests with the debug id and version, logs them, and turns a
 // failure to reach the hub into an *unavailableError.
 type doer struct {

@@ -86,6 +86,11 @@ func Run(ctx context.Context, args []string, env Env) int {
 			fw.Logs.Owner = &logging.Owner{UID: env.Account.UID, GID: env.Account.GID}
 		}
 	}
+	defer func() {
+		if run.client != nil {
+			run.client.close()
+		}
+	}()
 	return clikit.Run(context.WithValue(ctx, runKey{}, run), args, fw, newRoot)
 }
 

@@ -495,6 +495,7 @@ func (s hubService) start(ctx context.Context) (string, error) {
 	}
 	inv := clikit.InvocationOf(s.cmd)
 	c := newClient(hubconfig.SocketPath(env.Config.Home), inv.DebugID, inv.Quiet)
+	defer c.close()
 	timeout := cmp.Or(env.Update.StartTimeout, defaultStartTimeout)
 	wait, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()
