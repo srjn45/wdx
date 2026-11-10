@@ -125,7 +125,7 @@ func (r *Remote) Stream(ctx context.Context, nodeID string) (net.Conn, Session, 
 	}
 	s.LastUsedAt, s.IdleExpiresAt = now, now.Add(s.idleTimeout)
 	_ = conn.SetDeadline(time.Time{})
-	if !r.carry(s.ID, conn) {
+	if !r.carry(ctx, s.ID, conn) {
 		conn.Close()
 		return nil, Session{}, refusal(CodeSessionNotFound, "the session into node %s closed meanwhile", s.Node.Name)
 	}

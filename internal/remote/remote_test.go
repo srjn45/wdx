@@ -1305,3 +1305,50 @@ func TestStreamCrossingLogout(t *testing.T) {
 		t.Errorf("refused %v, want the reason logged_out", e.Details)
 	}
 }
+
+// Use fails when it cannot read why a session closed, rather than call it
+// closed for no reason known.
+func TestUseClosedReasonNotRead(t *testing.T) {
+	t.Parallel()
+	w := newWorld(t)
+	host := w.newNode(w.hub.User, "desktop")
+	client := w.newNode(w.hub.User, "laptop")
+	host.setUp()
+	s := client.mustOpen(host)
+	// Only the read of the reason names the column.
+	rename := func(from, to string) {
+		if _, err := host.db.ExecContext(host.ctx, "ALTER TABLE hub_sessions RENAME COLUMN "+from+" TO "+to); err != nil {
+			t.Fatal(err)
+		}
+	}
+	rename("closed_reason", "renamed")
+	_, err := host.remote.Use(host.ctx, s.ID+"-unknown", client.ref)
+	rename("renamed", "closed_reason")
+	if _, refused := asError(err); err == nil || refused || !strings.Contains(err.Error(), "closed_reason") {
+		t.Fatalf("want the failed read, got %v", err)
+	}
+}
+
+// A stream is not carried for a caller whose context ended, as a request
+// cut short, though the session is open.
+func TestCarryEndsWithTheCaller(t *testing.T) {
+	t.Parallel()
+	w := newWorld(t)
+	host := w.newNode(w.hub.User, "desktop")
+	client := w.newNode(w.hub.User, "laptop")
+	host.setUp()
+	s := client.mustOpen(host)
+	ctx, cancel := context.WithCancel(client.ctx)
+	cancel()
+	conn, other := net.Pipe()
+	defer other.Close()
+	defer conn.Close()
+	if client.remote.carry(ctx, s.ID, conn) {
+		t.Fatal("carried for a caller whose context ended")
+	}
+	client.remote.mu.Lock()
+	defer client.remote.mu.Unlock()
+	if _, kept := client.remote.streams[s.ID][conn]; kept {
+		t.Fatal("the stream is kept, not carried")
+	}
+}

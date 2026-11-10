@@ -5,6 +5,7 @@ import (
 	"crypto/ed25519"
 	"crypto/hmac"
 	"crypto/tls"
+	"database/sql"
 	"errors"
 	"io"
 	"time"
@@ -112,7 +113,7 @@ func (r *Remote) hostSession(ctx context.Context, conn *tls.Conn, client hublink
 		return
 	}
 	_ = conn.SetDeadline(time.Time{})
-	if !r.carry(s.ID, conn) {
+	if !r.carry(ctx, s.ID, conn) {
 		log.Info("stream ended", "reason", "the session closed")
 		return
 	}
@@ -152,7 +153,11 @@ func (r *Remote) Use(ctx context.Context, id string, client hublink.NodeRef) (Se
 	}
 	if e, ok := asError(err); ok && e.Code == CodeSessionNotFound {
 		closed := refusal(CodeSessionClosed, "session %s is not open on this node: open one again with a code", id)
-		if reason := r.closedReason(ctx, id, client.ID); reason != "" {
+		reason, err := r.closedReason(ctx, id, client.ID)
+		if err != nil {
+			return Session{}, err
+		}
+		if reason != "" {
 			closed.Details = map[string]any{"reason": string(reason)}
 		}
 		return Session{}, closed
@@ -186,10 +191,13 @@ func ReasonOf(e *Error) Reason {
 
 // closedReason is why the incoming session id of client closed, empty when
 // it does not know.
-func (r *Remote) closedReason(ctx context.Context, id, clientID string) Reason {
+func (r *Remote) closedReason(ctx context.Context, id, clientID string) (Reason, error) {
 	var reason Reason
-	_ = r.opts.DB.QueryRowContext(ctx, "SELECT closed_reason FROM hub_sessions WHERE id = ? AND direction = 'incoming' AND node_id = ? AND closed_reason IS NOT NULL", id, clientID).Scan(&reason)
-	return reason
+	err := r.opts.DB.QueryRowContext(ctx, "SELECT closed_reason FROM hub_sessions WHERE id = ? AND direction = 'incoming' AND node_id = ? AND closed_reason IS NOT NULL", id, clientID).Scan(&reason)
+	if errors.Is(err, sql.ErrNoRows) {
+		return "", nil
+	}
+	return reason, err
 }
 
 // hostOpen opens a session for client, who sent m, open, on conn: the

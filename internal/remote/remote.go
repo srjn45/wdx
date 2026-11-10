@@ -351,8 +351,8 @@ func (r *Remote) identity() (self, tls.Certificate, error) {
 
 // carry keeps conn among the streams of the session id, either way, which
 // closing it closes, and reports whether the session is open still: it may have
-// closed since the stream was checked.
-func (r *Remote) carry(id string, conn net.Conn) bool {
+// closed since the stream was checked, or ctx ended.
+func (r *Remote) carry(ctx context.Context, id string, conn net.Conn) bool {
 	r.mu.Lock()
 	if r.streams[id] == nil {
 		r.streams[id] = map[net.Conn]struct{}{}
@@ -360,7 +360,10 @@ func (r *Remote) carry(id string, conn net.Conn) bool {
 	r.streams[id][conn] = struct{}{}
 	r.mu.Unlock()
 	var open bool
-	err := r.opts.DB.QueryRowContext(r.ctx, "SELECT closed_at IS NULL FROM hub_sessions WHERE id = ?", id).Scan(&open)
+	err := r.opts.DB.QueryRowContext(ctx, "SELECT closed_at IS NULL FROM hub_sessions WHERE id = ?", id).Scan(&open)
+	if err != nil && !errors.Is(err, sql.ErrNoRows) && ctx.Err() == nil {
+		logging.FromContext(ctx).Error("session not read", "session_id", id, "err", err)
+	}
 	if err != nil || !open {
 		r.dropped(id, conn)
 		return false
