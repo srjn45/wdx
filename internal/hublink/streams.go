@@ -25,6 +25,9 @@ const handoffTimeout = 10 * time.Second
 // and cannot read.
 type Stream struct {
 	net.Conn
+	// ID is the stream's id, which the hub and the node that asked for it
+	// log it by.
+	ID string
 	// Node is the node that asked for it, as the hub names it: what TLS
 	// between the two nodes proves is for the reader to check.
 	Node NodeRef
@@ -219,7 +222,7 @@ func (l *Link) answer(ctx context.Context, c *credentials, m hubapi.ControlStrea
 	}
 	log.Info("stream joined")
 	select {
-	case l.streams <- Stream{Conn: conn, Node: NodeRef{ID: m.Node.Id, Name: m.Node.Name}}:
+	case l.streams <- Stream{Conn: conn, ID: m.Stream, Node: NodeRef{ID: m.Node.Id, Name: m.Node.Name}}:
 	case <-l.opts.Clock.After(handoffTimeout):
 		log.Info("stream closed", "reason", "nobody took it")
 		_ = conn.Close() // the client's side sees the stream end

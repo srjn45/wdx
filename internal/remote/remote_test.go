@@ -7,6 +7,7 @@ import (
 	"crypto/rand"
 	"crypto/tls"
 	"database/sql"
+	"encoding/json"
 	"log/slog"
 	"net"
 	"os"
@@ -150,6 +151,20 @@ func (w *world) logged(msg string) int {
 	w.mu.Lock()
 	defer w.mu.Unlock()
 	return strings.Count(w.log.String(), `"msg":"`+msg+`"`)
+}
+
+// lines is the lines node logged with msg.
+func (w *world) lines(msg, node string) []map[string]any {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	var got []map[string]any
+	for line := range strings.SplitSeq(w.log.String(), "\n") {
+		var m map[string]any
+		if json.Unmarshal([]byte(line), &m) == nil && m["msg"] == msg && m["node"] == node {
+			got = append(got, m)
+		}
+	}
+	return got
 }
 
 // node is a machine of the test: its home, database, link and Remote, which
@@ -425,6 +440,21 @@ func TestSessionOpened(t *testing.T) {
 	}
 	if w.logged("session opened") != 2 || w.logged("node key pinned") != 2 {
 		t.Error("want the session opened and both keys pinned logged on both nodes")
+	}
+}
+
+// The host logs a stream under the id the client and the hub log it by.
+func TestStreamIDLogged(t *testing.T) {
+	t.Parallel()
+	w := newWorld(t)
+	desktop := w.newNode(w.hub.User, "desktop")
+	laptop := w.newNode(w.hub.User, "laptop")
+	desktop.setUp()
+	laptop.mustOpen(desktop)
+	asked := w.lines("stream asked", "laptop")
+	opened := w.lines("session opened", "desktop")
+	if len(asked) != 1 || len(opened) != 1 || asked[0]["stream_id"] == nil || opened[0]["stream_id"] != asked[0]["stream_id"] {
+		t.Fatalf("want the host's session opened under the stream asked's id: %v %v", asked, opened)
 	}
 }
 

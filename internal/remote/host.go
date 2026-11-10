@@ -22,7 +22,7 @@ import (
 // closes s when done.
 func (r *Remote) Serve(ctx context.Context, s hublink.Stream) {
 	defer s.Close()
-	log := logging.FromContext(ctx).With("client_node_id", s.Node.ID)
+	log := logging.FromContext(ctx).With("stream_id", s.ID, "client_node_id", s.Node.ID)
 	ctx = logging.NewContext(ctx, log)
 	host, cert, err := r.identity()
 	if err != nil {
