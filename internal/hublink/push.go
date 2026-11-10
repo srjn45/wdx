@@ -37,7 +37,9 @@ type Outbox interface {
 
 // refusedForGood are the codes the hub refuses a change with that are its
 // doc's own: sending it again changes nothing until the doc changes.
+// not_found is a doc whose id is another user's on the hub.
 var refusedForGood = map[hubapi.ErrorCode]bool{
+	hubapi.ErrorCodeNotFound:     true,
 	hubapi.ErrorCodeDocNameTaken: true,
 	hubapi.ErrorCodeDocTooLarge:  true,
 	hubapi.ErrorCodeRevisionGap:  true,

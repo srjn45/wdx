@@ -322,6 +322,28 @@ func TestPushRefused(t *testing.T) {
 	}
 }
 
+// A doc whose id another user's doc has on the hub is not_found, which
+// sending again never changes: it is refused for good, and the outbox goes
+// on with the other docs.
+func TestPushNotFound(t *testing.T) {
+	t.Parallel()
+	h := hubtest.Start(t)
+	bob := h.AddUser("bob")
+	h.PushDoc(h.NewNode(bob, "laptop"), "doc-b", "github.com/o/app", "plans", "bob's")
+	outbox := newMemOutbox()
+	n := pushNode(t, h, outbox, nil)
+	n.loggedIn("desktop")
+	outbox.add(revision(t, "doc-b", "notes", 1, "b"), revision(t, "doc-c", "todo", 1, "c"))
+	n.link.Kick()
+	outbox.wait(t, "doc-b revision failed:not_found")
+	if got := hubContent(t, h, "doc-c", 1); got != "c" {
+		t.Fatalf("hub has %q", got)
+	}
+	if failed := n.logged("docs push failed"); len(failed) != 0 {
+		t.Errorf("pushes failed %d times, want none: %v", len(failed), failed)
+	}
+}
+
 func TestPushAtReconnect(t *testing.T) {
 	t.Parallel()
 	h := hubtest.Start(t)
