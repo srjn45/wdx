@@ -3,6 +3,7 @@ package tide
 import (
 	"context"
 	"errors"
+	"io"
 	"net"
 	"slices"
 	"strings"
@@ -333,6 +334,38 @@ func TestRemoteNodeOffline(t *testing.T) {
 	m.Update(linkChanged{})
 	if m.remote.ended != nil {
 		t.Fatal("the message stays with the session back")
+	}
+}
+
+// TestRemoteStreamBroke: the project's stream breaking once open, which no
+// dial reports, shows reconnecting on the bar at once, then the message once
+// the host stayed lost for the wait; the stream opening again ends it.
+func TestRemoteStreamBroke(t *testing.T) {
+	t.Parallel()
+	m, tk := remoteModel(style.New(false), noSession)
+	broken := projectEvent{gen: m.following.gen, err: io.ErrUnexpectedEOF}
+	m.Update(broken)
+	if got := lastLine(m); !strings.Contains(got, "reconnecting to desktop…") {
+		t.Fatalf("bar %q", got)
+	}
+	waits := tk.of(5 * time.Second)
+	if len(waits) != 1 {
+		t.Fatalf("waits %v, want one of the option's 5s", tk.waits)
+	}
+	m.Update(linkChanged{}) // the stream opened again
+	m.Update(waits[0].fn(time.Time{}))
+	if m.remote.ended != nil || strings.Contains(lastLine(m), "reconnecting") {
+		t.Fatalf("the stream opened again, yet:\n%s", text(m))
+	}
+
+	m.Update(projectEvent{gen: m.following.gen, err: io.ErrUnexpectedEOF})
+	waits = tk.of(5 * time.Second)
+	if len(waits) != 2 {
+		t.Fatalf("waits %v", tk.waits)
+	}
+	m.Update(waits[1].fn(time.Time{}))
+	if got := text(m); !strings.Contains(got, "desktop could not be reached for 5s: unexpected EOF") {
+		t.Fatalf("no message after the wait:\n%s", got)
 	}
 }
 

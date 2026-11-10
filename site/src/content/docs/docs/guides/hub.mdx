@@ -195,7 +195,7 @@ TIDE closed
 - **It shows that node only,** and says so: a cyan status line that starts with the node's name, and `wdx tide · desk` as the window's title.
 - **It keeps its view in memory:** it never reads or writes the node's TIDE state, which the node refuses anyway, so the node's own TIDE stays as it was left.
 - **No settings tab,** as no setting is reached through a session; and a new project takes an absolute path on the node, typed, as this machine's directories are the wrong ones.
-- **When the session ends,** a message replaces the window and says why: type the code to open another and go on where you were, or `C-q` to quit. The node unreachable shows `reconnecting to desk…` first, and the message after 30 seconds without reaching it.
+- **When the session ends,** a message replaces the window and says why: type the code to open another and go on where you were, or `C-q` to quit. The node unreachable, or the stream of the project shown breaking, shows `reconnecting to desk…` first, and the message after 30 seconds without reaching it.
 - **One TIDE per machine,** local or not: `tide_running` refuses a second.
 
 - **The node's own TIDE shows the session:** its status line turns cyan and starts with `remote: laptop` while a session from the laptop is open. `C-q H`, or a click on `remote:`, opens the Sessions dialog, which closes a session, every one into this node, or removes a node from the account, each after asking ([TIDE's layout](/wdx/docs/tide/layout/#sessions-into-this-node)).

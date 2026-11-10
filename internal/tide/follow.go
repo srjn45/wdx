@@ -123,6 +123,10 @@ func (m *Model) projectEvent(msg projectEvent) tea.Cmd {
 	switch {
 	case !ok:
 		return nil
+	case msg.err != nil && m.node != "":
+		// A stream that broke once open met no dial the link reports: the
+		// host is lost until one opens again.
+		return tea.Batch(m.broke(msg.err), m.hostLost(msg.err, "stream_broke"))
 	case msg.err != nil:
 		return m.broke(msg.err)
 	case msg.event.Removed:

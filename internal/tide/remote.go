@@ -141,17 +141,25 @@ func (m *Model) linkWasChanged(msg linkChanged) tea.Cmd {
 		m.sessionEnded(why, known)
 		return watch
 	case p.Code == api.ErrorCodeNodeOffline || p.Code == api.ErrorCodeHubUnreachable:
-		r.lostErr = msg.err
-		if !r.lostSince.IsZero() {
-			return watch
-		}
-		r.lostSince = m.now()
-		r.lost++
-		lost := r.lost
-		m.log.Info("host unreachable", "node", m.node, "code", p.Code, "wait_ms", r.lostAfter.Milliseconds())
-		return tea.Batch(watch, m.tick(r.lostAfter, func(time.Time) tea.Msg { return sessionLostFor{lost: lost} }))
+		return tea.Batch(watch, m.hostLost(msg.err, string(p.Code)))
 	}
 	return watch // a failure of its own, which the request that met it shows
+}
+
+// hostLost takes the host as unreachable, for what: the bar says
+// reconnecting at once, and the session counts as ended once it stays so
+// for lostAfter, unless a stream into it opens meanwhile.
+func (m *Model) hostLost(err error, what string) tea.Cmd {
+	r := &m.remote
+	r.lostErr = err
+	if !r.lostSince.IsZero() {
+		return nil
+	}
+	r.lostSince = m.now()
+	r.lost++
+	lost := r.lost
+	m.log.Info("host unreachable", "node", m.node, "code", what, "wait_ms", r.lostAfter.Milliseconds())
+	return m.tick(r.lostAfter, func(time.Time) tea.Msg { return sessionLostFor{lost: lost} })
 }
 
 // sessionLostWaited ends the session when the host stayed unreachable
