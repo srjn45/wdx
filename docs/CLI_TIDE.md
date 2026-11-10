@@ -57,14 +57,14 @@ The CLI and tide stay in sync, but not one to one. The CLI serves scripts and AI
 | Feature | CLI | tide | Status | Why they differ |
 |---|---|---|---|---|
 | Create an agent | `agent create` | `C-q a`, a form | Same | tide asks every field in one box; the CLI takes flags and asks nothing, as each has a default |
-| Create a child | `agent create --parent-*` | `C-q c`, the same form with the parent filled in | Same | |
+| Create a child | `agent create --parent-*` | `C-q c`, the same form with the parent filled in | Same | With --node, `--parent-id` needs no project flag; `--parent-name` does, a name being unique only within its project |
 | Start it on a task | `--prompt` | the form's Prompt, one line | Same | |
 | Choose the name when creating | `--name` | the form's Name | Same | |
 | Choose a worktree for an agent with no parent | `--worktree` | the form's Worktree | Same | |
 | Choose its model and permissions when creating | `--model`, `--permissions` | the form's Model and Permissions | Same | |
 | See its model and permissions | `agent get` | the info tab | Same | |
 | List the models to choose from | `agent models [--aca]`, `--model`'s completion | the form's model list, filtered by what is typed | Same | |
-| See how much of an ACA's account's limits is used, and whether it can be used | `usage` | the stats tab, `C-q S` (docs/TIDE_STATS.md) | Same | the CLI names the fact, `usage`; tide's tab is generic, `stats`, so that other machine-wide facts join it over time |
+| See how much of an ACA's account's limits is used, and whether it can be used | `usage`, `usage --node` for another node's | the stats tab, `C-q S` (docs/TIDE_STATS.md) | Same | the CLI names the fact, `usage`; tide's tab is generic, `stats`, so that other machine-wide facts join it over time |
 | Choose its AI coding agent when creating | `--aca` | the form's ACA field, shown with two or more | Same | |
 | List the AI coding agents to choose from | `agent acas`, `--aca`'s completion | the field's ‹ › | Same | |
 | See why an ACA is not offered | `deps list` (installed), `setting list` (enabled) | the settings tab (enabled); installed is not shown | Later (tide) | tide has no deps screen yet |
@@ -176,11 +176,11 @@ The CLI and tide stay in sync, but not one to one. The CLI serves scripts and AI
 
 | Feature | CLI | tide | Status | Why they differ |
 |---|---|---|---|---|
-| Work on another node | `--node <name>` on `agent`, `terminal`, `project`, `doc`, `plan`, `worktree`, `message` and `version` | `wdx tide --node <name>`: a whole TIDE on the host, with a cyan bar and the node in its title | Same | tide takes the node once, for the window, rather than a flag per action (the wdx doc HUB_REMOTE_TIDE) |
+| Work on another node | `--node <name>` on `agent`, `terminal`, `project`, `doc`, `plan`, `worktree`, `message`, `version` and `usage` | `wdx tide --node <name>`: a whole TIDE on the host, with a cyan bar and the node in its title | Same | tide takes the node once, for the window, rather than a flag per action (the wdx doc HUB_REMOTE_TIDE) |
 | Attach to a terminal or an agent there | `terminal attach --node`, `agent attach --node` | their tabs in `wdx tide --node` | Same | Both attach through the host daemon's relay (docs/ATTACH.md, "The relay") |
 | Open a session to a node | `hub session open`, or the code asked at a command's first stream | the code asked before the window, and again on the message when the session ends | Same | |
 | Settings of the host | refused with `--node`: `setting` has no such flag | not offered in a remote TIDE: the menu says `settings are changed on <name> itself` | Same | No session changes a setting, so that no `hub.*` setting can be loosened from afar |
-| A new project from a directory on the host | `project open --local <path> --node`, the host's absolute path | a field for the host's absolute path, in place of the directory browser | Same | The browser reads this machine's files; listing the host's would let a session read its directories anywhere |
+| A new project from a directory on the host | `project open --local <path> --node`, the host's absolute path; a path typed at `project open`'s prompt is not expanded with this machine's `~` | a field for the host's absolute path, in place of the directory browser | Same | The browser reads this machine's files; listing the host's would let a session read its directories anywhere. A remote TIDE shows the host's paths whole, never with this machine's ~ |
 | Keep what tide showed across runs, remotely | none | none: a remote TIDE keeps its view in memory, `C-q r` keeps it through `--resume` | Later | The host's TIDE state is its own TIDE's (docs/TIDE_STATE.md, "A remote tide"); keeping it per node in the client's daemon waits for a need |
 | See and close the sessions open into this node, and the wrong codes tried | `hub session list`, `hub session close`, `hub node remove`; `hub status` gives `wrong_codes`, the count since the last session opened and the latest's time, with a warning line | `remote: <node>, ...` at the start of the bar, while any is open, then `wrong codes: <n>` while any since the last session opened; and the Sessions dialog (`C-q H`, or a click on `remote:`): `x` closes one, `X` every incoming one, `D` removes the node | Same | tide follows `GET /v1/hub/sessions/events`, whose events carry the wrong codes too; the CLI lists them when asked, and lists and closes the outgoing ones too; TIDE's dialog does not, as it is about who is in this machine |
 
