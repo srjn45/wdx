@@ -223,34 +223,25 @@ func (r *Remote) CloseAll(ctx context.Context) ([]Session, error) {
 }
 
 // NodeGone closes every session with the node nodeID, both ways, for
-// ReasonNodeRemoved, and forgets the key pinned for it: the hub removed it
-// from the account, so it never connects again under its id, and nothing
-// can tell it the sessions closed. Repeated, it does nothing.
+// ReasonNodeRemoved: the hub removed it from the account, so nothing can
+// tell it the sessions closed. The key pinned for it stays, as the hub
+// could otherwise have a node forget it; node ids are never reused, and
+// pins are forgotten at logout only. Repeated, it does nothing.
 func (r *Remote) NodeGone(ctx context.Context, nodeID string) error {
-	log := logging.FromContext(ctx)
-	log.Info("node removed from the account", "node_id", nodeID)
-	if _, err := r.closeWhere(ctx, ReasonNodeRemoved, "node_id = ?", nodeID); err != nil {
-		return err
-	}
-	n, err := sqlite.Exec(ctx, r.opts.DB, "DELETE FROM hub_known_nodes WHERE node_id = ?", nodeID)
-	if err != nil {
-		return err
-	}
-	if n > 0 {
-		log.Info("node key forgotten", "node_id", nodeID)
-	}
-	return nil
+	logging.FromContext(ctx).Info("node removed from the account", "node_id", nodeID)
+	_, err := r.closeWhere(ctx, ReasonNodeRemoved, "node_id = ?", nodeID)
+	return err
 }
 
 // AccountNodes takes the account's nodes as the hub lists them now, and
-// calls NodeGone for every node with a session open or a key pinned that is
-// not among them: one removed while this node heard nothing of it.
+// calls NodeGone for every node with a session open that is not among
+// them: one removed while this node heard nothing of it.
 func (r *Remote) AccountNodes(ctx context.Context, nodes []hublink.NodeRef) error {
 	listed := map[string]bool{}
 	for _, n := range nodes {
 		listed[n.ID] = true
 	}
-	rows, err := r.opts.DB.QueryContext(ctx, "SELECT node_id FROM hub_sessions WHERE closed_at IS NULL UNION SELECT node_id FROM hub_known_nodes")
+	rows, err := r.opts.DB.QueryContext(ctx, "SELECT DISTINCT node_id FROM hub_sessions WHERE closed_at IS NULL")
 	if err != nil {
 		return err
 	}

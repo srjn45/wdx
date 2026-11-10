@@ -861,8 +861,8 @@ func TestNodeGone(t *testing.T) {
 	if got := laptop.closedReason(kept.ID); got != "" {
 		t.Errorf("the phone's session closed %q", got)
 	}
-	if laptop.keyKnown(desktop) || !laptop.keyKnown(phone) {
-		t.Error("want the desktop's key forgotten, the phone's kept")
+	if !laptop.keyKnown(desktop) || !laptop.keyKnown(phone) {
+		t.Error("want every key kept: pins are forgotten at logout only")
 	}
 	if got := laptop.audited(); len(got) != audited+1 || got[len(got)-1] != nodeaudit.ActionSessionClosed {
 		t.Errorf("audit chain %v, want the incoming session's close after %d", got, audited)
@@ -887,7 +887,17 @@ func TestNodeGone(t *testing.T) {
 	if err := laptop.remote.AccountNodes(laptop.ctx, []hublink.NodeRef{laptop.ref}); err != nil {
 		t.Fatal(err)
 	}
-	if got := laptop.closedReason(kept.ID); got != ReasonNodeRemoved || laptop.keyKnown(phone) {
-		t.Errorf("the phone's session closed %q, key known %v; want node_removed and forgotten", got, laptop.keyKnown(phone))
+	if got := laptop.closedReason(kept.ID); got != ReasonNodeRemoved || !laptop.keyKnown(phone) {
+		t.Errorf("the phone's session closed %q, key known %v; want node_removed and kept", got, laptop.keyKnown(phone))
 	}
+
+	// A hub that says the desktop is gone cannot have its key forgotten:
+	// another key under its id is still a mismatch.
+	pub, _, _ := ed25519.GenerateKey(rand.Reader)
+	if _, err := laptop.db.Exec("UPDATE hub_known_nodes SET public_key = ? WHERE node_id = ?", []byte(pub), desktop.ref.ID); err != nil {
+		t.Fatal(err)
+	}
+	w.clock.Advance(authcode.Period)
+	_, _, err := laptop.open(desktop, desktop.code(0))
+	wantCode(t, err, CodeNodeKeyMismatch)
 }
