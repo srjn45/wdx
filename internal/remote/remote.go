@@ -128,6 +128,9 @@ type Options struct {
 	// recording, when not nil, is given the stream of a session whose
 	// code was right, before it is recorded, for tests.
 	recording func(net.Conn)
+	// dialing, when not nil, is called once Stream read the session it
+	// opens a stream in, before it dials the host, for tests.
+	dialing func()
 }
 
 // Remote is the node's sessions, both ways.

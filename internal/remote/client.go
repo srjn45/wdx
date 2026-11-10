@@ -114,6 +114,9 @@ func (r *Remote) Stream(ctx context.Context, nodeID string) (net.Conn, Session, 
 	if !ok {
 		return nil, Session{}, refusal(CodeSessionNotFound, "no session into node %s is open", nodeID)
 	}
+	if r.opts.dialing != nil {
+		r.opts.dialing()
+	}
 	conn, err := r.sessionStream(ctx, s, msgStream)
 	if err != nil {
 		return nil, Session{}, err
@@ -167,8 +170,17 @@ func (r *Remote) sessionStream(ctx context.Context, s Session, kind string) (*tl
 		return nil, err
 	}
 	if !pinned {
+		// Only a logout forgets the keys of nodes a session is open into,
+		// and it closed the session after it was read.
 		conn.Close()
-		return nil, fmt.Errorf("no key is pinned for node %s, which session %s needs", s.Node.Name, s.ID)
+		reason := r.reasonClosed(ctx, s.ID)
+		if reason == "" {
+			reason = ReasonLoggedOut
+		}
+		log.Info("session closed meanwhile", "reason", reason)
+		closed := refusal(CodeSessionClosed, "session %s into node %s closed meanwhile, its key forgotten (%s)", s.ID, s.Node.Name, reason)
+		closed.Details = map[string]any{"reason": string(reason)}
+		return nil, closed
 	}
 	if err := write(conn, message{Type: kind, Version: protocolVersion, Session: s.ID}); err != nil {
 		conn.Close()

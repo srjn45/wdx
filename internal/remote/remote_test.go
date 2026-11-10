@@ -1218,3 +1218,29 @@ func TestAccountNodesLeavesLaterSessions(t *testing.T) {
 	}
 	desktop.wantClosedFor(gone.ID, ReasonNodeRemoved)
 }
+
+// TestStreamCrossingLogout: a logout between reading the session and
+// dialing its host is session_closed, logged_out, not an error of its own.
+func TestStreamCrossingLogout(t *testing.T) {
+	t.Parallel()
+	w := newWorld(t)
+	desktop := w.newNode(w.hub.User, "desktop")
+	var logOut atomic.Pointer[node]
+	laptop := w.newNode(w.hub.User, "laptop", func(o *Options) {
+		o.dialing = func() {
+			if n := logOut.Load(); n != nil {
+				if err := n.remote.LoggedOut(n.ctx); err != nil {
+					t.Error(err)
+				}
+			}
+		}
+	})
+	desktop.setUp()
+	laptop.mustOpen(desktop)
+	logOut.Store(laptop)
+	err := laptop.stream(desktop)
+	wantCode(t, err, CodeSessionClosed)
+	if e, _ := asError(err); ReasonOf(e) != ReasonLoggedOut {
+		t.Errorf("refused %v, want the reason logged_out", e.Details)
+	}
+}
