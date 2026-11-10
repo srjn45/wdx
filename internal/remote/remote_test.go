@@ -138,7 +138,7 @@ func (w *world) wantNoSecrets() {
 	defer w.mu.Unlock()
 	for line := range strings.SplitSeq(w.log.String(), "\n") {
 		for _, s := range w.secrets {
-			if s != "" && strings.Contains(line, s) {
+			if s != "" && hubtest.Leaked([]byte(line), s) {
 				w.t.Errorf("a secret, %q, logged: %s", s, line)
 			}
 		}

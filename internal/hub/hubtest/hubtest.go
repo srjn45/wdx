@@ -316,6 +316,18 @@ func (h *Hub) wantLogged() {
 
 // leaked reports whether the line b holds secret; a code of digits must
 // stand alone, so that it is not found inside a longer number.
+// Leaked says whether line, a JSON log line, holds secret, its time aside,
+// whose digits are no code's: a code of digits only as a word of its own.
+// A line that is not JSON is matched whole.
+func Leaked(line []byte, secret string) bool {
+	var v map[string]any
+	if json.Unmarshal(line, &v) == nil {
+		delete(v, "time")
+		line, _ = json.Marshal(v)
+	}
+	return leaked(line, secret)
+}
+
 func leaked(b []byte, secret string) bool {
 	if digits.MatchString(secret) {
 		return regexp.MustCompile(`(^|[^0-9A-Za-z])` + secret + `([^0-9A-Za-z]|$)`).Match(b)

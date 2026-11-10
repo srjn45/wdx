@@ -208,7 +208,7 @@ func (n *node) wantNoSecrets() {
 	s.Buffer(nil, 1<<20)
 	for s.Scan() {
 		for _, secret := range secrets {
-			if bytes.Contains(s.Bytes(), []byte(secret)) {
+			if hubtest.Leaked(s.Bytes(), secret) {
 				t.Errorf("node: a secret, %q, logged: %s", secret, s.Bytes())
 			}
 		}
