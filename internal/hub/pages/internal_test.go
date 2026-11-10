@@ -1,10 +1,14 @@
 package pages
 
 import (
+	"fmt"
 	"net/http"
 	"net/netip"
+	"strings"
 	"testing"
 	"time"
+
+	"github.com/srjn45/wdx/internal/hub/account"
 )
 
 func TestSafeNext(t *testing.T) {
@@ -76,18 +80,110 @@ func TestLimitsSwept(t *testing.T) {
 	now := time.Date(2026, 11, 8, 12, 0, 0, 0, time.UTC)
 	l := newLimits(func() time.Time { return now })
 	for range freeTries {
-		l.wrong("Alice")
+		l.wrong("Alice", "192.0.2.1")
 	}
-	l.countTry("192.0.2.1")
-	if wait, first := l.userWait("alice"); wait != time.Second || !first {
+	if wait, first := l.try("192.0.2.1", "alice"); wait != time.Second || !first {
 		t.Fatalf("locked out: %s, %v", wait, first)
 	}
-	if _, first := l.userWait("ALICE"); first {
+	if _, first := l.try("192.0.2.1", "ALICE"); first {
 		t.Fatal("a second refusal is the first")
 	}
+	l.countTry("192.0.2.1")
 	now = now.Add(forgetAfter)
-	l.wrong("bob")
-	if _, ok := l.streaks["alice"]; ok || len(l.tries) != 0 || len(l.streaks) != 1 {
-		t.Fatalf("not swept: %v %v", l.streaks, l.tries)
+	l.wrong("bob", "192.0.2.1")
+	if _, ok := l.streaks[keyOf("alice", "192.0.2.1")]; ok || len(l.tries) != 0 || len(l.streaks) != 1 || len(l.attacks) != 1 {
+		t.Fatalf("not swept: %v %v %v", l.streaks, l.attacks, l.tries)
+	}
+}
+
+// A burst from one address is let through only as far as its window allows:
+// each check counts the try it lets through.
+func TestTryCounted(t *testing.T) {
+	t.Parallel()
+	now := time.Date(2026, 11, 8, 12, 0, 0, 0, time.UTC)
+	l := newLimits(func() time.Time { return now })
+	for i := range triesPerMinute + 5 {
+		if wait := l.takeTry("192.0.2.1"); (wait == 0) != (i < triesPerMinute) {
+			t.Fatalf("try %d: wait %s", i+1, wait)
+		}
+	}
+	for i := range signUpsPerMinute + 1 {
+		if wait := l.signUp("192.0.2.1", false); (wait == 0) != (i < signUpsPerMinute) {
+			t.Fatalf("sign-up %d: wait %s", i+1, wait)
+		}
+	}
+	for i := range loginStartsPerMinute + 1 {
+		if wait := l.loginStart("192.0.2.1"); (wait == 0) != (i < loginStartsPerMinute) {
+			t.Fatalf("login start %d: wait %s", i+1, wait)
+		}
+	}
+}
+
+// A streak is a username's from one address; the wrong tries of a username
+// from every address are counted for the audit alone, once a day.
+func TestStreakPerAddress(t *testing.T) {
+	t.Parallel()
+	now := time.Date(2026, 11, 8, 12, 0, 0, 0, time.UTC)
+	l := newLimits(func() time.Time { return now })
+	attacked := 0
+	for i := range account.AttackedTries + 10 {
+		if l.wrong("alice", fmt.Sprintf("192.0.2.%d", i%2)).attacked {
+			attacked++
+			if i != account.AttackedTries-1 {
+				t.Errorf("attacked at the %dth wrong try", i+1)
+			}
+		}
+	}
+	if attacked != 1 {
+		t.Errorf("attacked %d times", attacked)
+	}
+	if wait, _ := l.try("192.0.2.0", "alice"); wait == 0 {
+		t.Error("the address of the wrong tries is not locked out")
+	}
+	if wait, _ := l.try("198.51.100.1", "alice"); wait != 0 {
+		t.Errorf("another address waits %s", wait)
+	}
+	l.passed("alice", "192.0.2.0")
+	if wait, _ := l.try("192.0.2.1", "alice"); wait == 0 {
+		t.Error("a success from one address ended the streak of another")
+	}
+}
+
+// A username no user can have makes no streak; at most maxStreaks are kept,
+// and a streak not made is said once a minute.
+func TestStreaksBounded(t *testing.T) {
+	t.Parallel()
+	now := time.Date(2026, 11, 8, 12, 0, 0, 0, time.UTC)
+	l := newLimits(func() time.Time { return now })
+	if c := l.wrong(strings.Repeat("a", 60_000), "192.0.2.1"); c != (counted{}) || len(l.streaks) != 0 || len(l.attacks) != 0 {
+		t.Fatalf("a username no user can have: %+v, %d streaks", c, len(l.streaks))
+	}
+	for i := range maxStreaks {
+		if c := l.wrong(fmt.Sprintf("u%d", i), "192.0.2.1"); c.full {
+			t.Fatalf("full at %d", i)
+		}
+	}
+	if c := l.wrong("one-more", "192.0.2.1"); !c.full {
+		t.Error("a streak not made, not said")
+	}
+	if c := l.wrong("two-more", "192.0.2.1"); c.full {
+		t.Error("said twice in a minute")
+	}
+	if len(l.streaks) != maxStreaks || len(l.attacks) != maxStreaks {
+		t.Errorf("%d streaks, %d attacks, want %d", len(l.streaks), len(l.attacks), maxStreaks)
+	}
+	// A kept streak still counts.
+	for range freeTries {
+		l.wrong("u1", "192.0.2.1")
+	}
+	if wait, _ := l.try("192.0.2.2", "u1"); wait != 0 {
+		t.Errorf("another address waits %s", wait)
+	}
+	if wait, _ := l.try("192.0.2.1", "u1"); wait == 0 {
+		t.Error("a kept streak no longer counts")
+	}
+	now = now.Add(time.Minute)
+	if c := l.wrong("three-more", "192.0.2.1"); !c.full {
+		t.Error("not said again a minute later")
 	}
 }

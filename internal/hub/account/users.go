@@ -122,7 +122,7 @@ func (s *Store) SignUp(ctx context.Context, by By, req SignUp) (User, Started, e
 			return User{}, Started{}, err
 		}
 	}
-	hash, err := s.argon.hash(req.Password)
+	hash, err := s.hashPassword(ctx, req.Password)
 	if err != nil {
 		return User{}, Started{}, err
 	}
@@ -177,9 +177,16 @@ func (s *Store) SignUp(ctx context.Context, by By, req SignUp) (User, Started, e
 // without its second factor, which the browser passes next, or enrols when
 // the user has none. A username that does not exist takes as long as a wrong
 // password and fails the same, with ErrWrongPassword; a disabled user fails
-// with ErrDisabled, but only once the password is right.
+// with ErrDisabled, but only once the password is right. A username no user
+// can have fails the same at once, with no hash: only its length and pattern,
+// both public, tell it apart by time. With too many passwords waiting to be
+// checked it fails with ErrBusy.
 func (s *Store) Login(ctx context.Context, by By, username, password, userAgent string) (User, Started, error) {
 	log := logging.FromContext(ctx)
+	if !ValidUsername(username) {
+		log.Info("login refused", "reason", "username_invalid")
+		return User{}, Started{}, ErrWrongPassword
+	}
 	var id string
 	var hash sql.NullString
 	var disabled sql.NullInt64
@@ -188,11 +195,14 @@ func (s *Store) Login(ctx context.Context, by By, username, password, userAgent 
 		return User{}, Started{}, err
 	}
 	if !hash.Valid {
-		_, _ = matches(s.dummy(), password)
+		// The dummy is made in the slot too, at the first login that needs it.
+		if err := s.inSlot(ctx, func() { _, _ = matches(s.dummy(), password) }); err != nil {
+			return User{}, Started{}, err
+		}
 		log.Info("login refused", "reason", "password")
 		return User{}, Started{}, ErrWrongPassword
 	}
-	ok, err := matches(hash.String, password)
+	ok, err := s.passwordMatches(ctx, hash.String, password)
 	if err != nil {
 		return User{}, Started{}, err
 	}
@@ -230,7 +240,7 @@ func (s *Store) checkPasswordOf(ctx context.Context, userID, password string) er
 	if !hash.Valid {
 		return ErrWrongPassword
 	}
-	ok, err := matches(hash.String, password)
+	ok, err := s.passwordMatches(ctx, hash.String, password)
 	if err != nil {
 		return err
 	}
@@ -250,7 +260,7 @@ func (s *Store) ChangePassword(ctx context.Context, by By, userID, sessionID, cu
 	if err := s.checkPasswordOf(ctx, userID, current); err != nil {
 		return err
 	}
-	hash, err := s.argon.hash(password)
+	hash, err := s.hashPassword(ctx, password)
 	if err != nil {
 		return err
 	}
@@ -348,15 +358,39 @@ func (s *Store) Remove(ctx context.Context, by By, userID string) error {
 }
 
 // RecordLockout records that the rate limit of username refused its first
-// try: with the user's id when there is such a user, and nothing typed.
+// try from an address, with the user's id; a username no user has records
+// nothing, so that made-up names cannot grow the chain.
 func (s *Store) RecordLockout(ctx context.Context, by By, username string) error {
+	return s.recordOfUsername(ctx, by, username, ActionLockedOut, "user locked out")
+}
+
+// RecordAttack records that username had AttackedTries wrong tries in a day,
+// from any address; a username no user has records nothing.
+func (s *Store) RecordAttack(ctx context.Context, by By, username string) error {
+	return s.recordOfUsername(ctx, by, username, ActionPasswordAttacked, "user password attacked")
+}
+
+// AttackedTries is how many wrong tries of a username in a day are recorded
+// as an attack on its password.
+const AttackedTries = 50
+
+func (s *Store) recordOfUsername(ctx context.Context, by By, username, action, msg string) error {
+	log := logging.FromContext(ctx)
+	if !ValidUsername(username) {
+		log.Info(msg+" not recorded", "reason", "no such user")
+		return nil
+	}
 	var id string
 	err := s.db.QueryRowContext(ctx, "SELECT id FROM users WHERE username = ? AND removed_at IS NULL", username).Scan(&id)
-	if err != nil && !errors.Is(err, sql.ErrNoRows) {
+	if errors.Is(err, sql.ErrNoRows) {
+		log.Info(msg+" not recorded", "reason", "no such user")
+		return nil
+	}
+	if err != nil {
 		return err
 	}
 	return s.inTx(ctx, func(tx *sql.Tx) error {
-		logging.FromContext(ctx).Info("user locked out", "user_id", id)
-		return s.record(ctx, tx, by, id, ActionLockedOut, nil)
+		log.Info(msg, "user_id", id)
+		return s.record(ctx, tx, by, id, action, nil)
 	})
 }

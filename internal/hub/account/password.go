@@ -92,8 +92,11 @@ func checkPassword(password string) error {
 // or digit, 1 to 39 characters.
 var usernamePattern = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9-]{0,38}$`)
 
+// ValidUsername reports whether a user could have username.
+func ValidUsername(username string) bool { return usernamePattern.MatchString(username) }
+
 func checkUsername(username string) error {
-	if !usernamePattern.MatchString(username) {
+	if !ValidUsername(username) {
 		return &InvalidError{Field: "username", Reason: "must be 1 to 39 letters, digits and -, starting with a letter or digit"}
 	}
 	return nil

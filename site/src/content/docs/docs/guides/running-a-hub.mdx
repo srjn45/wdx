@@ -90,6 +90,16 @@ https://hub.acme.dev/signup?invite=…
 
 They sign up on that page, set up their second factor, and from then on log their machines in with `wdx hub login --url https://hub.acme.dev`: the nodes of a hub of your own always name it with `--url`, as `wdx hub login` alone logs in to the central hub, `https://wdx-hub.fly.dev`. `--expires 72h` gives an invite longer; the setting `registration`, `open`, lets anyone sign up.
 
+### Rate limits
+
+The hub's pages limit the tries, counted in memory, so a restart forgets them. A refused try is answered `429` with how long to wait.
+
+- **Per address,** at most 20 passwords, codes or tokens a minute, wrong invite and reset links counted, and 10 sign-ups. Each try is counted as it is let through, so a burst cannot pass before any is counted.
+- **Per username and address,** after 5 wrong passwords or codes in a row the next try from that address waits 1 second, doubling up to 15 minutes, until one passes. Wrong passwords from one address never lock the user out from another: the second factor, needed after the password, stops whoever guesses from many. The first refusal of a user's lockout is in the audit chain, as `user.locked_out`.
+- **Per username, from any address,** 50 wrong tries in a day write `user.password_attacked` to the audit chain, once; they refuse nothing. Neither row is written for a username no user has.
+- **Passwords hashed at once:** two, each with 19 MiB, and 16 more may wait for them. A try beyond those is refused at once: `429`, "too many tries at once, try again in a moment".
+- **A username no user can have,** one that is not 1 to 39 letters, digits and `-`, is answered as a wrong password at once, with no hash and no count of its own. The counts are kept for at most 10,000 usernames; when that many are counted, the address limits still hold.
+
 ## Admin commands
 
 The hub's commands talk to the running hub over its admin socket, which only root and the `wdx-hub` user reach. Run them with `sudo`: as root on a machine with the hub installed, `wdx-hub` becomes the `wdx-hub` user before anything else, so that it reads the hub's home and every file it writes there stays the hub's.

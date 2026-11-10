@@ -60,7 +60,10 @@ type fixture struct {
 // step.
 var at = time.Date(2026, 11, 8, 12, 0, 0, 0, time.UTC)
 
-func newFixture(t *testing.T) *fixture {
+func newFixture(t *testing.T) *fixture { return newFixtureWith(t, nil) }
+
+// newFixtureWith is newFixture with the options adjust changes, when not nil.
+func newFixtureWith(t *testing.T, adjust func(*Options)) *fixture {
 	t.Helper()
 	path := filepath.Join(t.TempDir(), "hub.db")
 	sqlitetest.Seed(t, path, hubdb.Open)
@@ -74,7 +77,11 @@ func newFixture(t *testing.T) *fixture {
 		t.Fatal(err)
 	}
 	c := &clock{t: at}
-	s, err := New(d, Options{MasterKey: key, Now: c.now, Argon2: light})
+	opts := Options{MasterKey: key, Now: c.now, Argon2: light}
+	if adjust != nil {
+		adjust(&opts)
+	}
+	s, err := New(d, opts)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -357,7 +364,8 @@ func TestPasswordLength(t *testing.T) {
 }
 
 // A wrong password and a username that does not exist take the same path:
-// a hash checked, and the same error.
+// a hash checked, and the same error. A username no user can have gets the
+// same error with no hash.
 func TestLoginRefused(t *testing.T) {
 	t.Parallel()
 	f := newFixture(t)
@@ -379,8 +387,9 @@ func TestLoginRefused(t *testing.T) {
 		_, _, err := f.Login(f.ctx, browser, name, password, "")
 		wantErr(t, name, err, ErrWrongPassword)
 	}
-	if dummies != 3 {
-		t.Fatalf("the dummy hash checked %d times, want once for each unknown user", dummies)
+	// A name no user can have is refused with no hash at all.
+	if dummies != 2 {
+		t.Fatalf("the dummy hash checked %d times, want once for each unknown valid username", dummies)
 	}
 	if _, _, err := f.Login(f.ctx, browser, "ALICE", password, ""); err != nil {
 		t.Fatalf("the right password, the name in another case: %v", err)
@@ -966,30 +975,141 @@ func TestDeleteExpired(t *testing.T) {
 	}
 }
 
+// A lockout and an attack are recorded for a user only: a made-up name
+// grows no chain.
 func TestRecordLockout(t *testing.T) {
 	t.Parallel()
 	f := newFixture(t)
 	u := f.signUp(t, "alice")
-	for _, name := range []string{"Alice", "nobody"} {
+	for _, name := range []string{"Alice", "nobody", strings.Repeat("x", 60_000)} {
 		if err := f.RecordLockout(f.ctx, browser, name); err != nil {
 			t.Fatal(err)
 		}
+		if err := f.RecordAttack(f.ctx, browser, name); err != nil {
+			t.Fatal(err)
+		}
 	}
-	rows, err := f.db.Query("SELECT COALESCE(user_id, ''), details FROM audit WHERE action = ? ORDER BY id", ActionLockedOut)
+	rows, err := f.db.Query("SELECT action, COALESCE(user_id, ''), details FROM audit WHERE action IN (?, ?) ORDER BY id", ActionLockedOut, ActionPasswordAttacked)
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer rows.Close()
 	var got []string
 	for rows.Next() {
-		var id, details string
-		if err := rows.Scan(&id, &details); err != nil {
+		var action, id, details string
+		if err := rows.Scan(&action, &id, &details); err != nil {
 			t.Fatal(err)
 		}
-		got = append(got, id+" "+details)
+		got = append(got, action+" "+id+" "+details)
 	}
-	if strings.Join(got, ",") != u.ID+" {}, {}" {
-		t.Errorf("lockouts %v, want alice's id, then none, and nothing typed", got)
+	if want := ActionLockedOut + " " + u.ID + " {}," + ActionPasswordAttacked + " " + u.ID + " {}"; strings.Join(got, ",") != want {
+		t.Errorf("rows %v, want alice's lockout and attack alone, and nothing typed", got)
+	}
+}
+
+// heldHashes holds every hash until released, counting those running at
+// once.
+type heldHashes struct {
+	mu       sync.Mutex
+	running  int
+	most     int
+	ran      int
+	started  chan struct{}
+	released chan struct{}
+}
+
+func newHeldHashes() *heldHashes {
+	return &heldHashes{started: make(chan struct{}, 100), released: make(chan struct{})}
+}
+
+func (h *heldHashes) around(hash func()) {
+	h.mu.Lock()
+	h.running++
+	h.ran++
+	h.most = max(h.most, h.running)
+	h.mu.Unlock()
+	h.started <- struct{}{}
+	<-h.released
+	hash()
+	h.mu.Lock()
+	h.running--
+	h.mu.Unlock()
+}
+
+// At most two passwords are hashed at once and sixteen wait; any more is
+// refused at once with ErrBusy, and a wait ends with its context.
+func TestHashSlots(t *testing.T) {
+	t.Parallel()
+	held := newHeldHashes()
+	f := newFixtureWith(t, func(o *Options) { o.AroundHash = held.around })
+	const tries = hashSlotCount + hashWaiting + 3
+	errs := make(chan error, tries)
+	for range tries {
+		go func() {
+			_, _, err := f.Login(f.ctx, browser, "alice", password, "Firefox")
+			errs <- err
+		}()
+	}
+	// Before any hash ends, the tries not admitted are refused and two are
+	// hashed: as many events happen however many hashes run.
+	busy, wrong := 0, 0
+	for events := 0; events < tries-hashWaiting; events++ {
+		select {
+		case err := <-errs:
+			if !errors.Is(err, ErrBusy) {
+				t.Fatalf("a try before any hash ended: %v, want ErrBusy", err)
+			}
+			busy++
+		case <-held.started:
+		}
+	}
+	close(held.released)
+	for range tries - busy {
+		if err := <-errs; errors.Is(err, ErrWrongPassword) {
+			wrong++
+		} else if !errors.Is(err, ErrBusy) {
+			t.Fatalf("a try: %v", err)
+		}
+	}
+	if busy != tries-hashSlotCount-hashWaiting || wrong != hashSlotCount+hashWaiting {
+		t.Errorf("%d busy, %d wrong passwords; want %d, %d", busy, wrong, tries-hashSlotCount-hashWaiting, hashSlotCount+hashWaiting)
+	}
+	held.mu.Lock()
+	defer held.mu.Unlock()
+	if held.most != hashSlotCount || held.ran != hashSlotCount+hashWaiting {
+		t.Errorf("%d hashes at most at once, %d in all; want %d, %d", held.most, held.ran, hashSlotCount, hashSlotCount+hashWaiting)
+	}
+
+	// A try waiting for a slot gives up when its context ends.
+	s := newSlots(1, 1)
+	hold, holding := make(chan struct{}), make(chan struct{})
+	go func() { _ = s.run(context.Background(), func() { close(holding); <-hold }) }()
+	<-holding
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	if err := s.run(ctx, func() { t.Error("ran past its context") }); !errors.Is(err, context.Canceled) {
+		t.Errorf("a wait whose context ended: %v", err)
+	}
+	close(hold)
+}
+
+// A login whose username no user can have is a wrong password, with no hash
+// run.
+func TestLoginInvalidUsername(t *testing.T) {
+	t.Parallel()
+	held := newHeldHashes()
+	close(held.released)
+	f := newFixtureWith(t, func(o *Options) { o.AroundHash = held.around })
+	for _, name := range []string{strings.Repeat("a", 60_000), "-alice", "al ice"} {
+		if _, _, err := f.Login(f.ctx, browser, name, password, "Firefox"); !errors.Is(err, ErrWrongPassword) {
+			t.Fatalf("%.10q: %v, want ErrWrongPassword", name, err)
+		}
+	}
+	if held.ran != 0 {
+		t.Errorf("%d hashes run", held.ran)
+	}
+	if _, _, err := f.Login(f.ctx, browser, "nobody", password, "Firefox"); !errors.Is(err, ErrWrongPassword) || held.ran != 1 {
+		t.Errorf("an unknown valid username: %v, %d hashes, want the dummy's", err, held.ran)
 	}
 }
 
@@ -1031,6 +1151,9 @@ func TestEveryActAudited(t *testing.T) {
 	if err := f.RecordLockout(f.ctx, browser, "alice"); err != nil {
 		t.Fatal(err)
 	}
+	if err := f.RecordAttack(f.ctx, browser, "alice"); err != nil {
+		t.Fatal(err)
+	}
 	for _, act := range []func() (bool, error){
 		func() (bool, error) { return f.Disable(f.ctx, Admin, u.ID) },
 		func() (bool, error) { return f.Enable(f.ctx, Admin, u.ID) },
@@ -1043,7 +1166,7 @@ func TestEveryActAudited(t *testing.T) {
 	want := []string{
 		ActionInvited, ActionSignedUp, ActionFactorEnrolled, ActionLoggedIn,
 		ActionLoggedIn, ActionLoggedIn, ActionFactorReplaced, ActionRecoveryCodesRenewed, ActionPasswordChanged,
-		ActionResetMade, ActionResetUsed, ActionSessionEnded, ActionLockedOut, ActionDisabled, ActionEnabled, ActionRemoved,
+		ActionResetMade, ActionResetUsed, ActionSessionEnded, ActionLockedOut, ActionPasswordAttacked, ActionDisabled, ActionEnabled, ActionRemoved,
 	}
 	if got := f.actions(t); strings.Join(got, " ") != strings.Join(want, " ") {
 		t.Fatalf("actions\n%v\nwant\n%v", got, want)

@@ -105,11 +105,7 @@ func (h *Pages) Address(r *http.Request) string { return h.p.address(r) }
 // AllowLoginStart counts a node login started from address, and returns how
 // long address must wait when it has started too many, 0 when it may.
 func (h *Pages) AllowLoginStart(address string) time.Duration {
-	if wait := h.p.limits.loginStartWait(address); wait > 0 {
-		return wait
-	}
-	h.p.limits.countLoginStart(address)
-	return 0
+	return h.p.limits.loginStart(address)
 }
 
 // New returns the handler of the pages.
@@ -251,7 +247,14 @@ func (p *pages) message(w http.ResponseWriter, r *http.Request, status int, v pa
 
 // failed shows that something the person could not help went wrong, logging
 // what.
+// failed answers a request that failed, but for too many passwords waiting
+// to be checked, which is answered as a rate limit is.
 func (p *pages) failed(w http.ResponseWriter, r *http.Request, err error) {
+	if errors.Is(err, account.ErrBusy) {
+		w.Header().Set("Retry-After", "1")
+		p.message(w, r, http.StatusTooManyRequests, page{Title: "Too many tries", Text: "Too many tries at once: try again in a moment."})
+		return
+	}
 	logging.FromContext(r.Context()).Error("page failed", "err", err)
 	p.message(w, r, http.StatusInternalServerError, page{Title: "Something went wrong", Text: "The hub could not do this. Try again; if it goes on, tell the hub's operator.", Link: "/", LinkText: "Start again"})
 }
@@ -309,18 +312,15 @@ func (p *pages) registrationOpen() bool {
 
 // limited refuses the try of username (empty for none) from the client of
 // r when a rate limit makes it wait, logging refused with the reason, and
-// auditing the first refusal of a username's lockout; otherwise it counts
-// the try against the address.
+// auditing the first refusal of a username's lockout from the address;
+// otherwise it counts the try against the address, in the same step.
 func (p *pages) limited(w http.ResponseWriter, r *http.Request, username, refused string) bool {
 	ctx := r.Context()
 	addr := p.address(r)
-	wait := p.limits.tryWait(addr)
-	if wait == 0 && username != "" {
-		var first bool
-		if wait, first = p.limits.userWait(username); first {
-			if err := p.opts.Accounts.RecordLockout(ctx, p.by(r), username); err != nil {
-				logging.FromContext(ctx).Error("lockout not recorded", "err", err)
-			}
+	wait, first := p.limits.try(addr, username)
+	if first {
+		if err := p.opts.Accounts.RecordLockout(ctx, p.by(r), username); err != nil {
+			logging.FromContext(ctx).Error("lockout not recorded", "err", err)
 		}
 	}
 	if wait > 0 {
@@ -328,12 +328,30 @@ func (p *pages) limited(w http.ResponseWriter, r *http.Request, username, refuse
 		p.tooMany(w, r, wait)
 		return true
 	}
-	p.limits.countTry(addr)
 	return false
 }
 
-// wrongToken counts an invite or reset token that is wrong against the
-// address.
+// wrong counts a wrong password or code of username from the client of r,
+// auditing the username's wrong tries in a day once they are many.
+func (p *pages) wrong(r *http.Request, username string) {
+	ctx := r.Context()
+	c := p.limits.wrong(username, p.address(r))
+	if c.full {
+		logging.FromContext(ctx).Warn("wrong try not counted", "reason", "streaks_full", "streaks", maxStreaks)
+	}
+	if c.attacked {
+		if err := p.opts.Accounts.RecordAttack(ctx, p.by(r), username); err != nil {
+			logging.FromContext(ctx).Error("attack not recorded", "err", err)
+		}
+	}
+}
+
+// passed ends the streak of username from the client of r.
+func (p *pages) passed(r *http.Request, username string) {
+	p.limits.passed(username, p.address(r))
+}
+
+// wrongToken counts an invite token that is wrong against the address.
 func (p *pages) wrongToken(r *http.Request) { p.limits.countTry(p.address(r)) }
 
 // safeNext returns raw when it is a path on the hub, starting with a single

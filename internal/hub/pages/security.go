@@ -51,7 +51,7 @@ func (p *pages) security(w http.ResponseWriter, r *http.Request) {
 
 // wrongCurrent answers a current password that is wrong, counting it.
 func (p *pages) wrongCurrent(w http.ResponseWriter, r *http.Request, v visitor) {
-	p.limits.wrong(v.user.Username)
+	p.wrong(r, v.user.Username)
 	logging.FromContext(r.Context()).Info("change refused", "reason", "password", "user_id", v.user.ID)
 	p.securityPage(w, r, v, http.StatusUnprocessableEntity, "The current password is wrong.")
 }
@@ -77,7 +77,7 @@ func (p *pages) changePassword(w http.ResponseWriter, r *http.Request) {
 	case err != nil:
 		p.failed(w, r, err)
 	default:
-		p.limits.passed(v.user.Username)
+		p.passed(r, v.user.Username)
 		redirect(w, r, home+"?done=password")
 	}
 }
@@ -94,7 +94,7 @@ func (p *pages) replaceAuthenticator(w http.ResponseWriter, r *http.Request) {
 	case err != nil:
 		p.failed(w, r, err)
 	default:
-		p.limits.passed(v.user.Username)
+		p.passed(r, v.user.Username)
 		redirect(w, r, "/security/authenticator")
 	}
 }
@@ -134,7 +134,7 @@ func (p *pages) confirmReplacement(w http.ResponseWriter, r *http.Request) {
 	err := p.opts.Accounts.ConfirmReplacement(ctx, p.by(r), v.user.ID, r.PostFormValue("code"))
 	switch {
 	case errors.Is(err, account.ErrWrongCode):
-		p.limits.wrong(v.user.Username)
+		p.wrong(r, v.user.Username)
 		logging.FromContext(ctx).Info("change refused", "reason", "code", "user_id", v.user.ID)
 		p.replacement(w, r, v, http.StatusUnprocessableEntity, "That code is wrong: type the one the new entry in your app shows now.")
 	case errors.Is(err, account.ErrNoEnrolment):
@@ -142,7 +142,7 @@ func (p *pages) confirmReplacement(w http.ResponseWriter, r *http.Request) {
 	case err != nil:
 		p.failed(w, r, err)
 	default:
-		p.limits.passed(v.user.Username)
+		p.passed(r, v.user.Username)
 		redirect(w, r, home+"?done=authenticator")
 	}
 }
@@ -159,7 +159,7 @@ func (p *pages) renewCodes(w http.ResponseWriter, r *http.Request) {
 	case err != nil:
 		p.failed(w, r, err)
 	default:
-		p.limits.passed(v.user.Username)
+		p.passed(r, v.user.Username)
 		p.render(w, r, http.StatusOK, "codes", page{Title: "Your new recovery codes", Codes: codes, Notice: "The old codes no longer work."})
 	}
 }

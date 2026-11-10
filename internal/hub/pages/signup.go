@@ -16,7 +16,6 @@ import (
 )
 
 func (p *pages) inviteRefused(w http.ResponseWriter, r *http.Request) {
-	p.wrongToken(r)
 	p.message(w, r, http.StatusNotFound, page{Title: "This invite has expired or been used", Text: "Ask the hub's operator for a new one."})
 }
 
@@ -41,7 +40,7 @@ func (p *pages) signUpForm(w http.ResponseWriter, r *http.Request) {
 		p.render(w, r, http.StatusOK, "signup", signUpPage(v))
 		return
 	}
-	if wait := p.limits.tryWait(p.address(r)); wait > 0 {
+	if wait := p.limits.takeTry(p.address(r)); wait > 0 {
 		logging.FromContext(r.Context()).Info("sign-up refused", "reason", "rate_limited", "wait_ms", wait.Milliseconds())
 		p.tooMany(w, r, wait)
 		return
@@ -60,16 +59,11 @@ func (p *pages) signUp(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 	log := logging.FromContext(ctx)
 	addr := p.address(r)
-	wait := p.limits.signUpWait(addr)
-	if invite := r.PostFormValue("invite"); invite != "" {
-		wait = max(wait, p.limits.tryWait(addr))
-	}
-	if wait > 0 {
+	if wait := p.limits.signUp(addr, r.PostFormValue("invite") != ""); wait > 0 {
 		log.Info("sign-up refused", "reason", "rate_limited", "address", addr, "wait_ms", wait.Milliseconds())
 		p.tooMany(w, r, wait)
 		return
 	}
-	p.limits.countSignUp(addr)
 	v := page{Invite: r.PostFormValue("invite"), Username: strings.TrimSpace(r.PostFormValue("username")), Next: p.next(r)}
 	if r.PostFormValue("password") != r.PostFormValue("password2") {
 		log.Info("sign-up refused", "reason", "passwords_differ")
@@ -87,6 +81,7 @@ func (p *pages) signUp(w http.ResponseWriter, r *http.Request) {
 	var invalid *account.InvalidError
 	switch {
 	case errors.Is(err, account.ErrInvalidInvite):
+		p.wrongToken(r)
 		p.inviteRefused(w, r)
 	case errors.Is(err, account.ErrRegistrationClosed):
 		p.registrationClosed(w, r)
@@ -181,7 +176,7 @@ func (p *pages) enrol(w http.ResponseWriter, r *http.Request) {
 	c, err := p.opts.Accounts.ConfirmTOTP(ctx, p.by(r), v.user.ID, v.session.ID, r.PostFormValue("code"))
 	switch {
 	case errors.Is(err, account.ErrWrongCode):
-		p.limits.wrong(v.user.Username)
+		p.wrong(r, v.user.Username)
 		logging.FromContext(ctx).Info("enrolment refused", "reason", "code", "user_id", v.user.ID)
 		p.enrolment(w, r, v, http.StatusUnprocessableEntity, page{Next: next, Error: "That code is wrong: type the one your app shows now."})
 	case errors.Is(err, account.ErrNoEnrolment):
@@ -189,7 +184,7 @@ func (p *pages) enrol(w http.ResponseWriter, r *http.Request) {
 	case err != nil:
 		p.failed(w, r, err)
 	default:
-		p.limits.passed(v.user.Username)
+		p.passed(r, v.user.Username)
 		setSession(w, c.Token)
 		p.render(w, r, http.StatusOK, "codes", page{Title: "Save your recovery codes", Codes: c.RecoveryCodes, Next: next})
 	}

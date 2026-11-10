@@ -70,6 +70,7 @@ const (
 	ActionRemoved              = "user.removed"
 	ActionSessionEnded         = "user.session_ended"
 	ActionLockedOut            = "user.locked_out"
+	ActionPasswordAttacked     = "user.password_attacked"
 )
 
 // By is who acts and from where, as the audit chain records them.
@@ -92,6 +93,9 @@ type Options struct {
 	// Issuer names the hub in the person's authenticator; wdx-hub when
 	// empty.
 	Issuer string
+	// AroundHash runs every argon2id hash, given it; it is run directly when
+	// nil. Tests count and hold the hashes with it.
+	AroundHash func(hash func())
 }
 
 // Store keeps the accounts in the hub's database.
@@ -104,6 +108,9 @@ type Store struct {
 	// dummy is the hash a login for a username that does not exist checks
 	// against, so that it takes as long as one that does.
 	dummy func() string
+	// hashSlots bounds the argon2id runs at once and those waiting for one.
+	hashSlots  *slots
+	aroundHash func(hash func())
 }
 
 // New returns the store of the accounts in db, the hub's database.
@@ -111,7 +118,11 @@ func New(db *sql.DB, opts Options) (*Store, error) {
 	if len(opts.MasterKey) != seal.KeySize {
 		return nil, fmt.Errorf("the master key is %d bytes, not %d", len(opts.MasterKey), seal.KeySize)
 	}
-	s := &Store{db: db, key: opts.MasterKey, now: opts.Now, argon: opts.Argon2, issuer: opts.Issuer}
+	s := &Store{db: db, key: opts.MasterKey, now: opts.Now, argon: opts.Argon2, issuer: opts.Issuer,
+		hashSlots: newSlots(hashSlotCount, hashWaiting), aroundHash: opts.AroundHash}
+	if s.aroundHash == nil {
+		s.aroundHash = func(hash func()) { hash() }
+	}
 	if s.now == nil {
 		s.now = time.Now
 	}

@@ -33,7 +33,7 @@ func (p *pages) login(w http.ResponseWriter, r *http.Request) {
 	u, started, err := p.opts.Accounts.Login(ctx, p.by(r), username, r.PostFormValue("password"), userAgent(r))
 	switch {
 	case errors.Is(err, account.ErrWrongPassword):
-		p.limits.wrong(username)
+		p.wrong(r, username)
 		v.Error = "The username or password is wrong."
 		p.render(w, r, http.StatusUnprocessableEntity, "login", loginPage(v))
 	case errors.Is(err, account.ErrDisabled):
@@ -68,7 +68,7 @@ func (p *pages) secondFactor(w http.ResponseWriter, r *http.Request) {
 	started, err := p.opts.Accounts.PassTOTP(ctx, p.by(r), v.user.ID, v.session.ID, r.PostFormValue("code"))
 	switch {
 	case errors.Is(err, account.ErrWrongCode):
-		p.limits.wrong(v.user.Username)
+		p.wrong(r, v.user.Username)
 		logging.FromContext(ctx).Info("login refused", "reason", "code", "user_id", v.user.ID)
 		p.render(w, r, http.StatusUnprocessableEntity, "second_factor", page{Title: "Your authenticator's code", Next: next, Error: "That code is wrong, or was used already: type the one your app shows now."})
 	case errors.Is(err, account.ErrNoSession), errors.Is(err, account.ErrNoFactor):
@@ -76,7 +76,7 @@ func (p *pages) secondFactor(w http.ResponseWriter, r *http.Request) {
 	case err != nil:
 		p.failed(w, r, err)
 	default:
-		p.limits.passed(v.user.Username)
+		p.passed(r, v.user.Username)
 		setSession(w, started.Token)
 		redirect(w, r, done(next))
 	}
@@ -99,7 +99,7 @@ func (p *pages) recoveryCode(w http.ResponseWriter, r *http.Request) {
 	started, left, err := p.opts.Accounts.PassRecoveryCode(ctx, p.by(r), v.user.ID, v.session.ID, r.PostFormValue("code"))
 	switch {
 	case errors.Is(err, account.ErrWrongCode):
-		p.limits.wrong(v.user.Username)
+		p.wrong(r, v.user.Username)
 		logging.FromContext(ctx).Info("login refused", "reason", "recovery_code", "user_id", v.user.ID)
 		p.render(w, r, http.StatusUnprocessableEntity, "recovery_code", page{Title: "A recovery code", Next: next, Error: "That recovery code is wrong, or was used already."})
 	case errors.Is(err, account.ErrNoSession):
@@ -107,7 +107,7 @@ func (p *pages) recoveryCode(w http.ResponseWriter, r *http.Request) {
 	case err != nil:
 		p.failed(w, r, err)
 	default:
-		p.limits.passed(v.user.Username)
+		p.passed(r, v.user.Username)
 		setSession(w, started.Token)
 		p.message(w, r, http.StatusOK, page{
 			Title:    "Logged in with a recovery code",
@@ -156,14 +156,13 @@ func (p *pages) resetRefused(w http.ResponseWriter, r *http.Request) {
 
 func (p *pages) resetForm(w http.ResponseWriter, r *http.Request) {
 	token := r.URL.Query().Get("token")
-	if wait := p.limits.tryWait(p.address(r)); wait > 0 {
+	if wait := p.limits.takeTry(p.address(r)); wait > 0 {
 		logging.FromContext(r.Context()).Info("reset refused", "reason", "rate_limited", "wait_ms", wait.Milliseconds())
 		p.tooMany(w, r, wait)
 		return
 	}
 	secondFactor, err := p.opts.Accounts.CheckReset(r.Context(), token)
 	if errors.Is(err, account.ErrInvalidReset) {
-		p.wrongToken(r)
 		p.resetRefused(w, r)
 		return
 	} else if err != nil {

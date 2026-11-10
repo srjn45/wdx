@@ -137,7 +137,7 @@ func (s *Store) UseReset(ctx context.Context, by By, token, password string) (st
 	if _, err := s.findReset(ctx, s.db, token); err != nil {
 		return "", err
 	}
-	hash, err := s.argon.hash(password)
+	hash, err := s.hashPassword(ctx, password)
 	if err != nil {
 		return "", err
 	}

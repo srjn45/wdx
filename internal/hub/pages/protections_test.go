@@ -5,6 +5,7 @@ import (
 	"net/http"
 	"net/netip"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -336,4 +337,165 @@ func TestNext(t *testing.T) {
 	o := h.browser()
 	second := o.submit(o.get("/login?next=/elsewhere"), "/login", map[string]string{"username": p.username, "password": p.password})
 	o.submit(second, "/login/second-factor", map[string]string{"code": h.code(p.key)}).want(t, http.StatusNotFound, "/elsewhere")
+}
+
+// heldHashes holds every password hash until released, counting those
+// running at once.
+type heldHashes struct {
+	mu       sync.Mutex
+	running  int
+	most     int
+	ran      int
+	started  chan struct{}
+	released chan struct{}
+}
+
+func newHeldHashes() *heldHashes {
+	return &heldHashes{started: make(chan struct{}, 100), released: make(chan struct{})}
+}
+
+func (h *heldHashes) around(hash func()) {
+	h.mu.Lock()
+	h.running++
+	h.ran++
+	h.most = max(h.most, h.running)
+	h.mu.Unlock()
+	h.started <- struct{}{}
+	<-h.released
+	hash()
+	h.mu.Lock()
+	h.running--
+	h.mu.Unlock()
+}
+
+func (h *heldHashes) counts() (most, ran int) {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	return h.most, h.ran
+}
+
+// 40 logins at once from one address: 20 are tried, as the address allows,
+// and of those two are hashed at once and sixteen wait; the rest are refused
+// as a rate limit refuses.
+func TestLoginBurst(t *testing.T) {
+	t.Parallel()
+	held := newHeldHashes()
+	h := startHub(t, func(o *server.Options) { o.AroundHash = held.around })
+	form := h.browser().get("/login")
+	const logins = 40
+	statuses := make(chan int, logins)
+	for range logins {
+		b := h.browser()
+		go func() {
+			statuses <- b.submit(form, "/login", map[string]string{"username": "alice", "password": "wrong password!"}).status
+		}()
+	}
+	// Before any hash ends, 22 are refused, those over the address's 20 and
+	// the two tried for which no slot is free nor a place to wait, and 2 are
+	// hashed: 24 events in all, which happen however many hashes run.
+	got := map[int]int{}
+	for events := 0; events < 24; events++ {
+		select {
+		case status := <-statuses:
+			got[status]++
+		case <-held.started:
+		}
+	}
+	close(held.released)
+	for range logins - got[http.StatusTooManyRequests] {
+		got[<-statuses]++
+	}
+	if got[http.StatusTooManyRequests] != 22 || got[http.StatusUnprocessableEntity] != 18 {
+		t.Errorf("statuses %v, want 22 refused as too many and 18 tried", got)
+	}
+	if most, ran := held.counts(); most != 2 || ran != 18 {
+		t.Errorf("%d hashes at most at once, %d in all; want 2, 18", most, ran)
+	}
+	if len(h.logged("password not checked")) != 2 {
+		t.Error("the busy tries not logged")
+	}
+}
+
+// Wrong passwords from one address lock the username out from it alone: the
+// right password from another still logs in.
+func TestLockoutPerAddress(t *testing.T) {
+	t.Parallel()
+	h := startHub(t, func(o *server.Options) {
+		o.Config.TrustedProxies = []netip.Prefix{netip.MustParsePrefix("127.0.0.1/32")}
+	})
+	owner, guesser := h.browser(), h.browser()
+	owner.header.Set("X-Forwarded-For", "203.0.113.1")
+	guesser.header.Set("X-Forwarded-For", "203.0.113.2")
+	p := h.signUp(owner, "alice")
+	form := guesser.get("/login")
+	wrong := map[string]string{"username": "alice", "password": "wrong password!"}
+	for range 5 {
+		guesser.submit(form, "/login", wrong).want(t, http.StatusUnprocessableEntity, "")
+	}
+	guesser.submit(form, "/login", wrong).want(t, http.StatusTooManyRequests, "")
+	other := h.browser()
+	other.header.Set("X-Forwarded-For", "203.0.113.1")
+	other.submit(other.get("/login"), "/login", map[string]string{"username": "alice", "password": p.password}).want(t, http.StatusOK, "/login/second-factor")
+}
+
+// A username no user can have, however long, is a wrong password with no
+// hash and no streak.
+func TestLoginInvalidUsername(t *testing.T) {
+	t.Parallel()
+	held := newHeldHashes()
+	close(held.released)
+	h := startHub(t, func(o *server.Options) { o.AroundHash = held.around })
+	b := h.browser()
+	form := b.get("/login")
+	long := map[string]string{"username": strings.Repeat("a", 60_000), "password": "wrong password!"}
+	for i := range 5 + 2 {
+		if got := b.submit(form, "/login", long); got.status != http.StatusUnprocessableEntity {
+			t.Fatalf("try %d: %d", i+1, got.status)
+		}
+	}
+	if _, ran := held.counts(); ran != 0 {
+		t.Errorf("%d hashes run", ran)
+	}
+	if got := h.actions(); count(got, account.ActionLockedOut) != 0 {
+		t.Errorf("actions %v", got)
+	}
+}
+
+// Wrong tries of an unknown username lock it out from the address, but no
+// lockout is audited: only a user's.
+func TestUnknownLockoutNotAudited(t *testing.T) {
+	t.Parallel()
+	h := startHub(t, nil)
+	b := h.browser()
+	form := b.get("/login")
+	wrong := map[string]string{"username": "nobody", "password": "wrong password!"}
+	for range 5 {
+		b.submit(form, "/login", wrong).want(t, http.StatusUnprocessableEntity, "")
+	}
+	b.submit(form, "/login", wrong).want(t, http.StatusTooManyRequests, "")
+	if got := h.actions(); count(got, account.ActionLockedOut) != 0 {
+		t.Errorf("actions %v", got)
+	}
+}
+
+// A user's wrong passwords from any address are audited once they reach 50
+// in a day, once, refusing nothing more.
+func TestPasswordAttacked(t *testing.T) {
+	t.Parallel()
+	h := startHub(t, func(o *server.Options) {
+		o.Config.TrustedProxies = []netip.Prefix{netip.MustParsePrefix("127.0.0.1/32")}
+	})
+	p := h.signUp(h.browser(), "alice")
+	wrong := map[string]string{"username": "alice", "password": "wrong password!"}
+	for i := range account.AttackedTries + 5 {
+		b := h.browser()
+		b.header.Set("X-Forwarded-For", fmt.Sprintf("203.0.113.%d", i/5))
+		b.submit(b.get("/login"), "/login", wrong).want(t, http.StatusUnprocessableEntity, "")
+		if got := count(h.actions(), account.ActionPasswordAttacked); got != min(max(i+2-account.AttackedTries, 0), 1) {
+			t.Fatalf("after %d wrong passwords, %d attacks audited", i+1, got)
+		}
+	}
+	b := h.browser()
+	b.header.Set("X-Forwarded-For", "198.51.100.1")
+	b.submit(b.get("/login"), "/login", map[string]string{"username": "alice", "password": p.password}).want(t, http.StatusOK, "/login/second-factor")
 }
