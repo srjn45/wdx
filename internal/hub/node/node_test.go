@@ -183,6 +183,10 @@ func TestBrowserFlow(t *testing.T) {
 	if s.DeviceCode != "" || s.UserCode != "" || s.Status != StatusPending || !s.ExpiresAt.Equal(f.clock.now().Add(LoginLife)) {
 		t.Fatalf("started %+v", s)
 	}
+	// The approval link names the login: its id is 128 random bits.
+	if id, ok := strings.CutPrefix(s.ID, "nl-"); !ok || len(id) != 32 || strings.Trim(id, "0123456789abcdef") != "" {
+		t.Errorf("login id %q, want nl- and 32 hex digits", s.ID)
+	}
 	a, err := f.Approve(f.ctx, from, alice, s.ID, "desktop")
 	if err != nil {
 		t.Fatal(err)

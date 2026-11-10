@@ -8,6 +8,7 @@ import (
 	"crypto/subtle"
 	"database/sql"
 	"encoding/base64"
+	"encoding/hex"
 	"errors"
 	"net/url"
 	"strconv"
@@ -202,10 +203,7 @@ func (s *Store) StartLogin(ctx context.Context, by By, req StartRequest) (Starte
 		log.Info("login refused", "reason", err.Error())
 		return Started{}, err
 	}
-	id, err := sqlite.NewID("nl")
-	if err != nil {
-		return Started{}, err
-	}
+	id := newLoginID()
 	now := s.now()
 	started := Started{Login: Login{
 		ID: id, Flow: req.Flow, Name: req.Name, OS: req.OS, Version: req.Version, PublicKey: req.PublicKey,
@@ -226,6 +224,15 @@ func (s *Store) StartLogin(ctx context.Context, by By, req StartRequest) (Starte
 	}
 	log.Info("login started", "login_id", id, "flow", string(req.Flow), "name", req.Name, "address", by.Address)
 	return started, nil
+}
+
+// newLoginID is the id of a new login, nl- and 128 random bits in hex: the
+// browser flow's approval link names it, so it must not be guessed while
+// the login waits.
+func newLoginID() string {
+	b := make([]byte, 16)
+	_, _ = rand.Read(b) // never fails
+	return "nl-" + hex.EncodeToString(b)
 }
 
 // recordStarted audits the start of l, as it is approved or denied by

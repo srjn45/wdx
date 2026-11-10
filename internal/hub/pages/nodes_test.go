@@ -93,6 +93,29 @@ func TestWrongUserCodesLimited(t *testing.T) {
 	t.Fatal("21 wrong codes in a minute, none refused")
 }
 
+// An unknown login on the approval page counts against the address, as a
+// wrong code does, so that ids cannot be tried at will; a known one does not.
+func TestUnknownLoginsLimited(t *testing.T) {
+	t.Parallel()
+	h := startHub(t, nil)
+	b := h.browser()
+	h.signUp(b, "alice")
+	s := h.startLogin(node.FlowBrowser, "desktop")
+	for range 25 {
+		b.get("/nodes/approve?login="+s.ID).want(t, http.StatusOK, "", "wants to join your account")
+	}
+	// The sign-up's own tries count too.
+	for range 21 {
+		r := b.get("/nodes/approve?login=nl-00000000000000000000000000000000")
+		if r.status == http.StatusTooManyRequests {
+			r.want(t, http.StatusTooManyRequests, "", "Too many tries")
+			return
+		}
+		r.want(t, http.StatusNotFound, "", "No such login")
+	}
+	t.Fatal("21 unknown logins in a minute, none refused")
+}
+
 func TestDevicePageNeedsALogin(t *testing.T) {
 	t.Parallel()
 	h := startHub(t, nil)

@@ -123,6 +123,11 @@ func (p *pages) approveForm(w http.ResponseWriter, r *http.Request) {
 	l, err := p.opts.Nodes.Login(r.Context(), id)
 	switch {
 	case errors.Is(err, node.ErrLoginNotFound):
+		// An unknown login counts against the address, as a wrong code
+		// does: its id is the browser flow's secret while it waits.
+		if p.limited(w, r, "", "approval refused") {
+			return
+		}
 		p.message(w, r, http.StatusNotFound, page{Title: "No such login", Text: "Run wdx hub login again."})
 	case errors.Is(err, node.ErrLoginExpired):
 		p.expired(w, r)
