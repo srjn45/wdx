@@ -107,6 +107,20 @@ func warnTideVersion(cmd *cobra.Command, daemonVersion string) {
 		identity.Name, st.Warning("warning:"), daemonVersion, identity.Version, st.Command(identity.Name+" daemon restart"))
 }
 
+// tideOptions are the options of the TIDE cmd runs, but for its client. A
+// TIDE on another node gets no home of this machine's, so that the host's
+// paths are shown whole, not shortened as if they were here.
+func tideOptions(cmd *cobra.Command, resume *tide.Resume) tide.Options {
+	env := envOf(cmd)
+	opts := tide.Options{Style: viewStyle(cmd).WithTheme(env.Config.TideTheme), WorkDir: env.WorkDir, UserHome: env.UserHome, ProjectsDir: identity.ProjectsDir(env.Config.Home), Home: env.Config.Home,
+		Resume: resume, StripLinger: env.Timeouts.ProjectStrip,
+		SectionOrder: env.Config.TideSectionOrder, ContextWarning: env.Config.ContextWarning, ContextCritical: env.Config.ContextCritical}
+	if nodeOf(cmd) != "" {
+		opts.UserHome = ""
+	}
+	return opts
+}
+
 func runTide(cmd *cobra.Command, _ []string) error {
 	if clikit.JSONMode(cmd) {
 		return &clikit.UsageError{Err: errors.New("TIDE is interactive and has no --json")}
@@ -138,9 +152,7 @@ func runTide(cmd *cobra.Command, _ []string) error {
 		}
 		resume = r
 	}
-	opts := tide.Options{Style: viewStyle(cmd).WithTheme(env.Config.TideTheme), WorkDir: env.WorkDir, UserHome: env.UserHome, ProjectsDir: identity.ProjectsDir(env.Config.Home), Home: env.Config.Home,
-		Resume: resume, StripLinger: env.Timeouts.ProjectStrip,
-		SectionOrder: env.Config.TideSectionOrder, ContextWarning: env.Config.ContextWarning, ContextCritical: env.Config.ContextCritical}
+	opts := tideOptions(cmd, resume)
 	var c *client.Client
 	if node := nodeOf(cmd); node != "" {
 		c, err = remoteTide(cmd, node, &opts)

@@ -574,10 +574,11 @@ func openCancelled() error {
 }
 
 // expandHome expands a leading ~ of a path typed at a prompt, where no shell
-// has.
+// has. With --node it leaves it, as this machine's home is not the other
+// node's: the path is then refused as not absolute there.
 func expandHome(cmd *cobra.Command, path string) string {
 	home := envOf(cmd).UserHome
-	if home == "" {
+	if home == "" || nodeOf(cmd) != "" {
 		return path
 	}
 	if path == "~" {

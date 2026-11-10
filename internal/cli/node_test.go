@@ -285,6 +285,18 @@ func TestNodePaths(t *testing.T) {
 		t.Errorf("%v: %s", args, out.Stdout)
 	}
 
+	// A ~ typed at a prompt is not the laptop's home, which is not the
+	// desktop's: the path is refused, named as typed.
+	for _, answers := range [][]string{{"1", "made", "~/work"}, {"2", "~/work"}} {
+		out := p.onLaptop(dir, func(env *Env) {
+			answering(t, answers...)(env)
+			env.UserHome = dir
+		}, "project", "open", "--node", "desktop")
+		if out.Exit != clikit.ExitUsage || !strings.Contains(out.Stderr, "path must be absolute on node desktop: ~/work") {
+			t.Errorf("%q: %+v", answers, out)
+		}
+	}
+
 	// A file the CLI reads or writes stays the laptop's.
 	if out := p.onLaptop(dir, nil, "doc", "create", "--project-name", "app", "--name", "auth", "--path", "notes.md", "--node", "desktop", "--json"); out.Exit != clikit.ExitOK {
 		t.Fatalf("doc create from the laptop's file: %+v", out)

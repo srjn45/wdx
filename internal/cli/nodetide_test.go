@@ -1,6 +1,7 @@
 package cli
 
 import (
+	"context"
 	"strings"
 	"testing"
 
@@ -8,6 +9,7 @@ import (
 
 	"github.com/srjn45/wdx/internal/api"
 	"github.com/srjn45/wdx/internal/clikit"
+	"github.com/srjn45/wdx/internal/config"
 )
 
 // TestNodeTide runs TIDE on the laptop showing the desktop: the code is
@@ -146,5 +148,31 @@ func TestHostIndicator(t *testing.T) {
 	}
 	if streams != 1 {
 		t.Errorf("TIDE opened the sessions' stream %d times, want once", streams)
+	}
+}
+
+// TestNodeTideNoUserHome: a TIDE on another node shows the host's paths
+// whole, never shortened with this machine's home.
+func TestNodeTideNoUserHome(t *testing.T) {
+	t.Parallel()
+	for _, tc := range []struct {
+		args []string
+		want string
+	}{
+		{[]string{"tide"}, "/home/alice"},
+		{[]string{"tide", "--node", "desktop"}, ""},
+	} {
+		root := newRoot(config.Default())
+		cmd, rest, err := root.Find(tc.args)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := cmd.ParseFlags(rest); err != nil {
+			t.Fatal(err)
+		}
+		cmd.SetContext(context.WithValue(t.Context(), envKey{}, &Env{UserHome: "/home/alice"}))
+		if got := tideOptions(cmd, nil).UserHome; got != tc.want {
+			t.Errorf("%v: UserHome %q, want %q", tc.args, got, tc.want)
+		}
 	}
 }
