@@ -4,7 +4,7 @@
 // WebSockets copied both ways until either closes. The relay knows which two
 // nodes and when, and counts the bytes each way; it never reads them, and
 // never logs them. Which nodes may ask, and which are online, is the
-// server's to check.
+// server's to check, and when a node or a user is cut off, its to say.
 package relay
 
 import (
@@ -58,8 +58,9 @@ type Relay struct {
 	opts Options
 
 	mu      sync.Mutex
-	streams map[string]*stream // by id, until both joined or it failed
-	perUser map[string]int     // open or waiting, by user id
+	streams map[string]*stream   // by id, until both joined or it failed
+	open    map[*stream]struct{} // both joined, until both copies ended
+	perUser map[string]int       // open or waiting, by user id
 }
 
 // New returns a relay with no streams.
@@ -69,7 +70,7 @@ func New(opts Options) *Relay {
 	if opts.After == nil {
 		opts.After = time.After
 	}
-	return &Relay{opts: opts, streams: map[string]*stream{}, perUser: map[string]int{}}
+	return &Relay{opts: opts, streams: map[string]*stream{}, open: map[*stream]struct{}{}, perUser: map[string]int{}}
 }
 
 // Nodes are the two nodes of a stream: the client, which asked for it, and
@@ -95,6 +96,11 @@ type stream struct {
 	// copies counts the sides still running; the last logs the close.
 	copies  atomic.Int32
 	started time.Time
+
+	// ws is each side's WebSocket while it runs, and cut whether the
+	// stream was cut, which closes them; both under the relay's mu.
+	ws  []*websocket.Conn
+	cut bool
 }
 
 // Open asks for a stream between nodes, failing with ErrTooMany when their
@@ -173,6 +179,7 @@ func (r *Relay) Join(ctx context.Context, id, nodeID string) (*Joined, error) {
 	if len(s.joined) == 2 {
 		// Both are in: the stream is no longer waiting, but open.
 		delete(r.streams, id)
+		r.open[s] = struct{}{}
 		s.started = time.Now()
 		s.copies.Store(2)
 		close(s.both)
@@ -217,6 +224,9 @@ func (j *Joined) Run(ctx context.Context, conn *websocket.Conn) {
 		return
 	}
 	defer func() { _ = conn.CloseNow() }()
+	if !j.relay.running(s, conn) {
+		return
+	}
 	conn.SetReadLimit(-1) // copied as it comes, never held whole
 	var peer *websocket.Conn
 	select {
@@ -248,10 +258,65 @@ func (j *Joined) done(ctx context.Context) {
 	}
 	j.relay.mu.Lock()
 	j.relay.release(s.nodes.UserID)
+	delete(j.relay.open, s)
 	j.relay.mu.Unlock()
 	logging.FromContext(ctx).Info("stream closed", "stream_id", s.id, "user_id", s.nodes.UserID,
 		"client_node_id", s.nodes.ClientID, "host_node_id", s.nodes.HostID,
 		"client_bytes", s.fromClient.Load(), "host_bytes", s.fromHost.Load(), logging.Duration(s.started))
+}
+
+// running keeps conn, a side's WebSocket, for a cut to close, and reports
+// whether the stream is not cut already.
+func (r *Relay) running(s *stream, conn *websocket.Conn) bool {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	if s.cut {
+		return false
+	}
+	s.ws = append(s.ws, conn)
+	return true
+}
+
+// CutNode closes every stream open of the node nodeID, either side, as
+// once it is removed from its account.
+func (r *Relay) CutNode(ctx context.Context, nodeID string) {
+	r.cutWhere(ctx, "node_id", nodeID, func(n Nodes) bool { return n.ClientID == nodeID || n.HostID == nodeID })
+}
+
+// CutUser closes every stream open of the user userID, as once the user is
+// disabled or removed.
+func (r *Relay) CutUser(ctx context.Context, userID string) {
+	r.cutWhere(ctx, "user_id", userID, func(n Nodes) bool { return n.UserID == userID })
+}
+
+// cutWhere fails the streams waiting that match picks, and closes the
+// WebSockets of those open, and of their sides still to run.
+func (r *Relay) cutWhere(ctx context.Context, key, value string, match func(Nodes) bool) {
+	var conns []*websocket.Conn
+	cut := 0
+	r.mu.Lock()
+	for id, s := range r.streams {
+		if match(s.nodes) {
+			delete(r.streams, id)
+			r.release(s.nodes.UserID)
+			s.failed = ErrNotFound
+			close(s.both)
+			cut++
+		}
+	}
+	for s := range r.open {
+		if !s.cut && match(s.nodes) {
+			s.cut = true
+			cut++
+			conns = append(conns, s.ws...)
+		}
+	}
+	r.mu.Unlock()
+	// Outside the lock, and at once: the stream is over for both sides.
+	for _, conn := range conns {
+		_ = conn.CloseNow()
+	}
+	logging.FromContext(ctx).Info("streams cut", key, value, "streams", cut)
 }
 
 // copyMessages copies the binary messages read from src to dst, counting

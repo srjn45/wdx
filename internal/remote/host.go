@@ -124,10 +124,17 @@ func (r *Remote) hostSession(ctx context.Context, conn *tls.Conn, client hublink
 }
 
 // Use checks the session id, incoming from client, is open and not idle,
-// with remote access on, and moves its idle time on: at each stream, and at
-// each request a stream carries. A session that is not is an *Error with
+// with remote access on and this node not cut off by the hub, and moves
+// its idle time on: at each stream, and at each request a stream carries.
+// A session that is not is an *Error with
 // CodeSessionClosed, whose ReasonOf says why when it is known.
 func (r *Remote) Use(ctx context.Context, id string, client hublink.NodeRef) (Session, error) {
+	if cutOff(r.opts.Link.Status().Connection) {
+		// The link's watch closes them all, which this may come before.
+		if err := r.CutOff(ctx); err != nil {
+			return Session{}, err
+		}
+	}
 	if !r.opts.RemoteAccess() {
 		// Apply closes them all, which this may come before.
 		if _, err := r.closeWhere(ctx, ReasonRemoteAccessOff, "direction = 'incoming'"); err != nil {

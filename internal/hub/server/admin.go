@@ -84,6 +84,7 @@ func (a *api) UpdateUser(ctx context.Context, req hubapi.UpdateUserRequestObject
 	if req.Body.Disabled {
 		// Even unchanged: a node that connected meanwhile is refused anyway.
 		a.server.nodes.CutOffUser(ctx, u.ID, node.ReasonDisabled)
+		a.server.relay.CutUser(ctx, u.ID)
 	}
 	if u, err = a.user(ctx, req.Username); err != nil {
 		return nil, err
@@ -124,6 +125,7 @@ func (a *api) RemoveUser(ctx context.Context, req hubapi.RemoveUserRequestObject
 		return nil, &userError{username: req.Username, err: err}
 	}
 	a.server.nodes.CutOffUser(ctx, u.ID, node.ReasonRevoked)
+	a.server.relay.CutUser(ctx, u.ID)
 	return hubapi.RemoveUser200JSONResponse{Result: hubapi.ResultRemoved, User: d}, nil
 }
 

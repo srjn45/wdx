@@ -211,6 +211,7 @@ func (a *api) RemoveNode(ctx context.Context, req hubapi.RemoveNodeRequestObject
 	if _, err := s.nodes.Remove(ctx, node.By{Actor: audit.ActorUser, Address: address(ctx), NodeID: this.ID}, this.UserID, "id:"+n.ID); err != nil {
 		return nil, &nodeError{ref: req.Node, err: err}
 	}
+	s.relay.CutNode(ctx, n.ID)
 	return hubapi.RemoveNode200JSONResponse{Result: hubapi.ResultRemoved, Node: was}, nil
 }
 

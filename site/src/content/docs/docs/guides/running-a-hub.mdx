@@ -114,6 +114,8 @@ $ sudo wdx-hub audit verify
 $ journalctl -u wdx-hub
 ```
 
+Disabling or removing a user, as removing a node, cuts it off at once: the hub closes its control connections and every stream open between its nodes, and the nodes close their sessions.
+
 `sudo -u wdx-hub -H wdx-hub …` works too. Each has `--help`, and `--json` as wdx's commands do.
 
 ### Tab completion

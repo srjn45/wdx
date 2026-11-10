@@ -273,3 +273,38 @@ func TestNodeState(t *testing.T) {
 		}
 	}
 }
+
+// joinedStream is a stream from the laptop to the desktop both joined.
+func joinedStream(t *testing.T) (h *hubtest.Hub, laptop, desktop hubtest.Node, l, d *websocket.Conn) {
+	t.Helper()
+	h, laptop, desktop, _ = twoNodes(t)
+	id := streamOpened(t, h, laptop, desktop)
+	fromLaptop, fromDesktop := join(t, h, laptop, id), join(t, h, desktop, id)
+	return h, laptop, desktop, wait(t, fromLaptop).want(t), wait(t, fromDesktop).want(t)
+}
+
+// wantCut checks both ends of a stream read that it closed.
+func wantCut(t *testing.T, ends ...*websocket.Conn) {
+	t.Helper()
+	ctx, cancel := context.WithDeadline(context.Background(), waittest.Deadline(t))
+	defer cancel()
+	for _, end := range ends {
+		if _, _, err := end.Read(ctx); err == nil || ctx.Err() != nil {
+			t.Errorf("read %v, want the stream cut", err)
+		}
+	}
+}
+
+func TestStreamCutRemovingNode(t *testing.T) {
+	t.Parallel()
+	h, laptop, desktop, l, d := joinedStream(t)
+	h.RemoveNode(laptop, "id:"+desktop.ID)
+	wantCut(t, l, d)
+}
+
+func TestStreamCutDisablingUser(t *testing.T) {
+	t.Parallel()
+	h, _, _, l, d := joinedStream(t)
+	h.DisableUser(h.User.Username)
+	wantCut(t, l, d)
+}

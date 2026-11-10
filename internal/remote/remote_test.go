@@ -156,6 +156,7 @@ type node struct {
 	t      *testing.T
 	w      *world
 	ref    hublink.NodeRef
+	hn     hubtest.Node // as the hub knows it
 	home   string
 	db     *sql.DB
 	link   *hublink.Link
@@ -191,7 +192,7 @@ func (w *world) newNode(u hubtest.User, name string, adjust ...func(*Options)) *
 	if err != nil {
 		t.Fatal(err)
 	}
-	n := &node{t: t, w: w, ref: hublink.NodeRef{ID: hn.ID, Name: name}, home: home, db: d, link: link, files: authcode.Open(identity.HubDir(home)), ctx: ctx, checked: make(chan struct{}, 64)}
+	n := &node{t: t, w: w, ref: hublink.NodeRef{ID: hn.ID, Name: name}, hn: hn, home: home, db: d, link: link, files: authcode.Open(identity.HubDir(home)), ctx: ctx, checked: make(chan struct{}, 64)}
 	n.access.Store(true)
 	n.timeout.Store(int64(time.Hour))
 	n.opts = Options{DB: d, Link: link, Code: n.files, Clock: w.clock,

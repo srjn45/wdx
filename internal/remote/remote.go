@@ -74,6 +74,9 @@ const (
 	ReasonLoggedOut       Reason = "logged_out"
 	// ReasonNodeRemoved is the other node removed from the account.
 	ReasonNodeRemoved Reason = "node_removed"
+	// ReasonCutOff is this node cut off by the hub for good: removed from
+	// the account, or the account disabled.
+	ReasonCutOff Reason = "cut_off"
 )
 
 // The waits after a wrong code: the first, doubled at each wrong code after
@@ -111,14 +114,18 @@ type Options struct {
 	// idleChecked, when not nil, is called each time the idle timer has
 	// looked, for tests to wait on.
 	idleChecked func()
+	// linkCut, when not nil, is called in place of CutOff once the link
+	// is cut off, for tests.
+	linkCut func(ctx context.Context)
 }
 
 // Remote is the node's sessions, both ways.
 type Remote struct {
-	opts Options
-	ctx  context.Context // its life, with the daemon's logger
-	stop context.CancelFunc
-	done chan struct{} // the idle timer ended
+	opts    Options
+	ctx     context.Context // its life, with the daemon's logger
+	stop    context.CancelFunc
+	done    chan struct{} // the idle timer ended
+	watched chan struct{} // the link's watch ended
 
 	// opening is one session opened into this node at a time, so that the
 	// waits after wrong codes count every one: a code checked at once
@@ -157,19 +164,64 @@ func New(ctx context.Context, opts Options) (*Remote, error) {
 		opts.Exporter = exporter
 	}
 	ctx, stop := context.WithCancel(ctx)
-	r := &Remote{opts: opts, ctx: ctx, stop: stop, done: make(chan struct{}), slowed: map[string]*slowdown{}, streams: map[string]map[net.Conn]struct{}{}, kicked: make(chan struct{}, 1)}
+	r := &Remote{opts: opts, ctx: ctx, stop: stop, done: make(chan struct{}), watched: make(chan struct{}), slowed: map[string]*slowdown{}, streams: map[string]map[net.Conn]struct{}{}, kicked: make(chan struct{}, 1)}
 	if _, err := r.closeWhere(ctx, ReasonRestart, "direction = 'incoming'"); err != nil {
 		stop()
 		return nil, err
 	}
 	go r.keepIdle()
+	go r.watchLink()
 	return r, nil
 }
 
-// Close stops the idle timer and waits for it.
+// Close stops the idle timer and the link's watch, and waits for them.
 func (r *Remote) Close() {
 	r.stop()
 	<-r.done
+	<-r.watched
+}
+
+// cutOff reports whether the hub cut this node off for good.
+func cutOff(c hublink.Connection) bool {
+	return c == hublink.Revoked || c == hublink.Disabled
+}
+
+// watchLink calls CutOff each time the link is cut off, until the Remote
+// closes.
+func (r *Remote) watchLink() {
+	defer close(r.watched)
+	log := logging.FromContext(r.ctx)
+	cut := r.opts.linkCut
+	if cut == nil {
+		cut = func(ctx context.Context) {
+			if err := r.CutOff(ctx); err != nil && ctx.Err() == nil {
+				log.Error("sessions not closed", "reason", ReasonCutOff, "err", err)
+			}
+		}
+	}
+	was := false
+	for {
+		s, changed := r.opts.Link.Watch()
+		now := cutOff(s.Connection)
+		if now && !was {
+			log.Info("node cut off by the hub", "state", string(s.Connection))
+			cut(r.ctx)
+		}
+		was = now
+		select {
+		case <-r.ctx.Done():
+			return
+		case <-changed:
+		}
+	}
+}
+
+// CutOff closes every session, both ways, for ReasonCutOff, and so cuts
+// their streams: the hub removed this node from its account or disabled
+// the account, so no other node can be told, and none may go on.
+func (r *Remote) CutOff(ctx context.Context) error {
+	_, err := r.closeWhere(ctx, ReasonCutOff, "1")
+	return err
 }
 
 // Kick has the idle timer look again, as after the timeout changed.
@@ -279,8 +331,8 @@ func (r *Remote) identity() (self, tls.Certificate, error) {
 	return self{node: node, key: key.Public().(ed25519.PublicKey)}, cert, err
 }
 
-// carry keeps conn among the streams of the session id, which closing it
-// closes, and reports whether the session is open still: it may have
+// carry keeps conn among the streams of the session id, either way, which
+// closing it closes, and reports whether the session is open still: it may have
 // closed since the stream was checked.
 func (r *Remote) carry(id string, conn net.Conn) bool {
 	r.mu.Lock()
@@ -308,7 +360,8 @@ func (r *Remote) dropped(id string, conn net.Conn) {
 	}
 }
 
-// cut closes the streams of the sessions closed, whatever they carry.
+// cut closes the streams of the sessions closed, whatever they carry, and
+// forgets them.
 func (r *Remote) cut(ctx context.Context, closed []Session) {
 	var conns []net.Conn
 	r.mu.Lock()
@@ -316,6 +369,7 @@ func (r *Remote) cut(ctx context.Context, closed []Session) {
 		for conn := range r.streams[s.ID] {
 			conns = append(conns, conn)
 		}
+		delete(r.streams, s.ID)
 	}
 	r.mu.Unlock()
 	// Outside the lock: closing a TLS connection may wait on its peer.

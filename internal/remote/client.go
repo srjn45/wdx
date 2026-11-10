@@ -85,8 +85,9 @@ func (r *Remote) Open(ctx context.Context, node hublink.NodeRef, code string) (s
 
 // Stream opens a stream in the session open from this node into nodeID,
 // which moves its idle timer on at the host, and returns it, for what the
-// session carries. It fails with CodeSessionNotFound with none open, and
-// CodeSessionClosed when the host closed it, which closes it here too.
+// session carries; closing the session here closes it too. It fails with
+// CodeSessionNotFound with none open, and CodeSessionClosed when the host
+// closed it, which closes it here too.
 func (r *Remote) Stream(ctx context.Context, nodeID string) (net.Conn, Session, error) {
 	s, ok, err := r.outgoingTo(ctx, nodeID)
 	if err != nil {
@@ -106,7 +107,23 @@ func (r *Remote) Stream(ctx context.Context, nodeID string) (net.Conn, Session, 
 	}
 	s.LastUsedAt, s.IdleExpiresAt = now, now.Add(s.idleTimeout)
 	_ = conn.SetDeadline(time.Time{})
-	return conn, s, nil
+	if !r.carry(s.ID, conn) {
+		conn.Close()
+		return nil, Session{}, refusal(CodeSessionNotFound, "the session into node %s closed meanwhile", s.Node.Name)
+	}
+	return &carried{Conn: conn, r: r, id: s.ID}, s, nil
+}
+
+// carried is a stream of the outgoing session id, carried until closed.
+type carried struct {
+	net.Conn
+	r  *Remote
+	id string
+}
+
+func (c *carried) Close() error {
+	c.r.dropped(c.id, c.Conn)
+	return c.Conn.Close()
 }
 
 // sessionStream opens a stream of kind, stream or close, in s, an

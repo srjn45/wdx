@@ -201,6 +201,8 @@ func closedWhy(node string, p api.Problem) (string, bool) {
 		return "a node logged out of the hub", true
 	case "node_removed":
 		return "a node was removed from the account", true
+	case "cut_off":
+		return "the hub cut " + node + " off: it was removed from the account, or the account disabled", true
 	}
 	return "it was closed on " + node + " or here, the daemon on " + node + " restarted, it was idle for too long, remote access was turned off, or the network failed", false
 }

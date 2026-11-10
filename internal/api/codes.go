@@ -104,7 +104,7 @@ var Codes = map[ErrorCode]clikit.CodeInfo{
 	ErrorCodeRecoveryKeyWrong:         codeInfo(http.StatusForbidden, clikit.ExitRejected, "the recovery key is wrong, or came too soon after a wrong one"),
 	ErrorCodeAuditBroken:              codeInfo(http.StatusConflict, clikit.ExitRejected, "a row of the node's audit chain does not match its hash: the chain was changed"),
 	ErrorCodeSessionNotFound:          codeInfo(http.StatusNotFound, clikit.ExitRejected, "no session of this id is open"),
-	ErrorCodeSessionClosed:            codeInfo(http.StatusConflict, clikit.ExitRejected, "the host closed the session: it went idle, its daemon restarted, remote access went off, or it was closed"),
+	ErrorCodeSessionClosed:            codeInfo(http.StatusConflict, clikit.ExitRejected, "the host closed the session: it went idle, its daemon restarted, remote access went off, the hub cut a node off, or it was closed"),
 	ErrorCodeRemoteAccessOff:          codeInfo(http.StatusForbidden, clikit.ExitRejected, "the node allows no sessions: hub.remote_access is off there"),
 	ErrorCodeNodeKeyMismatch:          codeInfo(http.StatusConflict, clikit.ExitRejected, "the node showed a key other than the one pinned for it in an earlier session"),
 	ErrorCodeTooManyStreams:           codeInfo(http.StatusTooManyRequests, clikit.ExitRejected, "the account has as many streams open through the hub as it may"),
