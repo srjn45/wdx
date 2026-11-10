@@ -69,7 +69,9 @@ var validation = sync.OnceValues(func() (func(http.Handler) http.Handler, router
 	return validate, router
 })
 
-// invalidRequest reports a request the spec does not allow.
+// invalidRequest reports a request the spec does not allow. One through a
+// session from a client of a newer API version may be valid in its spec, as
+// a field added since: the host is the side to update, not the command line.
 func invalidRequest(ctx context.Context, err error, w http.ResponseWriter, r *http.Request, opts middleware.ErrorHandlerOpts) {
 	switch {
 	case opts.MatchedRoute == nil:
@@ -78,6 +80,13 @@ func invalidRequest(ctx context.Context, err error, w http.ResponseWriter, r *ht
 		// The validator's messages run over many lines; the first says it.
 		msg, _, _ := strings.Cut(err.Error(), "\n")
 		err = &requestError{err: errors.New(msg)}
+		if session, ok := sessionOf(ctx); ok {
+			if version, _ := strconv.Atoi(r.Header.Get(api.APIVersionHeader)); version > api.CurrentVersion {
+				err = &hubError{code: api.ErrorCodeNodeVersionUnsupported,
+					err:     fmt.Errorf("node %s speaks API version %d, newer than %d, this node's, whose spec does not allow the request: %s", session.Node.Name, version, api.CurrentVersion, msg),
+					details: map[string]any{"update": "host", "node": session.Node.Name, "client_version": version, "host_version": api.CurrentVersion}}
+			}
+		}
 	}
 	failed(w, r.WithContext(ctx), err)
 }

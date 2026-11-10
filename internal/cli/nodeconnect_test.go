@@ -463,7 +463,8 @@ func TestNodeConnectVersions(t *testing.T) {
 
 // TestNodeConnectNewerClient sends requests from clients newer than the
 // host: one that still speaks the host's version is served, one whose
-// oldest is past it is refused before its change runs.
+// oldest is past it, or whose request the host's spec does not allow, is
+// refused before its change runs, naming the host.
 func TestNodeConnectNewerClient(t *testing.T) {
 	t.Parallel()
 	p := openPair(t)
@@ -485,8 +486,22 @@ func TestNodeConnectNewerClient(t *testing.T) {
 		}
 	}
 
+	// A field the host's spec does not have is usage from a client of its
+	// own version, and from a newer one the host's to update.
+	added := map[string]any{"source": create["source"], "added_since": true}
+	p.laptop.nodeClient("desktop", currentVersion).want(http.MethodPost, "/v1/projects", added, http.StatusBadRequest, api.ErrorCodeUsage)
 	c := p.laptop.nodeClient("desktop", newer)
 	c.oldest = strconv.Itoa(api.CurrentVersion)
+	b := c.want(http.MethodPost, "/v1/projects", added, http.StatusConflict, api.ErrorCodeNodeVersionUnsupported)
+	var problem api.Problem
+	_ = json.Unmarshal(b, &problem)
+	if problem.Details == nil || (*problem.Details)["update"] != "host" {
+		t.Errorf("a field added since: %+v, want the host named to update", problem)
+	}
+	if v, _ := p.desktop.projectsJSON(); len(v) != 0 {
+		t.Fatalf("the desktop's projects %v, want the refused change never run", v)
+	}
+
 	c.want(http.MethodPost, "/v1/projects", create, http.StatusCreated, "")
 	if v, _ := p.desktop.projectsJSON(); len(v) != 1 || v[0] != "remote-app" {
 		t.Errorf("the desktop's projects %v, want the one a newer client that speaks its version created", v)
