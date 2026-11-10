@@ -82,12 +82,13 @@ type Options struct {
 	// logs the head of its audit chain, besides at startup;
 	// DefaultHousekeepingInterval when 0.
 	HousekeepingInterval time.Duration
-	// HelloTimeout, PingInterval and RenewInterval time the control
-	// connections; DefaultHelloTimeout, DefaultPingInterval and
-	// DefaultRenewInterval when 0.
-	HelloTimeout, PingInterval, RenewInterval time.Duration
+	// RenewInterval is how often the hub checks the control connections'
+	// certificates; DefaultRenewInterval when 0.
+	RenewInterval time.Duration
+	// Limits are how long the hub waits on the nodes.
+	Limits Limits
 	// Streams limits the streams between nodes; the relay's defaults when
-	// zero.
+	// zero. Its JoinTimeout and CloseTimeout are Limits'.
 	Streams relay.Options
 	// Version is the release the hub says it runs: identity.Version when
 	// empty. wdx-hub update's tests start a hub as the release they install.
@@ -243,8 +244,8 @@ func (s *Server) caFound(ctx context.Context, dir string) error {
 func Listen(ctx context.Context, opts Options) (_ *Server, err error) {
 	opts.ShutdownTimeout = cmp.Or(opts.ShutdownTimeout, DefaultShutdownTimeout)
 	opts.HousekeepingInterval = cmp.Or(opts.HousekeepingInterval, DefaultHousekeepingInterval)
-	opts.HelloTimeout = cmp.Or(opts.HelloTimeout, DefaultHelloTimeout)
-	opts.PingInterval = cmp.Or(opts.PingInterval, DefaultPingInterval)
+	opts.Limits = opts.Limits.orDefaults()
+	opts.Streams.JoinTimeout, opts.Streams.CloseTimeout = opts.Limits.StreamJoin, opts.Limits.StreamClose
 	opts.RenewInterval = cmp.Or(opts.RenewInterval, DefaultRenewInterval)
 	if opts.Now == nil {
 		opts.Now = time.Now

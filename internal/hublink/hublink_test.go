@@ -21,6 +21,7 @@ import (
 	"github.com/srjn45/wdx/internal/hub/hubtest"
 	"github.com/srjn45/wdx/internal/hubapi"
 	"github.com/srjn45/wdx/internal/identity"
+	"github.com/srjn45/wdx/internal/limitstest"
 	"github.com/srjn45/wdx/internal/logging"
 	"github.com/srjn45/wdx/internal/runtest"
 	"github.com/srjn45/wdx/internal/waittest"
@@ -144,10 +145,18 @@ func newNodeAt(t *testing.T, h *hubtest.Hub, home string, clock Clock) *node {
 	t.Helper()
 	n := &node{t: t, h: h, home: home, clock: clock}
 	n.log = filepath.Join(n.home, "hublink.log")
-	n.opts = Options{Clock: clock, MinBackoff: time.Millisecond, MaxBackoff: 10 * time.Millisecond}
+	n.opts = testOptions(t, clock)
 	n.open()
 	t.Cleanup(n.wantNoSecrets)
 	return n
+}
+
+// testOptions are a test node's: a short backoff, a clock of clock unless
+// nil, and limits a loaded machine does not reach.
+func testOptions(t *testing.T, clock Clock) Options {
+	o := Options{Clock: clock, MinBackoff: time.Millisecond, MaxBackoff: 10 * time.Millisecond}
+	limitstest.Lengthen(t, &o.Limits)
+	return o
 }
 
 // open opens the node's link, closed when the test ends.

@@ -691,7 +691,7 @@ func TestRenewalAtTwoThirds(t *testing.T) {
 
 func TestNodeGoneWithoutPongs(t *testing.T) {
 	t.Parallel()
-	h := hubtest.Start(t, func(o *server.Options) { o.PingInterval = 20 * time.Millisecond })
+	h := hubtest.Start(t, func(o *server.Options) { o.Limits.Ping = 20 * time.Millisecond })
 	n := h.NewNode(h.User, "desktop")
 	c := connect(t, h, n, "1")
 	c.want("welcome")

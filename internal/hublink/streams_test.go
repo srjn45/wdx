@@ -231,24 +231,25 @@ func (s *silentHub) RoundTrip(req *http.Request) (*http.Response, error) {
 }
 
 // silentNode is a node logged in as name, connected, whose requests the
-// silent hub never answers, on clock, with a setup timeout of setupTimeout.
+// silent hub never answers, on clock, with a setup timeout of silentSetup.
 func silentNode(t *testing.T, h *hubtest.Hub, name string, clock Clock, silent *silentHub) *node {
 	t.Helper()
 	home := t.TempDir()
 	h.LogIn(home, h.User, name)
 	n := &node{t: t, h: h, home: home, clock: clock}
 	n.log = filepath.Join(home, "hublink.log")
-	n.opts = Options{Clock: clock, MinBackoff: time.Millisecond, MaxBackoff: 10 * time.Millisecond, SetupTimeout: setupTimeout,
-		WrapNodes: func(rt http.RoundTripper) http.RoundTripper { silent.next = rt; return silent }}
+	n.opts = testOptions(t, clock)
+	n.opts.Limits.Setup = silentSetup
+	n.opts.WrapNodes = func(rt http.RoundTripper) http.RoundTripper { silent.next = rt; return silent }
 	n.open()
 	t.Cleanup(n.wantNoSecrets)
 	n.waitConnection(Connected)
 	return n
 }
 
-// setupTimeout is the tests' setup timeout: none of the link's other waits
-// is as long.
-const setupTimeout = 7 * time.Second
+// silentSetup is a silent node's setup timeout: none of the link's other
+// waits on its clock is as long.
+const silentSetup = 7 * time.Second
 
 // TestDialHubSilent checks a hub that accepts and never answers, when asked
 // for a stream or when joining it, is unreachable once the setup timeout
@@ -277,12 +278,12 @@ func TestDialHubSilent(t *testing.T) {
 			case <-waittest.After(t):
 				t.Fatal("the dial never reached the hub")
 			}
-			clock.waiting(t, setupTimeout)
-			clock.Advance(setupTimeout)
+			clock.waiting(t, silentSetup)
+			clock.Advance(silentSetup)
 			select {
 			case err := <-failed:
-				if ranOut, ok := errors.AsType[*setupRanOut](err); !isUnreachable(err) || !ok || ranOut.after != setupTimeout {
-					t.Fatalf("%v, want the hub unreachable after %s", err, setupTimeout)
+				if ranOut, ok := errors.AsType[*setupRanOut](err); !isUnreachable(err) || !ok || ranOut.after != silentSetup {
+					t.Fatalf("%v, want the hub unreachable after %s", err, silentSetup)
 				}
 			case <-waittest.After(t):
 				t.Fatal("the dial did not return")
@@ -314,7 +315,7 @@ func TestAnswerHubSilent(t *testing.T) {
 	case <-waittest.After(t):
 		t.Fatal("the desktop never tried to join")
 	}
-	clock.waiting(t, setupTimeout)
+	clock.waiting(t, silentSetup)
 
 	loggedOut := make(chan error, 1)
 	go func() {
@@ -330,9 +331,9 @@ func TestAnswerHubSilent(t *testing.T) {
 		t.Fatal("the logout waited for the join")
 	}
 
-	clock.Advance(setupTimeout)
+	clock.Advance(silentSetup)
 	waittest.For(t, "the join given up", func() bool { return len(desktop.logged("stream not joined")) == 1 })
-	if err := desktop.logged("stream not joined")[0]["err"]; !strings.Contains(fmt.Sprint(err), "did not answer within "+setupTimeout.String()) {
+	if err := desktop.logged("stream not joined")[0]["err"]; !strings.Contains(fmt.Sprint(err), "did not answer within "+silentSetup.String()) {
 		t.Fatalf("logged %v, want the hub's silence", err)
 	}
 	var err error
@@ -351,7 +352,7 @@ func TestAnswerHubSilent(t *testing.T) {
 // any wait of the link's.
 func TestNodeTransportBounded(t *testing.T) {
 	t.Parallel()
-	tr := nodeTransport(&credentials{})
+	tr := nodeTransport(&credentials{}, Limits{}.orDefaults())
 	if tr.DialContext == nil || tr.ResponseHeaderTimeout != nodeHeaderTimeout || tr.TLSHandshakeTimeout == 0 {
 		t.Fatalf("dial %v, headers %s, TLS %s: want each bounded", tr.DialContext != nil, tr.ResponseHeaderTimeout, tr.TLSHandshakeTimeout)
 	}
@@ -408,8 +409,9 @@ func TestStreamPinged(t *testing.T) {
 	home := t.TempDir()
 	h.LogIn(home, h.User, "laptop")
 	laptop := &node{t: t, h: h, home: home, clock: clock, log: filepath.Join(home, "hublink.log")}
-	laptop.opts = Options{Clock: clock, MinBackoff: time.Millisecond, MaxBackoff: 10 * time.Millisecond, StreamQuiet: quiet, StreamPongWait: pongWait,
-		WrapNodes: func(rt http.RoundTripper) http.RoundTripper { deaf.next = rt; return deaf }}
+	laptop.opts = testOptions(t, clock)
+	laptop.opts.StreamQuiet, laptop.opts.StreamPongWait = quiet, pongWait
+	laptop.opts.WrapNodes = func(rt http.RoundTripper) http.RoundTripper { deaf.next = rt; return deaf }
 	laptop.open()
 	t.Cleanup(laptop.wantNoSecrets)
 	laptop.waitConnection(Connected)

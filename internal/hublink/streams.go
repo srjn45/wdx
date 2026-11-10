@@ -16,10 +16,6 @@ import (
 	"github.com/srjn45/wdx/internal/logging"
 )
 
-// handoffTimeout is how long a stream another node asked for waits, once
-// joined, for whoever reads Streams to take it; it is closed after.
-const handoffTimeout = 10 * time.Second
-
 // Stream is a stream another node of the account asked for to this one,
 // joined: the bytes it carries are the two nodes' own, which the hub copies
 // and cannot read.
@@ -40,7 +36,7 @@ func (l *Link) Streams() <-chan Stream { return l.streams }
 // it, returning once the other node joined it too. It fails with
 // ErrNotLoggedIn, an *UnreachableError, or a *HubError: node_not_found,
 // node_offline, too_many_streams, hub_version_unsupported. Asking and joining run out after the
-// link's SetupTimeout, as an *UnreachableError. The stream ends with the
+// link's Limits.Setup, as an *UnreachableError. The stream ends with the
 // link.
 func (l *Link) Dial(ctx context.Context, nodeID string) (net.Conn, error) {
 	log := logging.FromContext(ctx)
@@ -76,7 +72,7 @@ func (l *Link) Dial(ctx context.Context, nodeID string) (net.Conn, error) {
 
 // join joins the stream id, waiting for the other node to join it.
 func (l *Link) join(ctx context.Context, c *credentials, id string) (net.Conn, error) {
-	transport := nodeTransport(c)
+	transport := nodeTransport(c, l.opts.Limits)
 	defer transport.CloseIdleConnections() // the stream's own connection is the WebSocket's
 	var rt http.RoundTripper = transport
 	if l.opts.WrapNodes != nil {
@@ -185,14 +181,14 @@ func (e *setupRanOut) Error() string {
 	return fmt.Sprintf("the hub did not answer within %s", e.after)
 }
 
-// setup is ctx, ended as well once the link's SetupTimeout passed on its
+// setup is ctx, ended as well once the link's Limits.Setup passed on its
 // clock; end releases it.
 func (l *Link) setup(ctx context.Context) (setupCtx context.Context, end func()) {
 	ctx, cancel := context.WithCancelCause(ctx)
 	go func() {
 		select {
-		case <-l.opts.Clock.After(l.opts.SetupTimeout):
-			cancel(&setupRanOut{after: l.opts.SetupTimeout})
+		case <-l.opts.Clock.After(l.opts.Limits.Setup):
+			cancel(&setupRanOut{after: l.opts.Limits.Setup})
 		case <-ctx.Done():
 		}
 	}()
@@ -223,7 +219,7 @@ func (l *Link) answer(ctx context.Context, c *credentials, m hubapi.ControlStrea
 	log.Info("stream joined")
 	select {
 	case l.streams <- Stream{Conn: conn, ID: m.Stream, Node: NodeRef{ID: m.Node.Id, Name: m.Node.Name}}:
-	case <-l.opts.Clock.After(handoffTimeout):
+	case <-l.opts.Clock.After(l.opts.Limits.Handoff):
 		log.Info("stream closed", "reason", "nobody took it")
 		_ = conn.Close() // the client's side sees the stream end
 	case <-ctx.Done():
@@ -269,7 +265,7 @@ func (l *Link) keepState(ctx context.Context, conn *websocket.Conn) {
 		}
 		l.mu.Unlock()
 		if s != nil {
-			err := write(ctx, conn, hubapi.ControlState{Type: hubapi.ControlStateTypeState, RemoteAccess: s.RemoteAccess, CodeSetup: s.CodeSetup})
+			err := l.write(ctx, conn, hubapi.ControlState{Type: hubapi.ControlStateTypeState, RemoteAccess: s.RemoteAccess, CodeSetup: s.CodeSetup})
 			if err != nil {
 				log.Info("state not sent", "err", err)
 			} else {

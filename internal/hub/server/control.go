@@ -21,20 +21,12 @@ import (
 
 // The control connection's timings, unless Options say otherwise.
 const (
-	// DefaultHelloTimeout is how long a node has to say hello once its
-	// control connection opened.
-	DefaultHelloTimeout = 10 * time.Second
-	// DefaultPingInterval is how often the hub pings a node, which tells it
-	// the node is gone when no pong comes within the interval.
-	DefaultPingInterval = 30 * time.Second
 	// DefaultRenewInterval is how often the hub checks whether a connected
 	// node's certificate is due for renewal, besides at its welcome.
 	DefaultRenewInterval = 24 * time.Hour
 	// seenEvery is how often a connected node's last_seen_at is written,
 	// at most, besides at its connect and close.
 	seenEvery = time.Minute
-	// byeTimeout is how long saying goodbye may take.
-	byeTimeout = 5 * time.Second
 	// controlReadLimit is the largest message a node may send.
 	controlReadLimit = 64 << 10
 	// controlQueue is how many messages may wait to be sent a node, such as
@@ -217,7 +209,7 @@ func (s *Server) control(parent context.Context, conn *websocket.Conn, n node.No
 
 // hello reads the node's hello, which it must send first and in time.
 func (s *Server) hello(ctx context.Context, conn *websocket.Conn) (hubapi.ControlHello, error) {
-	ctx, cancel := context.WithTimeout(ctx, s.opts.HelloTimeout)
+	ctx, cancel := context.WithTimeout(ctx, s.opts.Limits.Hello)
 	defer cancel()
 	var hello hubapi.ControlHello
 	if err := wsjson.Read(ctx, conn, &hello); err != nil {
@@ -295,10 +287,10 @@ func (s *Server) readControl(ctx context.Context, cancel context.CancelCauseFunc
 	}
 }
 
-// ping pings the node every PingInterval, closing the connection when no
+// ping pings the node every Limits.Ping, closing the connection when no
 // pong comes in time, and writes its last_seen_at at most once a minute.
 func (s *Server) ping(ctx context.Context, cancel context.CancelCauseFunc, conn *websocket.Conn, n node.Node) {
-	tick := time.NewTicker(s.opts.PingInterval)
+	tick := time.NewTicker(s.opts.Limits.Ping)
 	defer tick.Stop()
 	seen := s.now()
 	for {
@@ -307,7 +299,7 @@ func (s *Server) ping(ctx context.Context, cancel context.CancelCauseFunc, conn 
 			return
 		case <-tick.C:
 		}
-		pinged, stop := context.WithTimeout(ctx, s.opts.PingInterval)
+		pinged, stop := context.WithTimeout(ctx, s.opts.Limits.Ping)
 		err := conn.Ping(pinged)
 		stop()
 		if err != nil {
@@ -335,7 +327,7 @@ func (s *Server) closed(ctx context.Context, conn *websocket.Conn, log *slog.Log
 		log.Info("control closed", "reason", "connection", "err", cause)
 		return
 	}
-	sending, cancel := context.WithTimeout(ctx, byeTimeout)
+	sending, cancel := context.WithTimeout(ctx, s.opts.Limits.Bye)
 	defer cancel()
 	if err := wsjson.Write(sending, conn, hubapi.ControlBye{Type: hubapi.ControlByeTypeBye, Reason: hubapi.ControlByeReason(bye.reason)}); err != nil {
 		log.Info("bye not sent", "err", err)

@@ -91,14 +91,6 @@ const (
 	lastNodeWait   = time.Hour
 )
 
-// confirmTimeout bounds the wait for a client's confirm, which holds the
-// host's open lock: a confirm that does not come counts as a wrong code.
-const confirmTimeout = 10 * time.Second
-
-// exchangeTimeout bounds a stream's TLS handshake and the messages that
-// follow it, so that a stream nobody speaks on ends.
-const exchangeTimeout = 30 * time.Second
-
 // Options are what a Remote works with; tests change Exporter.
 type Options struct {
 	DB   *sql.DB
@@ -120,11 +112,11 @@ type Options struct {
 	// Changed, when not nil, is called after a session opened or closed,
 	// either way, and after a wrong code; it must not block.
 	Changed func()
+	// Limits are how long the node waits on another.
+	Limits Limits
 	// linkCut, when not nil, is called in place of CutOff once the link
 	// is cut off, for tests.
 	linkCut func(ctx context.Context)
-	// confirmTimeout, when not 0, replaces confirmTimeout, for tests.
-	confirmTimeout time.Duration
 	// recording, when not nil, is given the stream of a session whose
 	// code was right, before it is recorded, for tests.
 	recording func(net.Conn)
@@ -178,9 +170,7 @@ func New(ctx context.Context, opts Options) (*Remote, error) {
 	if opts.Exporter == nil {
 		opts.Exporter = exporter
 	}
-	if opts.confirmTimeout == 0 {
-		opts.confirmTimeout = confirmTimeout
-	}
+	opts.Limits = opts.Limits.orDefaults()
 	ctx, stop := context.WithCancel(ctx)
 	r := &Remote{opts: opts, ctx: ctx, stop: stop, done: make(chan struct{}), watched: make(chan struct{}), slowed: map[string]*slowdown{}, streams: map[string]map[net.Conn]struct{}{}, kicked: make(chan struct{}, 1)}
 	if _, err := r.closeWhere(ctx, ReasonRestart, "direction = 'incoming'"); err != nil {

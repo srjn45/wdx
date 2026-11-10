@@ -16,9 +16,6 @@ import (
 	"github.com/srjn45/wdx/internal/logging"
 )
 
-// closeTimeout bounds telling a host a session closed, which is best effort.
-const closeTimeout = 10 * time.Second
-
 // Open opens a session from this node into node with the host's code, as
 // its authenticator shows it now, unless one is open already, as a stream
 // to the host checks: opened is false then. It fails with the hub's errors from hublink.Dial, or an
@@ -212,7 +209,7 @@ func (r *Remote) sessionStream(ctx context.Context, s Session, kind string) (*tl
 // tellClosed tells the host of s, outgoing, that it closed: best effort,
 // as the host finds out anyway, at the latest when it goes idle.
 func (r *Remote) tellClosed(ctx context.Context, s Session) {
-	ctx, cancel := context.WithTimeout(ctx, closeTimeout)
+	ctx, cancel := context.WithTimeout(ctx, r.opts.Limits.Close)
 	defer cancel()
 	conn, err := r.sessionStream(ctx, s, msgClose)
 	if err != nil {
@@ -234,7 +231,7 @@ func (r *Remote) dial(ctx context.Context, node hublink.NodeRef) (*tls.Conn, sel
 	if err != nil {
 		return nil, self{}, nil, false, err
 	}
-	_ = raw.SetDeadline(time.Now().Add(exchangeTimeout))
+	_ = raw.SetDeadline(time.Now().Add(r.opts.Limits.Exchange))
 	conn := tls.Client(raw, config(cert, false))
 	if err := conn.HandshakeContext(ctx); err != nil {
 		raw.Close()

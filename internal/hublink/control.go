@@ -24,9 +24,6 @@ import (
 // controlReadLimit is the largest message the hub may send.
 const controlReadLimit = 64 << 10
 
-// writeTimeout is how long sending one message may take.
-const writeTimeout = 10 * time.Second
-
 // apiVersion is the info.version of the hub.yaml this wdx was built with,
 // which its hello names.
 var apiVersion = sync.OnceValue(func() string {
@@ -100,7 +97,7 @@ func jitter(d time.Duration) time.Duration {
 func (l *Link) keepControl(ctx context.Context, c *credentials) {
 	log := logging.FromContext(ctx).With("node_id", c.Node.ID)
 	ctx = logging.NewContext(ctx, log)
-	transport := nodeTransport(c)
+	transport := nodeTransport(c, l.opts.Limits)
 	defer transport.CloseIdleConnections()
 	var rt http.RoundTripper = transport
 	if l.opts.WrapNodes != nil {
@@ -144,7 +141,7 @@ func (l *Link) keepControl(ctx context.Context, c *credentials) {
 // reporting whether the hub welcomed the node.
 func (l *Link) connectOnce(ctx context.Context, c *credentials, client *http.Client) (welcomed bool, err error) {
 	log := logging.FromContext(ctx)
-	dialing, cancel := context.WithTimeout(ctx, dialTimeout)
+	dialing, cancel := context.WithTimeout(ctx, l.opts.Limits.Dial)
 	//nolint:bodyclose // the websocket closes it itself: "You never need to close resp.Body yourself."
 	conn, resp, err := websocket.Dial(dialing, c.endpoint()+"/v1/control", &websocket.DialOptions{
 		HTTPClient: client,
@@ -178,7 +175,7 @@ func (l *Link) connectOnce(ctx context.Context, c *credentials, client *http.Cli
 	// which their own lines name.
 	others := logging.NewContext(life, logging.FromContext(l.ctx))
 
-	if err := write(life, conn, hubapi.ControlHello{Type: hubapi.ControlHelloTypeHello, ApiVersion: apiVersion(), WdxVersion: identity.Version, Os: osName()}); err != nil {
+	if err := l.write(life, conn, hubapi.ControlHello{Type: hubapi.ControlHelloTypeHello, ApiVersion: apiVersion(), WdxVersion: identity.Version, Os: osName()}); err != nil {
 		return false, err
 	}
 	var bye hubapi.ControlByeReason
@@ -375,7 +372,7 @@ func (l *Link) renew(ctx context.Context, conn *websocket.Conn, c *credentials, 
 	}
 	// The hub is told before the certificate is used, so that whoever sees
 	// it renewed knows the hub was told.
-	if err := write(ctx, conn, hubapi.ControlCertificateSaved{Type: hubapi.ControlCertificateSavedTypeCertificateSaved, ExpiresAt: m.ExpiresAt}); err != nil {
+	if err := l.write(ctx, conn, hubapi.ControlCertificateSaved{Type: hubapi.ControlCertificateSavedTypeCertificateSaved, ExpiresAt: m.ExpiresAt}); err != nil {
 		log.Info("certificate saved not sent", "err", err)
 	}
 	c.setCertificate(cert)
@@ -383,10 +380,10 @@ func (l *Link) renew(ctx context.Context, conn *websocket.Conn, c *credentials, 
 	l.update(c, func() {}) // what Watch tells of
 }
 
-// ping pings the hub every PingInterval, closing the connection when no
+// ping pings the hub every Limits.Ping, closing the connection when no
 // pong comes in time, until ctx ends.
 func (l *Link) ping(ctx context.Context, conn *websocket.Conn) {
-	tick := time.NewTicker(l.opts.PingInterval)
+	tick := time.NewTicker(l.opts.Limits.Ping)
 	defer tick.Stop()
 	for {
 		select {
@@ -394,7 +391,7 @@ func (l *Link) ping(ctx context.Context, conn *websocket.Conn) {
 			return
 		case <-tick.C:
 		}
-		pinged, stop := context.WithTimeout(ctx, l.opts.PingInterval)
+		pinged, stop := context.WithTimeout(ctx, l.opts.Limits.Ping)
 		err := conn.Ping(pinged)
 		stop()
 		if err != nil {
@@ -407,8 +404,8 @@ func (l *Link) ping(ctx context.Context, conn *websocket.Conn) {
 	}
 }
 
-func write(ctx context.Context, conn *websocket.Conn, v any) error {
-	ctx, cancel := context.WithTimeout(ctx, writeTimeout)
+func (l *Link) write(ctx context.Context, conn *websocket.Conn, v any) error {
+	ctx, cancel := context.WithTimeout(ctx, l.opts.Limits.Write)
 	defer cancel()
 	return wsjson.Write(ctx, conn, v)
 }

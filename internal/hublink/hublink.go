@@ -35,25 +35,12 @@ const (
 	// within a minute of the hub.
 	DefaultMinBackoff = time.Second
 	DefaultMaxBackoff = time.Minute
-	// DefaultLogoutTimeout is how long logging out waits for the hub to
-	// hear of it.
-	DefaultLogoutTimeout = 5 * time.Second
-	// DefaultPingInterval is how often the node pings the hub, which tells
-	// it the hub is gone when no pong comes within the interval.
-	DefaultPingInterval = 30 * time.Second
 	// DefaultStreamQuiet is how long a joined stream may receive nothing
 	// before the node pings the hub on it, and DefaultStreamPongWait how
 	// long it then waits for the pong before it closes the stream: a dead
 	// network is noticed within their sum.
 	DefaultStreamQuiet    = 15 * time.Second
 	DefaultStreamPongWait = 15 * time.Second
-	// requestTimeout is how long a request to the web endpoint may take.
-	requestTimeout = 30 * time.Second
-	// DefaultSetupTimeout is how long reaching another node may take: asking
-	// the hub for a stream and joining it, or joining one the hub says waits.
-	DefaultSetupTimeout = 30 * time.Second
-	// dialTimeout is how long opening the control connection may take.
-	dialTimeout = 30 * time.Second
 	// nodeDialTimeout and nodeHeaderTimeout bound connecting to the node
 	// endpoint and waiting for its answer's headers; nothing bounds a whole
 	// request, as a stream outlives it.
@@ -85,10 +72,8 @@ type Options struct {
 	// MinBackoff and MaxBackoff bound the wait between two tries at the
 	// control connection.
 	MinBackoff, MaxBackoff time.Duration
-	LogoutTimeout          time.Duration
-	PingInterval           time.Duration
-	// SetupTimeout bounds reaching another node; see DefaultSetupTimeout.
-	SetupTimeout time.Duration
+	// Limits are how long the link waits on the hub and the other nodes.
+	Limits Limits
 	// StreamQuiet and StreamPongWait check a joined stream is alive; see
 	// DefaultStreamQuiet.
 	StreamQuiet, StreamPongWait time.Duration
@@ -115,14 +100,12 @@ func (o Options) withDefaults() Options {
 	if o.Clock == nil {
 		o.Clock = realClock{}
 	}
+	o.Limits = o.Limits.orDefaults()
 	if o.HTTPClient == nil {
-		o.HTTPClient = &http.Client{Timeout: requestTimeout}
+		o.HTTPClient = &http.Client{Timeout: o.Limits.Request}
 	}
 	o.MinBackoff = cmp.Or(o.MinBackoff, DefaultMinBackoff)
 	o.MaxBackoff = max(cmp.Or(o.MaxBackoff, DefaultMaxBackoff), o.MinBackoff)
-	o.LogoutTimeout = cmp.Or(o.LogoutTimeout, DefaultLogoutTimeout)
-	o.PingInterval = cmp.Or(o.PingInterval, DefaultPingInterval)
-	o.SetupTimeout = cmp.Or(o.SetupTimeout, DefaultSetupTimeout)
 	o.StreamQuiet = cmp.Or(o.StreamQuiet, DefaultStreamQuiet)
 	o.StreamPongWait = cmp.Or(o.StreamPongWait, DefaultStreamPongWait)
 	return o
@@ -341,7 +324,7 @@ func osName() string { return runtime.GOOS + "/" + runtime.GOARCH }
 
 // nodeTransport is a transport to the node endpoint of creds: it trusts the
 // hub's CA alone and shows the node's current certificate.
-func nodeTransport(creds *credentials) *http.Transport {
+func nodeTransport(creds *credentials, limits Limits) *http.Transport {
 	return &http.Transport{
 		TLSClientConfig: &tls.Config{
 			MinVersion: tls.VersionTLS13,
@@ -352,7 +335,7 @@ func nodeTransport(creds *credentials) *http.Transport {
 			},
 		},
 		DialContext:           (&net.Dialer{Timeout: nodeDialTimeout}).DialContext,
-		TLSHandshakeTimeout:   dialTimeout,
+		TLSHandshakeTimeout:   limits.Dial,
 		ResponseHeaderTimeout: nodeHeaderTimeout,
 		IdleConnTimeout:       90 * time.Second,
 	}

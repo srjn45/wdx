@@ -26,6 +26,7 @@ import (
 	"github.com/srjn45/wdx/internal/hub/hubtest"
 	"github.com/srjn45/wdx/internal/hublink"
 	"github.com/srjn45/wdx/internal/identity"
+	"github.com/srjn45/wdx/internal/limitstest"
 	"github.com/srjn45/wdx/internal/logging"
 	"github.com/srjn45/wdx/internal/nodeaudit"
 	"github.com/srjn45/wdx/internal/runtest"
@@ -203,7 +204,9 @@ func (w *world) newNode(u hubtest.User, name string, adjust ...func(*Options)) *
 	if err != nil {
 		t.Fatal(err)
 	}
-	link, err := hublink.Open(ctx, home, hublink.Options{MinBackoff: time.Millisecond, MaxBackoff: 10 * time.Millisecond})
+	linkOpts := hublink.Options{MinBackoff: time.Millisecond, MaxBackoff: 10 * time.Millisecond}
+	limitstest.Lengthen(t, &linkOpts.Limits)
+	link, err := hublink.Open(ctx, home, linkOpts)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -212,6 +215,7 @@ func (w *world) newNode(u hubtest.User, name string, adjust ...func(*Options)) *
 	n.timeout.Store(int64(time.Hour))
 	n.opts = Options{DB: d, Link: link, Code: n.files, Clock: w.clock,
 		RemoteAccess: n.access.Load, IdleTimeout: func() time.Duration { return time.Duration(n.timeout.Load()) }}
+	limitstest.Lengthen(t, &n.opts.Limits)
 	for _, a := range adjust {
 		a(&n.opts)
 	}
@@ -572,7 +576,7 @@ func TestConfirmStalls(t *testing.T) {
 	w := newWorld(t)
 	var changes atomic.Int64
 	desktop := w.newNode(w.hub.User, "desktop", func(o *Options) {
-		o.confirmTimeout = 50 * time.Millisecond
+		o.Limits.Confirm = 50 * time.Millisecond
 		o.Changed = func() { changes.Add(1) }
 	})
 	laptop := w.newNode(w.hub.User, "laptop")

@@ -193,7 +193,8 @@ func pushNode(t *testing.T, h *hubtest.Hub, outbox *memOutbox, change func(*Opti
 	t.Helper()
 	n := &node{t: t, h: h, home: t.TempDir()}
 	n.log = n.home + "/hublink.log"
-	n.opts = Options{MinBackoff: time.Millisecond, MaxBackoff: 10 * time.Millisecond, Outbox: outbox}
+	n.opts = testOptions(t, nil)
+	n.opts.Outbox = outbox
 	if change != nil {
 		change(&n.opts)
 	}

@@ -14,10 +14,12 @@ import (
 	"github.com/srjn45/wdx/internal/hubapi"
 	"github.com/srjn45/wdx/internal/hublink"
 	"github.com/srjn45/wdx/internal/logging"
+	"github.com/srjn45/wdx/internal/remote"
 )
 
-// HubOptions are the waits of the daemon's link to the hub, which tests
-// shorten; zero values take hublink's defaults.
+// HubOptions are the waits of the daemon's link to the hub and of its
+// sessions with other nodes, which tests change; zero values take hublink's
+// and remote's defaults.
 type HubOptions struct {
 	// Clock is the time the link goes by: when logins expire, how long it
 	// waits between polls and reconnections; the agents' limits go by it too,
@@ -27,8 +29,10 @@ type HubOptions struct {
 		After(d time.Duration) <-chan time.Time
 	}
 	MinBackoff, MaxBackoff time.Duration
-	LogoutTimeout          time.Duration
-	PingInterval           time.Duration
+	// Link are how long the link waits on the hub and other nodes, Remote
+	// how long a session waits on the other node.
+	Link   hublink.Limits
+	Remote remote.Limits
 }
 
 // realClock is the time when the daemon's options give none.
@@ -38,7 +42,7 @@ func (realClock) Now() time.Time                         { return time.Now() }
 func (realClock) After(d time.Duration) <-chan time.Time { return time.After(d) }
 
 func (o HubOptions) link() hublink.Options {
-	opts := hublink.Options{MinBackoff: o.MinBackoff, MaxBackoff: o.MaxBackoff, LogoutTimeout: o.LogoutTimeout, PingInterval: o.PingInterval}
+	opts := hublink.Options{MinBackoff: o.MinBackoff, MaxBackoff: o.MaxBackoff, Limits: o.Link}
 	if o.Clock != nil {
 		opts.Clock = o.Clock
 	}

@@ -29,7 +29,7 @@ func (r *Remote) Serve(ctx context.Context, s hublink.Stream) {
 		log.Info("stream refused", "err", err)
 		return
 	}
-	_ = s.SetDeadline(time.Now().Add(exchangeTimeout))
+	_ = s.SetDeadline(time.Now().Add(r.opts.Limits.Exchange))
 	conn := tls.Server(s, config(cert, true))
 	defer conn.Close()
 	if err := conn.HandshakeContext(ctx); err != nil {
@@ -307,7 +307,7 @@ func (r *Remote) closingAll() *Error {
 	return nil
 }
 
-// readConfirm reads the client's confirm, giving up after confirmTimeout.
+// readConfirm reads the client's confirm, giving up after Limits.Confirm.
 // Not with a read deadline: the stream through the hub closes when one
 // passes, and the refusal could not be sent. Once it gives up, the read
 // ends when conn closes.
@@ -321,7 +321,7 @@ func (r *Remote) readConfirm(conn *tls.Conn) (message, error) {
 		m, err := read(conn, msgConfirm)
 		got <- result{m, err}
 	}()
-	timer := time.NewTimer(r.opts.confirmTimeout)
+	timer := time.NewTimer(r.opts.Limits.Confirm)
 	defer timer.Stop()
 	select {
 	case res := <-got:

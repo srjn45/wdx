@@ -20,7 +20,7 @@ func (l *Link) nodesClient() (*hubapi.ClientWithResponses, *credentials, func(),
 	if c == nil {
 		return nil, nil, nil, ErrNotLoggedIn
 	}
-	transport := nodeTransport(c)
+	transport := nodeTransport(c, l.opts.Limits)
 	var rt http.RoundTripper = transport
 	if l.opts.WrapNodes != nil {
 		rt = l.opts.WrapNodes(rt)
@@ -110,7 +110,7 @@ func (l *Link) RemoveNode(ctx context.Context, ref string) (hubapi.AccountNode, 
 }
 
 // Logout leaves the hub: it asks the hub to revoke this node, waiting at
-// most LogoutTimeout, then closes the control connection and deletes
+// most Limits.Logout, then closes the control connection and deletes
 // <home>/hub/, whether the hub heard or not. hubTold is whether it did.
 func (l *Link) Logout(ctx context.Context) (hubTold bool, err error) {
 	log := logging.FromContext(ctx)
@@ -120,7 +120,7 @@ func (l *Link) Logout(ctx context.Context) (hubTold bool, err error) {
 	if err != nil {
 		return false, err
 	}
-	telling, cancel := context.WithTimeout(ctx, l.opts.LogoutTimeout)
+	telling, cancel := context.WithTimeout(ctx, l.opts.Limits.Logout)
 	r, err := client.RemoveNodeWithResponse(telling, "id:"+c.Node.ID)
 	cancel()
 	done()

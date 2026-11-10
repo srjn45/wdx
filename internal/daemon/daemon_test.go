@@ -24,6 +24,7 @@ import (
 	"github.com/srjn45/wdx/internal/gittest"
 	"github.com/srjn45/wdx/internal/holder/holdertest"
 	"github.com/srjn45/wdx/internal/identity"
+	"github.com/srjn45/wdx/internal/limitstest"
 	"github.com/srjn45/wdx/internal/logging"
 	"github.com/srjn45/wdx/internal/logtest"
 	"github.com/srjn45/wdx/internal/runtest"
@@ -84,6 +85,8 @@ func startOn(t *testing.T, home string, metrics telemetry.Options, adjust func(*
 	}
 	// A machine slowed down by other tests slows them rather than fails them.
 	o.StopReport, o.HolderLimits = holdertest.Patience(t), holdertest.Limits(t)
+	limitstest.Lengthen(t, &o.Hub.Link)
+	limitstest.Lengthen(t, &o.Hub.Remote)
 	if adjust != nil {
 		adjust(&o)
 	}

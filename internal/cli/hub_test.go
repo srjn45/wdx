@@ -158,7 +158,7 @@ func newHubHomeShell(t *testing.T, h *hubtest.Hub, clock *hubClock, script strin
 		// once the daemon stopped, and before the home is removed.
 		t.Cleanup(hh.wantNoSecrets)
 		t.Cleanup(hh.wantNoCodes)
-		o.Hub = daemon.HubOptions{Clock: clock}
+		o.Hub.Clock = clock
 		// The hub's settings are read again from the file, the others kept
 		// as the test gave them.
 		kept := daemon.Settings{Metrics: o.Metrics, TerminalShell: o.TerminalShell, TerminalHistoryLines: o.TerminalHistoryLines, Editor: o.Editor,

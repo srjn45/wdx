@@ -36,6 +36,7 @@ import (
 	"github.com/srjn45/wdx/internal/hub/hubconfig"
 	"github.com/srjn45/wdx/internal/hub/hubdb"
 	"github.com/srjn45/wdx/internal/hub/server"
+	"github.com/srjn45/wdx/internal/limitstest"
 	"github.com/srjn45/wdx/internal/logging"
 	"github.com/srjn45/wdx/internal/logtest"
 	"github.com/srjn45/wdx/internal/runtest"
@@ -173,6 +174,8 @@ func Start(t *testing.T, opts ...Option) *Hub {
 	}
 	clock := &Clock{}
 	o := server.Options{Config: cfg, Now: clock.Now, Argon2: account.Argon2{Memory: 8, Time: 1, Threads: 1}}
+	// A machine slowed down by other tests slows them rather than fails them.
+	limitstest.Lengthen(t, &o.Limits)
 	for _, opt := range opts {
 		opt(&o)
 	}
@@ -353,7 +356,7 @@ func leaked(b []byte, secret string) bool {
 }
 
 // StreamExpiry makes the join timeout of each stream between nodes end when
-// after says, rather than 10 seconds after it was asked for.
+// after says, rather than once the hub's Limits.StreamJoin passed.
 func StreamExpiry(after func(time.Duration) <-chan time.Time) Option {
 	return func(o *server.Options) { o.Streams.After = after }
 }

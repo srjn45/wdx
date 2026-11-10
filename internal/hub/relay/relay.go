@@ -28,6 +28,8 @@ const (
 	// DefaultJoinTimeout is how long both nodes have to join a stream, from
 	// when it was asked for.
 	DefaultJoinTimeout = 10 * time.Second
+	// DefaultCloseTimeout is how long a close may wait for the other end's.
+	DefaultCloseTimeout = 5 * time.Second
 	// DefaultMaxPerUser is how many streams a user may have open or waiting
 	// at once.
 	DefaultMaxPerUser = 32
@@ -45,9 +47,10 @@ var (
 
 // Options configure a Relay.
 type Options struct {
-	// JoinTimeout is DefaultJoinTimeout when 0; MaxPerUser DefaultMaxPerUser.
-	JoinTimeout time.Duration
-	MaxPerUser  int
+	// JoinTimeout is DefaultJoinTimeout when 0, CloseTimeout
+	// DefaultCloseTimeout, MaxPerUser DefaultMaxPerUser.
+	JoinTimeout, CloseTimeout time.Duration
+	MaxPerUser                int
 	// After sends once d has passed: the clock of the join timeouts;
 	// time.After when nil.
 	After func(d time.Duration) <-chan time.Time
@@ -66,6 +69,7 @@ type Relay struct {
 // New returns a relay with no streams.
 func New(opts Options) *Relay {
 	opts.JoinTimeout = cmp.Or(opts.JoinTimeout, DefaultJoinTimeout)
+	opts.CloseTimeout = cmp.Or(opts.CloseTimeout, DefaultCloseTimeout)
 	opts.MaxPerUser = cmp.Or(opts.MaxPerUser, DefaultMaxPerUser)
 	if opts.After == nil {
 		opts.After = time.After
@@ -234,19 +238,19 @@ func (j *Joined) Run(ctx context.Context, conn *websocket.Conn) {
 	case <-ctx.Done():
 	}
 	if peer == nil {
-		closeWith(conn, websocket.StatusGoingAway, "the other node left")
+		j.relay.closeWith(conn, websocket.StatusGoingAway, "the other node left")
 		return
 	}
 	// The hub stopping closes this side as it should be; the copy then
 	// ends as for any close.
-	stop := context.AfterFunc(ctx, func() { closeWith(conn, websocket.StatusGoingAway, "the hub is stopping") })
+	stop := context.AfterFunc(ctx, func() { j.relay.closeWith(conn, websocket.StatusGoingAway, "the hub is stopping") })
 	defer stop()
 	counted := &s.fromHost
 	if j.nodeID == s.nodes.ClientID {
 		counted = &s.fromClient
 	}
-	status, reason := copyMessages(context.WithoutCancel(ctx), conn, peer, counted)
-	closeWith(peer, status, reason)
+	status, reason := j.relay.copyMessages(context.WithoutCancel(ctx), conn, peer, counted)
+	j.relay.closeWith(peer, status, reason)
 }
 
 // done counts this side's copy out; the last logs the close and frees the
@@ -322,9 +326,9 @@ func (r *Relay) cutWhere(ctx context.Context, key, value string, match func(Node
 // copyMessages copies the binary messages read from src to dst, counting
 // their bytes, until either fails or ctx ends; it returns how dst is to be
 // closed.
-func copyMessages(ctx context.Context, src, dst *websocket.Conn, counted *atomic.Int64) (websocket.StatusCode, string) {
+func (r *Relay) copyMessages(ctx context.Context, src, dst *websocket.Conn, counted *atomic.Int64) (websocket.StatusCode, string) {
 	for {
-		typ, r, err := src.Reader(ctx)
+		typ, msg, err := src.Reader(ctx)
 		if err != nil {
 			if websocket.CloseStatus(err) == websocket.StatusNormalClosure {
 				return websocket.StatusNormalClosure, "the other node closed the stream"
@@ -332,14 +336,14 @@ func copyMessages(ctx context.Context, src, dst *websocket.Conn, counted *atomic
 			return websocket.StatusGoingAway, "the other node left"
 		}
 		if typ != websocket.MessageBinary {
-			closeWith(src, websocket.StatusUnsupportedData, "binary messages only")
+			r.closeWith(src, websocket.StatusUnsupportedData, "binary messages only")
 			return websocket.StatusGoingAway, "the other node sent what a stream does not carry"
 		}
 		w, err := dst.Writer(ctx, websocket.MessageBinary)
 		if err != nil {
 			return websocket.StatusGoingAway, "the other node left"
 		}
-		n, err := io.Copy(w, r)
+		n, err := io.Copy(w, msg)
 		counted.Add(n)
 		if err != nil {
 			_ = w.Close()
@@ -353,7 +357,7 @@ func copyMessages(ctx context.Context, src, dst *websocket.Conn, counted *atomic
 
 // closeWith closes conn with status and reason, without waiting long for
 // the other end's answer: the stream is over either way.
-func closeWith(conn *websocket.Conn, status websocket.StatusCode, reason string) {
+func (r *Relay) closeWith(conn *websocket.Conn, status websocket.StatusCode, reason string) {
 	done := make(chan struct{})
 	go func() {
 		defer close(done)
@@ -361,13 +365,10 @@ func closeWith(conn *websocket.Conn, status websocket.StatusCode, reason string)
 	}()
 	select {
 	case <-done:
-	case <-time.After(closeTimeout):
+	case <-time.After(r.opts.CloseTimeout):
 		_ = conn.CloseNow()
 	}
 }
-
-// closeTimeout is how long a close may wait for the other end's.
-const closeTimeout = 5 * time.Second
 
 // newID is a stream's id: str- and 16 random hex digits.
 func newID() string {

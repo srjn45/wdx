@@ -422,6 +422,7 @@ func Listen(ctx context.Context, opts Options) (_ *Daemon, err error) {
 		IdleTimeout:  func() time.Duration { return time.Duration(d.access.idleTimeout.Load()) },
 		ServeStream:  d.sessionStreams.serve,
 		Changed:      d.sessionNotices.notify,
+		Limits:       opts.Hub.Remote,
 	}); err != nil {
 		return nil, err
 	}

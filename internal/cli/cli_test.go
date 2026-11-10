@@ -29,6 +29,7 @@ import (
 	"github.com/srjn45/wdx/internal/gh/ghtest"
 	"github.com/srjn45/wdx/internal/holder/holdertest"
 	"github.com/srjn45/wdx/internal/identity"
+	"github.com/srjn45/wdx/internal/limitstest"
 	"github.com/srjn45/wdx/internal/logging"
 	"github.com/srjn45/wdx/internal/logtest"
 	"github.com/srjn45/wdx/internal/runtest"
@@ -175,6 +176,9 @@ func newHomeOpts(t *testing.T, script string, acas []aca.AiCodingAgent, adjust f
 		StopReport:           waittest.Limit(t), HolderLimits: holdertest.Limits(t),
 		ACAs: acas, LookProgram: acatest.LookProgram, SettingStore: settingStore{home: home},
 	}
+	// A machine slowed down by other tests slows them rather than fails them.
+	limitstest.Lengthen(t, &opts.Hub.Link)
+	limitstest.Lengthen(t, &opts.Hub.Remote)
 	adjust(&opts)
 	d, err := daemon.Listen(ctx, opts)
 	if err != nil {
