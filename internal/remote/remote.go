@@ -80,10 +80,15 @@ const (
 )
 
 // The waits after a wrong code: the first, doubled at each wrong code after
-// it, up to the last.
+// it, up to the last. A client node's own wait goes on doubling past the
+// last after wrongInARow wrong codes in a row, up to lastNodeWait: a thief
+// holding one node then gets about 24 guesses a day. The host's total,
+// against a hub that invents node ids, stops at the last.
 const (
 	firstWrongWait = time.Second
 	lastWrongWait  = 5 * time.Minute
+	wrongInARow    = 10
+	lastNodeWait   = time.Hour
 )
 
 // exchangeTimeout bounds a stream's TLS handshake and the messages that
@@ -296,18 +301,24 @@ func (r *Remote) wrongCode(nodeID string, now time.Time) time.Duration {
 		s = &slowdown{}
 		r.slowed[nodeID] = s
 	}
-	wait := s.add(now)
-	return max(wait, r.total.add(now))
+	wait := s.add(now, lastNodeWait)
+	return max(wait, r.total.add(now, lastWrongWait))
 }
 
-func (s *slowdown) add(now time.Time) time.Duration {
+// add counts a wrong code at now and returns the wait it sets: doubled at
+// each, up to lastWrongWait, then past it after wrongInARow, up to last.
+func (s *slowdown) add(now time.Time, last time.Duration) time.Duration {
 	s.wrong++
 	wait := min(firstWrongWait<<min(s.wrong-1, 16), lastWrongWait)
+	if s.wrong > wrongInARow {
+		wait = min(lastWrongWait<<min(s.wrong-wrongInARow, 16), last)
+	}
 	s.tryAfter = now.Add(wait)
 	return wait
 }
 
-// rightCode ends the waits, the node's and the host's.
+// rightCode ends the node's wait and the host's total; another node's wait
+// stays.
 func (r *Remote) rightCode(nodeID string) {
 	r.mu.Lock()
 	defer r.mu.Unlock()

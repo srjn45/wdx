@@ -493,6 +493,56 @@ func TestWrongCodesSlowDown(t *testing.T) {
 	}
 }
 
+// wantTooSoon checks n's next open into host is refused unread, as too soon
+// after a wrong code.
+func (n *node) wantTooSoon(host *node, why string) {
+	n.t.Helper()
+	_, _, err := n.open(host, host.code(0))
+	wantCode(n.t, err, CodeCodeWrong)
+	if !strings.Contains(err.Error(), "too soon") {
+		n.t.Fatalf("%s: got %v, want too soon", why, err)
+	}
+}
+
+func TestWrongCodesFromOneNode(t *testing.T) {
+	t.Parallel()
+	w := newWorld(t)
+	desktop := w.newNode(w.hub.User, "desktop")
+	laptop := w.newNode(w.hub.User, "laptop")
+	phone := w.newNode(w.hub.User, "phone")
+	desktop.setUp()
+
+	// The first ten wait 1 s doubling up to 5 minutes, as before.
+	wait := time.Second
+	for range 10 {
+		_, _, err := laptop.open(desktop, desktop.wrongCode())
+		wantCode(t, err, CodeCodeWrong)
+		w.clock.Advance(wait)
+		wait = min(2*wait, 5*time.Minute)
+	}
+	// The 11th's goes on doubling past them: 10 minutes.
+	_, _, err := laptop.open(desktop, desktop.wrongCode())
+	wantCode(t, err, CodeCodeWrong)
+	w.clock.Advance(5*time.Minute + time.Second)
+	laptop.wantTooSoon(desktop, "5 minutes after the 11th wrong code")
+	w.clock.Advance(5 * time.Minute)
+	_, _, err = laptop.open(desktop, desktop.wrongCode())
+	wantCode(t, err, CodeCodeWrong)
+
+	// The host's total stops at 5 minutes: the phone's right code passes
+	// then, and leaves the laptop's own wait of 20 minutes.
+	w.clock.Advance(5 * time.Minute)
+	phone.mustOpen(desktop)
+	w.clock.Advance(authcode.Period)
+	laptop.wantTooSoon(desktop, "after another node's right code")
+	w.clock.Advance(15 * time.Minute)
+	laptop.mustOpen(desktop)
+
+	if got := slicesCount(desktop.audited(), nodeaudit.ActionCodeWrong); got != 12 {
+		t.Errorf("%d wrong codes in the desktop's audit chain, want 12", got)
+	}
+}
+
 func TestCodeUsedOnce(t *testing.T) {
 	t.Parallel()
 	w := newWorld(t)
