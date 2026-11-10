@@ -371,6 +371,16 @@ type control struct {
 // connect opens n's control connection and says hello with apiVersion.
 func connect(t *testing.T, h *hubtest.Hub, n hubtest.Node, apiVersion string) control {
 	t.Helper()
+	c := dialControl(t, h, n)
+	if err := wsjson.Write(c.ctx, c.conn, hubapi.ControlHello{Type: hubapi.ControlHelloTypeHello, ApiVersion: apiVersion, WdxVersion: "0.6.0", Os: "darwin/arm64"}); err != nil {
+		t.Fatal(err)
+	}
+	return c
+}
+
+// dialControl opens n's control connection, saying nothing yet.
+func dialControl(t *testing.T, h *hubtest.Hub, n hubtest.Node) control {
+	t.Helper()
 	ctx, cancel := context.WithDeadline(context.Background(), waittest.Deadline(t))
 	t.Cleanup(cancel)
 	conn, resp, err := websocket.Dial(ctx, h.NodesURL+"/v1/control", &websocket.DialOptions{HTTPClient: h.NodeClient(n.Certificate)})
@@ -378,11 +388,101 @@ func connect(t *testing.T, h *hubtest.Hub, n hubtest.Node, apiVersion string) co
 		t.Fatalf("dial: %v (%v)", err, resp)
 	}
 	t.Cleanup(func() { _ = conn.CloseNow() }) // closed by the test, or by the hub
-	c := control{t: t, conn: conn, ctx: ctx}
-	if err := wsjson.Write(ctx, conn, hubapi.ControlHello{Type: hubapi.ControlHelloTypeHello, ApiVersion: apiVersion, WdxVersion: "0.6.0", Os: "darwin/arm64"}); err != nil {
+	return control{t: t, conn: conn, ctx: ctx}
+}
+
+// wantClosed waits for the hub to close c, and returns how.
+func (c control) wantClosed() error {
+	c.t.Helper()
+	for {
+		var m map[string]any
+		if err := wsjson.Read(c.ctx, c.conn, &m); err != nil {
+			if c.ctx.Err() != nil {
+				c.t.Fatalf("the hub did not close the connection: %v", err)
+			}
+			return err
+		}
+		c.t.Logf("read %v before the close", m)
+	}
+}
+
+// controlClosed is the hub's "control closed" lines for node n.
+func controlClosed(h *hubtest.Hub, n hubtest.Node) []map[string]any {
+	var lines []map[string]any
+	for _, line := range h.Logged("control closed") {
+		if line["node_id"] == n.ID {
+			lines = append(lines, line)
+		}
+	}
+	return lines
+}
+
+// A first message that is not a hello closes the connection, unwelcomed.
+func TestControlHelloNotFirst(t *testing.T) {
+	t.Parallel()
+	h := hubtest.Start(t)
+	n := h.NewNode(h.User, "desktop")
+	c := dialControl(t, h, n)
+	if err := wsjson.Write(c.ctx, c.conn, hubapi.ControlCertificateSaved{Type: hubapi.ControlCertificateSavedTypeCertificateSaved, ExpiresAt: h.Clock.Now()}); err != nil {
 		t.Fatal(err)
 	}
-	return c
+	if err := c.wantClosed(); websocket.CloseStatus(err) != websocket.StatusPolicyViolation {
+		t.Fatalf("closed with %v, want a policy violation", err)
+	}
+	waittest.For(t, "the control connection closed at its hello", func() bool {
+		lines := controlClosed(h, n)
+		return len(lines) == 1 && lines[0]["reason"] == "hello"
+	})
+	if len(h.Logged("control connected")) != 0 {
+		t.Error("want the node never connected")
+	}
+}
+
+// A hello that does not come within Limits.Hello closes the connection,
+// unwelcomed.
+func TestControlHelloLate(t *testing.T) {
+	t.Parallel()
+	// The one limit the test is about, which it cannot wait out.
+	h := hubtest.Start(t, func(o *server.Options) { o.Limits.Hello = 50 * time.Millisecond })
+	n := h.NewNode(h.User, "desktop")
+	c := dialControl(t, h, n)
+	_ = c.wantClosed() // however it closed
+	waittest.For(t, "the control connection closed at its hello", func() bool {
+		lines := controlClosed(h, n)
+		return len(lines) == 1 && lines[0]["reason"] == "hello"
+	})
+	if len(h.Logged("control connected")) != 0 {
+		t.Error("want the node never connected")
+	}
+}
+
+// A certificate_saved for a certificate the hub did not send changes
+// nothing.
+func TestCertificateSavedNotSent(t *testing.T) {
+	t.Parallel()
+	h := hubtest.Start(t)
+	n := h.NewNode(h.User, "desktop")
+	before, err := h.Server.Nodes().Node(context.Background(), h.User.ID, "id:"+n.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	c := connect(t, h, n, "1")
+	c.want("welcome")
+	later := before.CertExpiresAt.Add(24 * time.Hour)
+	if err := wsjson.Write(c.ctx, c.conn, hubapi.ControlCertificateSaved{Type: hubapi.ControlCertificateSavedTypeCertificateSaved, ExpiresAt: later}); err != nil {
+		t.Fatal(err)
+	}
+	waittest.For(t, "the save ignored", func() bool {
+		lines := h.Logged("certificate saved ignored")
+		return len(lines) == 1 && lines[0]["reason"] == "not one sent"
+	})
+	after, err := h.Server.Nodes().Node(context.Background(), h.User.ID, "id:"+n.ID)
+	if err != nil || !after.CertExpiresAt.Equal(before.CertExpiresAt) {
+		t.Fatalf("the node's certificate expires at %v, %v; want %v still", after.CertExpiresAt, err, before.CertExpiresAt)
+	}
+	if len(h.Logged("certificate renewed")) != 0 {
+		t.Error("want no renewal recorded")
+	}
 }
 
 // read returns the next message, its type and the whole of it.

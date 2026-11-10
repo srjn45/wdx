@@ -11,6 +11,7 @@ import (
 	"github.com/coder/websocket/wsjson"
 
 	"github.com/srjn45/wdx/internal/hub/hubtest"
+	"github.com/srjn45/wdx/internal/hub/node"
 	"github.com/srjn45/wdx/internal/hubapi"
 	"github.com/srjn45/wdx/internal/waittest"
 )
@@ -307,4 +308,21 @@ func TestStreamCutDisablingUser(t *testing.T) {
 	h, _, _, l, d := joinedStream(t)
 	h.DisableUser(h.User.Username)
 	wantCut(t, l, d)
+}
+
+// A stream asked of a node whose control connection has too much to send
+// already is answered, and expires unjoined: the hub never waits on a node
+// slow to read.
+func TestStreamWaitingNotSent(t *testing.T) {
+	t.Parallel()
+	h := hubtest.Start(t)
+	laptop, desktop := h.NewNode(h.User, "laptop"), h.NewNode(h.User, "desktop")
+	// The desktop online, its queue full.
+	c := h.Server.Nodes().Registry().Add(desktop.ID, h.User.ID, func(node.Reason) {}, func(any) bool { return false })
+	t.Cleanup(func() { h.Server.Nodes().Registry().Remove(c) })
+	id := streamOpened(t, h, laptop, desktop)
+	lines := h.Logged("stream waiting not sent")
+	if len(lines) != 1 || lines[0]["stream_id"] != id || lines[0]["node_id"] != desktop.ID {
+		t.Fatalf("want the stream waiting not sent logged, got %v", lines)
+	}
 }

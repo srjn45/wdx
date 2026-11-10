@@ -124,15 +124,7 @@ func (s *Server) control(parent context.Context, conn *websocket.Conn, n node.No
 	if err := s.nodes.Connected(life, n.ID, hello.WdxVersion, hello.Os); err != nil {
 		log.Error("node not marked connected", "err", err)
 	}
-	out := make(chan any, controlQueue)
-	send := func(v any) bool {
-		select {
-		case out <- v:
-			return true
-		default:
-			return false
-		}
-	}
+	out, send := newQueue(controlQueue)
 	c := s.nodes.Registry().Add(n.ID, n.UserID, func(r node.Reason) { cancel(byeCause{r}) }, send)
 	defer s.nodes.Registry().Remove(c)
 	// Run after end() cancelled life, it writes with a context of its own.
@@ -203,6 +195,21 @@ func (s *Server) control(parent context.Context, conn *websocket.Conn, n node.No
 			if err := wsjson.Write(life, conn, v); err != nil {
 				log.Info("control message not sent", "err", err)
 			}
+		}
+	}
+}
+
+// newQueue is the messages waiting to be sent a node, at most size of them,
+// and send, which queues one unless as many wait, saying whether it did: who
+// sends never waits on a node slow to read.
+func newQueue(size int) (out chan any, send func(v any) bool) {
+	out = make(chan any, size)
+	return out, func(v any) bool {
+		select {
+		case out <- v:
+			return true
+		default:
+			return false
 		}
 	}
 }

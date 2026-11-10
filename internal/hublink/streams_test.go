@@ -486,3 +486,56 @@ func TestStreamPinged(t *testing.T) {
 		t.Fatal("the desktop's side stayed open")
 	}
 }
+
+// TestStreamNobodyTook checks a stream the node joined for another, which
+// nothing takes from Streams within Limits.Handoff, is closed, on the link's
+// clock: the other node's side sees it end.
+func TestStreamNobodyTook(t *testing.T) {
+	t.Parallel()
+	const handoff = 7 * time.Second
+	h := hubtest.Start(t)
+	laptop, _ := loggedInAs(t, h, h.User, "laptop")
+	clock := newFakeClock(h)
+	home := t.TempDir()
+	desktopNode := h.LogIn(home, h.User, "desktop")
+	desktop := &node{t: t, h: h, home: home, clock: clock, log: filepath.Join(home, "hublink.log")}
+	desktop.opts = testOptions(t, clock)
+	desktop.opts.Limits.Handoff = handoff
+	desktop.open()
+	t.Cleanup(desktop.wantNoSecrets)
+	desktop.waitConnection(Connected)
+
+	dialled := make(chan net.Conn, 1)
+	go func() {
+		conn, err := laptop.link.Dial(laptop.ctx, desktopNode.ID)
+		if err != nil {
+			t.Error(err)
+		}
+		dialled <- conn
+	}()
+	var out net.Conn
+	select {
+	case out = <-dialled:
+	case <-waittest.After(t):
+		t.Fatal("the dial did not return")
+	}
+	if out == nil {
+		t.FailNow()
+	}
+	defer out.Close()
+	clock.waiting(t, handoff)
+	if lines := desktop.logged("stream closed"); len(lines) != 0 {
+		t.Fatalf("closed before the handoff ran out: %v", lines)
+	}
+	clock.Advance(handoff)
+	if err := out.SetReadDeadline(waittest.Deadline(t)); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := out.Read(make([]byte, 1)); !errors.Is(err, io.EOF) {
+		t.Fatalf("the laptop read %v, want the end of the stream", err)
+	}
+	lines := desktop.logged("stream closed")
+	if len(lines) != 1 || lines[0]["reason"] != "nobody took it" {
+		t.Fatalf("want the stream closed as nobody took it, got %v", lines)
+	}
+}

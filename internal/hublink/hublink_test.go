@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"encoding/pem"
 	"errors"
+	"io"
 	"io/fs"
 	"log/slog"
 	"net/http"
@@ -939,5 +940,105 @@ func TestBackInAMinute(t *testing.T) {
 	t.Parallel()
 	if got := (Options{}).withDefaults().MaxBackoff; got > time.Minute {
 		t.Errorf("a node waits up to %v to try the hub again, want at most a minute", got)
+	}
+}
+
+// A login whose files cannot be read is taken as logged out, and its files
+// are kept for a person to look at.
+func TestLoginUnreadable(t *testing.T) {
+	t.Parallel()
+	h := hubtest.Start(t)
+	n := newNode(t, h, nil)
+	n.loggedIn("desktop")
+	n.link.Close()
+	login := filepath.Join(identity.HubDir(n.home), "login.json")
+	if err := os.WriteFile(login, []byte("{not json"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	n.open()
+	if s := n.link.Status(); s.Connection != LoggedOut || s.User != "" {
+		t.Fatalf("status %+v, want logged out", s)
+	}
+	if lines := n.logged("hub login unreadable, taken as logged out"); len(lines) != 1 || lines[0]["level"] != "ERROR" {
+		t.Fatalf("want the login unreadable logged once as an error, got %v", lines)
+	}
+	if b, err := os.ReadFile(login); err != nil || string(b) != "{not json" {
+		t.Fatalf("want login.json kept as it was, got %q, %v", b, err)
+	}
+	if _, err := os.Stat(filepath.Join(identity.HubDir(n.home), "node.key")); err != nil {
+		t.Fatalf("want the node's key kept: %v", err)
+	}
+}
+
+// A login started on a link closed meanwhile, as when the daemon stops
+// during the request, fails with ErrClosed and is not kept.
+func TestStartLoginClosed(t *testing.T) {
+	t.Parallel()
+	h := hubtest.Start(t)
+	n := newNode(t, h, nil)
+	if err := n.link.Close(); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := n.link.StartLogin(n.ctx, LoginRequest{URL: h.URL, Name: "desktop", Flow: FlowDevice}); !errors.Is(err, ErrClosed) {
+		t.Fatalf("want ErrClosed, got %v", err)
+	}
+	if n.link.Pending() != nil {
+		t.Fatal("want no login pending on a closed link")
+	}
+}
+
+// deafControl stands for a network that stops bringing the node what the
+// hub sends on the control connection open when deafen is called, pongs
+// among it, while what the node sends still goes; connections made after
+// are heard.
+type deafControl struct {
+	next http.RoundTripper
+	mu   sync.Mutex
+	last chan struct{} // the deafness of the last connection
+}
+
+func (d *deafControl) RoundTrip(req *http.Request) (*http.Response, error) {
+	resp, err := d.next.RoundTrip(req)
+	if err != nil || resp.StatusCode != http.StatusSwitchingProtocols {
+		return resp, err
+	}
+	deaf := make(chan struct{})
+	d.mu.Lock()
+	d.last = deaf
+	d.mu.Unlock()
+	resp.Body = &deafBody{ReadWriteCloser: resp.Body.(io.ReadWriteCloser), deaf: deaf}
+	return resp, nil
+}
+
+func (d *deafControl) deafen() {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	close(d.last)
+}
+
+// TestControlPingNotAnswered checks the node pings the hub every
+// Limits.Ping, and closes its control connection when no pong comes in
+// time, which it then opens again: how a node learns its hub is gone.
+func TestControlPingNotAnswered(t *testing.T) {
+	t.Parallel()
+	h := hubtest.Start(t)
+	deaf := &deafControl{}
+	n := &node{t: t, h: h, home: t.TempDir()}
+	h.LogIn(n.home, h.User, "desktop")
+	n.log = filepath.Join(n.home, "hublink.log")
+	n.opts = testOptions(t, nil)
+	// The one limit the test is about, which it cannot wait out.
+	n.opts.Limits.Ping = 100 * time.Millisecond
+	n.opts.WrapNodes = func(rt http.RoundTripper) http.RoundTripper { deaf.next = rt; return deaf }
+	n.open()
+	t.Cleanup(n.wantNoSecrets)
+	n.waitConnection(Connected)
+	connected := len(n.logged("control connected"))
+	deaf.deafen()
+	if !waittest.Until(t, func() bool { return len(n.logged("control ping not answered")) > 0 }) {
+		t.Fatal("want the ping not answered logged")
+	}
+	if !waittest.Until(t, func() bool { return len(n.logged("control connected")) > connected }) {
+		t.Fatal("want the control connection opened again")
 	}
 }
