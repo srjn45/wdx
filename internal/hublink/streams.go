@@ -7,6 +7,7 @@ import (
 	"net"
 	"net/http"
 	"net/url"
+	"sync/atomic"
 	"time"
 
 	"github.com/coder/websocket"
@@ -95,7 +96,81 @@ func (l *Link) join(ctx context.Context, c *credentials, id string) (net.Conn, e
 		}
 		return nil, &UnreachableError{URL: c.NodesURL, Err: setupErr(ctx, err)}
 	}
-	return websocket.NetConn(l.ctx, conn, websocket.MessageBinary), nil
+	return l.keptAlive(conn, id), nil
+}
+
+// liveConn is a joined stream, which notes when it last heard from the hub.
+type liveConn struct {
+	net.Conn
+	clock Clock
+	// heard is when a read last returned bytes or a pong came, in Unix
+	// nanoseconds.
+	heard  atomic.Int64
+	closed context.CancelFunc
+}
+
+func (c *liveConn) Read(b []byte) (int, error) {
+	n, err := c.Conn.Read(b)
+	if n > 0 {
+		c.heard.Store(c.clock.Now().UnixNano())
+	}
+	return n, err
+}
+
+func (c *liveConn) Close() error {
+	c.closed()
+	return c.Conn.Close()
+}
+
+// keptAlive is ws, the stream id joined, as a net.Conn that pings the hub
+// each time it received nothing for StreamQuiet, and closes once a pong
+// does not come within StreamPongWait: the hub's library answers, so a
+// network gone is noticed though neither node writes. A stream receiving
+// bytes sends no pings. It ends with the link.
+func (l *Link) keptAlive(ws *websocket.Conn, id string) net.Conn {
+	ctx, closed := context.WithCancel(l.ctx)
+	c := &liveConn{Conn: websocket.NetConn(ctx, ws, websocket.MessageBinary), clock: l.opts.Clock, closed: closed}
+	c.heard.Store(l.opts.Clock.Now().UnixNano())
+	go l.keepAlive(ctx, ws, c, id)
+	return c
+}
+
+// keepAlive pings ws whenever c was quiet for StreamQuiet, closing it when
+// no pong comes in time, until ctx ends.
+func (l *Link) keepAlive(ctx context.Context, ws *websocket.Conn, c *liveConn, id string) {
+	clock := l.opts.Clock
+	for {
+		quiet := clock.Now().Sub(time.Unix(0, c.heard.Load()))
+		if quiet < l.opts.StreamQuiet {
+			select {
+			case <-clock.After(l.opts.StreamQuiet - quiet):
+				continue
+			case <-ctx.Done():
+				return
+			}
+		}
+		pinged, cancel := context.WithCancel(ctx)
+		go func() {
+			select {
+			case <-clock.After(l.opts.StreamPongWait):
+				cancel()
+			case <-pinged.Done():
+			}
+		}()
+		err := ws.Ping(pinged)
+		cancel()
+		if ctx.Err() != nil || errors.Is(err, net.ErrClosed) {
+			return // closed meanwhile
+		}
+		if err != nil {
+			logging.FromContext(ctx).Info("stream closed", "stream_id", id, "reason", "no pong",
+				"quiet_ms", (quiet + l.opts.StreamPongWait).Milliseconds(), "err", err)
+			_ = ws.CloseNow() // the network may be gone: nothing waits for the hub
+			c.closed()
+			return
+		}
+		c.heard.Store(clock.Now().UnixNano())
+	}
 }
 
 // setupRanOut is the cause of a setup context that ran out of time.

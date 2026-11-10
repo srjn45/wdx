@@ -40,6 +40,12 @@ const (
 	// DefaultPingInterval is how often the node pings the hub, which tells
 	// it the hub is gone when no pong comes within the interval.
 	DefaultPingInterval = 30 * time.Second
+	// DefaultStreamQuiet is how long a joined stream may receive nothing
+	// before the node pings the hub on it, and DefaultStreamPongWait how
+	// long it then waits for the pong before it closes the stream: a dead
+	// network is noticed within their sum.
+	DefaultStreamQuiet    = 15 * time.Second
+	DefaultStreamPongWait = 15 * time.Second
 	// requestTimeout is how long a request to the web endpoint may take.
 	requestTimeout = 30 * time.Second
 	// DefaultSetupTimeout is how long reaching another node may take: asking
@@ -82,6 +88,9 @@ type Options struct {
 	PingInterval           time.Duration
 	// SetupTimeout bounds reaching another node; see DefaultSetupTimeout.
 	SetupTimeout time.Duration
+	// StreamQuiet and StreamPongWait check a joined stream is alive; see
+	// DefaultStreamQuiet.
+	StreamQuiet, StreamPongWait time.Duration
 	// Outbox is the docs' changes the link pushes to the hub while
 	// connected; nil pushes none.
 	Outbox Outbox
@@ -109,6 +118,8 @@ func (o Options) withDefaults() Options {
 	o.LogoutTimeout = cmp.Or(o.LogoutTimeout, DefaultLogoutTimeout)
 	o.PingInterval = cmp.Or(o.PingInterval, DefaultPingInterval)
 	o.SetupTimeout = cmp.Or(o.SetupTimeout, DefaultSetupTimeout)
+	o.StreamQuiet = cmp.Or(o.StreamQuiet, DefaultStreamQuiet)
+	o.StreamPongWait = cmp.Or(o.StreamPongWait, DefaultStreamPongWait)
 	return o
 }
 

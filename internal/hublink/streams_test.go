@@ -334,3 +334,126 @@ func TestNodeTransportBounded(t *testing.T) {
 		t.Fatalf("dial %v, headers %s, TLS %s: want each bounded", tr.DialContext != nil, tr.ResponseHeaderTimeout, tr.TLSHandshakeTimeout)
 	}
 }
+
+// deafHub stands for a network that, once deaf is closed, stops bringing
+// the node what the hub sends on its streams: what comes is dropped, while
+// what the node sends still goes.
+type deafHub struct {
+	next http.RoundTripper
+	deaf chan struct{}
+}
+
+func (d *deafHub) RoundTrip(req *http.Request) (*http.Response, error) {
+	resp, err := d.next.RoundTrip(req)
+	if err != nil || resp.StatusCode != http.StatusSwitchingProtocols {
+		return resp, err
+	}
+	resp.Body = &deafBody{ReadWriteCloser: resp.Body.(io.ReadWriteCloser), deaf: d.deaf}
+	return resp, nil
+}
+
+type deafBody struct {
+	io.ReadWriteCloser
+	deaf chan struct{}
+}
+
+func (b *deafBody) Read(p []byte) (int, error) {
+	for {
+		n, err := b.ReadWriteCloser.Read(p)
+		select {
+		case <-b.deaf:
+			if err != nil {
+				return 0, err
+			}
+			// dropped; the read goes on until the stream is closed
+		default:
+			return n, err
+		}
+	}
+}
+
+// TestStreamPinged checks a joined stream that hears nothing from the hub
+// is pinged once quiet for StreamQuiet, not before, and closed when no pong
+// comes within StreamPongWait, on the link's clock; the hub then closes the
+// other node's side.
+func TestStreamPinged(t *testing.T) {
+	t.Parallel()
+	const quiet, pongWait = 3 * time.Second, 5 * time.Second
+	h := hubtest.Start(t)
+	desktop, desktopNode := loggedInAs(t, h, h.User, "desktop")
+	clock := newFakeClock(h)
+	deaf := &deafHub{deaf: make(chan struct{})}
+	home := t.TempDir()
+	h.LogIn(home, h.User, "laptop")
+	laptop := &node{t: t, h: h, home: home, clock: clock, log: filepath.Join(home, "hublink.log")}
+	laptop.opts = Options{Clock: clock, MinBackoff: time.Millisecond, MaxBackoff: 10 * time.Millisecond, StreamQuiet: quiet, StreamPongWait: pongWait,
+		WrapNodes: func(rt http.RoundTripper) http.RoundTripper { deaf.next = rt; return deaf }}
+	laptop.open()
+	t.Cleanup(laptop.wantNoSecrets)
+	laptop.waitConnection(Connected)
+
+	dialled := make(chan net.Conn, 1)
+	go func() {
+		conn, err := laptop.link.Dial(laptop.ctx, desktopNode.ID)
+		if err != nil {
+			t.Error(err)
+		}
+		dialled <- conn
+	}()
+	in := desktop.accepted()
+	var out net.Conn
+	select {
+	case out = <-dialled:
+	case <-waittest.After(t):
+		t.Fatal("the dial did not return")
+	}
+	if out == nil {
+		t.FailNow()
+	}
+	defer out.Close()
+	// The clock goes on as the hub's does, so a wait the link works out
+	// from it is a little shorter than the time it waits for.
+	waitingAtMost := func(d time.Duration) {
+		t.Helper()
+		clock.waitingFor(t, "at most "+d.String(), func(w time.Duration) bool { return w > 0 && w <= d })
+	}
+	waitingAtMost(quiet)
+
+	// Bytes received put the ping off.
+	clock.Advance(2 * time.Second)
+	if _, err := in.Write([]byte("x")); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := io.ReadFull(out, make([]byte, 1)); err != nil {
+		t.Fatal(err)
+	}
+	close(deaf.deaf)
+	clock.Advance(time.Second)
+	waitingAtMost(2 * time.Second)
+	if got := laptop.logged("stream closed"); len(got) != 0 {
+		t.Fatalf("closed before it was quiet for %s: %v", quiet, got)
+	}
+
+	clock.Advance(2 * time.Second)
+	clock.waiting(t, pongWait)
+	clock.Advance(pongWait)
+	if _, err := out.Read(make([]byte, 1)); err == nil {
+		t.Fatal("the laptop read from a stream it heard no pong on")
+	}
+	if got := laptop.logged("stream closed"); len(got) != 1 || got[0]["reason"] != "no pong" {
+		t.Fatalf("logged %v, want the stream closed for no pong", got)
+	}
+	read := make(chan error, 1)
+	go func() {
+		_, err := in.Read(make([]byte, 1))
+		read <- err
+	}()
+	select {
+	case err := <-read:
+		if err == nil {
+			t.Fatal("the desktop read from a stream the laptop closed")
+		}
+	case <-waittest.After(t):
+		t.Fatal("the desktop's side stayed open")
+	}
+}
