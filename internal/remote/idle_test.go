@@ -10,6 +10,43 @@ import (
 	"github.com/srjn45/wdx/internal/waittest"
 )
 
+// suspend is the machine sleeping for d: the wall clock moves on, and the
+// waits under way, which Go's timers do not count it in, end d later.
+func (c *clock) suspend(d time.Duration) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	c.now = c.now.Add(d)
+	for i := range c.waits {
+		c.waits[i].at = c.waits[i].at.Add(d)
+	}
+}
+
+// waitingUntil waits for a wait that ends at at.
+func (c *clock) waitingUntil(t *testing.T, at time.Time) {
+	t.Helper()
+	timeout := waittest.After(t)
+	for {
+		c.mu.Lock()
+		changed := c.changed
+		for _, w := range c.waits {
+			if w.at.Equal(at) {
+				c.mu.Unlock()
+				return
+			}
+		}
+		var waits []time.Time
+		for _, w := range c.waits {
+			waits = append(waits, w.at)
+		}
+		c.mu.Unlock()
+		select {
+		case <-changed:
+		case <-timeout:
+			t.Fatalf("no wait until %v; waits until %v", at, waits)
+		}
+	}
+}
+
 // lastUsed is when the node's session id was last used, as its row says.
 func (n *node) lastUsed(id string) time.Time {
 	n.t.Helper()
@@ -98,4 +135,44 @@ func TestReceivingStreamStaysOpen(t *testing.T) {
 		}
 		wantUsedNow(t, w, host, client, s)
 	}
+}
+
+// A session that expired while the host was suspended is closed within a
+// minute of it waking, though the timer did not count the sleep.
+func TestIdleAfterSuspend(t *testing.T) {
+	t.Parallel()
+	w := newWorld(t)
+	desktop := w.newNode(w.hub.User, "desktop")
+	laptop := w.newNode(w.hub.User, "laptop")
+	desktop.setUp()
+	s := laptop.mustOpen(desktop)
+	w.clock.waitingUntil(t, w.clock.Now().Add(time.Minute))
+
+	w.clock.suspend(2 * time.Hour)
+	w.clock.Advance(time.Minute)
+	desktop.wantClosedFor(s.ID, ReasonIdle)
+}
+
+// The idle timer tries again after an error, rather than stopping.
+func TestIdleTimerRetries(t *testing.T) {
+	t.Parallel()
+	w := newWorld(t)
+	desktop := w.newNode(w.hub.User, "desktop")
+	laptop := w.newNode(w.hub.User, "laptop")
+	desktop.setUp()
+	desktop.timeout.Store(int64(time.Minute))
+	s := laptop.mustOpen(desktop)
+	w.clock.waitingUntil(t, s.OpenedAt.Add(time.Minute))
+
+	// The timer looks with the sessions' table away, and fails.
+	if _, err := desktop.db.ExecContext(desktop.ctx, "ALTER TABLE hub_sessions RENAME TO hub_sessions_away"); err != nil {
+		t.Fatal(err)
+	}
+	w.clock.Advance(time.Minute)
+	w.clock.waitingUntil(t, s.OpenedAt.Add(time.Minute+time.Second))
+	if _, err := desktop.db.ExecContext(desktop.ctx, "ALTER TABLE hub_sessions_away RENAME TO hub_sessions"); err != nil {
+		t.Fatal(err)
+	}
+	w.clock.Advance(time.Second)
+	desktop.wantClosedFor(s.ID, ReasonIdle)
 }

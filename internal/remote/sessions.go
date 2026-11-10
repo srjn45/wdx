@@ -329,18 +329,28 @@ func (r *Remote) forgetKeys(ctx context.Context) error {
 }
 
 // keepIdle closes each incoming session once it has gone unused for the
-// idle timeout, waking at the next to expire, until the Remote closes.
+// idle timeout, waking at the next to expire, until the Remote closes. It
+// waits at most idleLookEvery at a time, and after an error tries again in
+// a second, doubling to idleLookEvery.
 func (r *Remote) keepIdle() {
 	defer close(r.done)
 	log := logging.FromContext(r.ctx)
+	var retry time.Duration
 	for {
 		next, err := r.expireIdle(r.ctx)
-		if err != nil && r.ctx.Err() == nil {
-			log.Error("idle sessions not closed", "err", err)
-		}
 		var wake <-chan time.Time
-		if !next.IsZero() {
-			wake = r.opts.Clock.After(next.Sub(r.opts.Clock.Now()))
+		switch {
+		case err != nil:
+			retry = min(max(2*retry, time.Second), idleLookEvery)
+			if r.ctx.Err() == nil {
+				log.Error("idle sessions not closed", "err", err, "retry_in_ms", retry.Milliseconds())
+			}
+			wake = r.opts.Clock.After(retry)
+		case !next.IsZero():
+			retry = 0
+			wake = r.opts.Clock.After(min(next.Sub(r.opts.Clock.Now()), idleLookEvery))
+		default:
+			retry = 0
 		}
 		select {
 		case <-r.ctx.Done():
@@ -350,6 +360,11 @@ func (r *Remote) keepIdle() {
 		}
 	}
 }
+
+// idleLookEvery is the longest the idle timer waits: Go's timers do not
+// count the time a machine is suspended, which the wall clock does, so a
+// session that expired meanwhile is closed within it of waking.
+const idleLookEvery = time.Minute
 
 // expireIdle closes the incoming sessions expired by now, those whose
 // expiry has passed, and returns when the next expires, zero when none is
