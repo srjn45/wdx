@@ -47,14 +47,28 @@ type loginJSON struct {
 // credentials are a login: what login.json says, the node's key and
 // certificate and the hub's CA.
 type credentials struct {
-	URL, NodesURL, User string
-	Node                NodeRef
-	Key                 ed25519.PrivateKey
-	CA                  *x509.CertPool
-	CAPEM               []byte
+	URL, User string
+	Node      NodeRef
+	Key       ed25519.PrivateKey
+	CA        *x509.CertPool
+	CAPEM     []byte
 
-	mu   sync.Mutex
-	cert tls.Certificate // replaced when renewed
+	mu       sync.Mutex
+	cert     tls.Certificate // replaced when renewed
+	nodesURL string          // replaced when the hub's welcome names another
+}
+
+// endpoint is where the node endpoint is reached, the login's nodes_url.
+func (c *credentials) endpoint() string {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	return c.nodesURL
+}
+
+func (c *credentials) setEndpoint(u string) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	c.nodesURL = u
 }
 
 func (c *credentials) certificate() tls.Certificate {
@@ -107,7 +121,7 @@ func readLogin(ctx context.Context, dir string) (*credentials, error) {
 	if err != nil {
 		return nil, err
 	}
-	c := &credentials{URL: lj.URL, NodesURL: lj.NodesURL, User: lj.User, Node: NodeRef{ID: lj.Node.ID, Name: lj.Node.Name}, Key: key}
+	c := &credentials{URL: lj.URL, nodesURL: lj.NodesURL, User: lj.User, Node: NodeRef{ID: lj.Node.ID, Name: lj.Node.Name}, Key: key}
 	if err := c.check(certPEM, caPEM); err != nil {
 		return nil, err
 	}
@@ -134,8 +148,8 @@ func removeLeftovers(ctx context.Context, dir string) error {
 // certPEM, which must be for the node's key, issued by that CA, and name
 // https nodes_url.
 func (c *credentials) check(certPEM, caPEM []byte) error {
-	if u, err := url.Parse(c.NodesURL); err != nil || u.Scheme != "https" || u.Host == "" {
-		return fmt.Errorf("the node endpoint %q is not https://<host>:<port>", c.NodesURL)
+	if err := checkEndpoint(c.nodesURL); err != nil {
+		return err
 	}
 	pool := x509.NewCertPool()
 	if !pool.AppendCertsFromPEM(caPEM) {
@@ -149,6 +163,14 @@ func (c *credentials) check(certPEM, caPEM []byte) error {
 		return fmt.Errorf("the node's certificate is not the hub CA's: %w", err)
 	}
 	c.CA, c.CAPEM, c.cert = pool, caPEM, cert
+	return nil
+}
+
+// checkEndpoint refuses a node endpoint that is not https://<host>:<port>.
+func checkEndpoint(nodesURL string) error {
+	if u, err := url.Parse(nodesURL); err != nil || u.Scheme != "https" || u.Host == "" {
+		return fmt.Errorf("the node endpoint %q is not https://<host>:<port>", nodesURL)
+	}
 	return nil
 }
 
@@ -212,9 +234,7 @@ func (c *credentials) write(ctx context.Context, dir string) error {
 	if err != nil {
 		return err
 	}
-	var lj loginJSON
-	lj.URL, lj.NodesURL, lj.User, lj.Node.ID, lj.Node.Name = c.URL, c.NodesURL, c.User, c.Node.ID, c.Node.Name
-	login, err := json.MarshalIndent(lj, "", "  ")
+	login, err := c.loginJSON()
 	if err != nil {
 		return err
 	}
@@ -225,7 +245,7 @@ func (c *credentials) write(ctx context.Context, dir string) error {
 		{keyFile, key},
 		{certFile, certPEM(c.certificate())},
 		{caFile, c.CAPEM},
-		{loginFile, append(login, '\n')},
+		{loginFile, login},
 	} {
 		if err := atomicfile.Write(filepath.Join(dir, f.name), f.data, fileMode); err != nil {
 			return err
@@ -233,6 +253,23 @@ func (c *credentials) write(ctx context.Context, dir string) error {
 	}
 	logging.FromContext(ctx).Info("hub login written", "path", dir, "node_id", c.Node.ID)
 	return nil
+}
+
+// loginJSON is login.json for c.
+func (c *credentials) loginJSON() ([]byte, error) {
+	var lj loginJSON
+	lj.URL, lj.NodesURL, lj.User, lj.Node.ID, lj.Node.Name = c.URL, c.endpoint(), c.User, c.Node.ID, c.Node.Name
+	b, err := json.MarshalIndent(lj, "", "  ")
+	return append(b, '\n'), err
+}
+
+// writeEndpoint rewrites login.json in dir with c's node endpoint.
+func (c *credentials) writeEndpoint(dir string) error {
+	login, err := c.loginJSON()
+	if err != nil {
+		return err
+	}
+	return atomicfile.Write(filepath.Join(dir, loginFile), login, fileMode)
 }
 
 // writeCertificate replaces the node's certificate in dir with cert.

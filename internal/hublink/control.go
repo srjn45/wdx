@@ -9,6 +9,7 @@ import (
 	"log/slog"
 	"math/rand/v2"
 	"net/http"
+	"strings"
 	"sync"
 	"time"
 
@@ -145,7 +146,7 @@ func (l *Link) connectOnce(ctx context.Context, c *credentials, client *http.Cli
 	log := logging.FromContext(ctx)
 	dialing, cancel := context.WithTimeout(ctx, dialTimeout)
 	//nolint:bodyclose // the websocket closes it itself: "You never need to close resp.Body yourself."
-	conn, resp, err := websocket.Dial(dialing, c.NodesURL+"/v1/control", &websocket.DialOptions{
+	conn, resp, err := websocket.Dial(dialing, c.endpoint()+"/v1/control", &websocket.DialOptions{
 		HTTPClient: client,
 		HTTPHeader: versionHeaders(),
 	})
@@ -199,6 +200,7 @@ func (l *Link) connectOnce(ctx context.Context, c *credentials, client *http.Cli
 				return welcomed, err
 			}
 			welcomed = true
+			l.moved(c, w.NodesUrl)
 			in := true
 			log.Info("control connected", "hub_version", w.HubVersion, "api_version", w.ApiVersion)
 			l.update(c, func() { l.conn, l.hub, l.hubAPI, l.inRange, l.behind = Connected, w.HubVersion, w.ApiVersion, &in, "" })
@@ -258,7 +260,7 @@ func (l *Link) connectOnce(ctx context.Context, c *credentials, client *http.Cli
 // this one was not connected is not among them.
 func (l *Link) catchUp(ctx context.Context, c *credentials, client *http.Client) {
 	log := logging.FromContext(ctx)
-	hc, err := hubapi.NewClientWithResponses(c.NodesURL, hubapi.WithHTTPClient(client), hubapi.WithRequestEditorFn(versionHeader))
+	hc, err := hubapi.NewClientWithResponses(c.endpoint(), hubapi.WithHTTPClient(client), hubapi.WithRequestEditorFn(versionHeader))
 	if err != nil {
 		log.Error("account nodes not listed", "err", err)
 		return
@@ -269,11 +271,11 @@ func (l *Link) catchUp(ctx context.Context, c *credentials, client *http.Client)
 	}
 	r, err := hc.ListNodesWithResponse(ctx)
 	if err != nil {
-		log.Info("account nodes not listed", "err", &UnreachableError{URL: c.NodesURL, Err: err})
+		log.Info("account nodes not listed", "err", &UnreachableError{URL: c.endpoint(), Err: err})
 		return
 	}
 	if r.JSON200 == nil {
-		log.Info("account nodes not listed", "err", refused(c.NodesURL, r.StatusCode(), r.ApplicationproblemJSONDefault))
+		log.Info("account nodes not listed", "err", refused(c.endpoint(), r.StatusCode(), r.ApplicationproblemJSONDefault))
 		return
 	}
 	nodes := make([]NodeRef, 0, len(r.JSON200.Nodes))
@@ -282,6 +284,39 @@ func (l *Link) catchUp(ctx context.Context, c *credentials, client *http.Client)
 	}
 	log.Info("account nodes listed", "count", len(nodes))
 	listed(nodes)
+}
+
+// moved makes nodesURL, the node endpoint the hub's welcome names, the
+// login's when it is another, so that the next connection reaches the hub
+// where it moved: the welcome came over TLS under the pinned CA, as the
+// login's own address did.
+func (l *Link) moved(c *credentials, nodesURL *string) {
+	if nodesURL == nil {
+		return // an older hub, which names none
+	}
+	log := logging.FromContext(l.ctx).With("node_id", c.Node.ID)
+	to, from := strings.TrimRight(*nodesURL, "/"), c.endpoint()
+	if to == from {
+		return
+	}
+	if err := checkEndpoint(to); err != nil {
+		log.Info("hub nodes url ignored", "nodes_url", to, "err", err)
+		return
+	}
+	// The link's lock keeps a logout from removing the directory between
+	// the check that c is still the login and the write.
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	if l.creds != c {
+		return
+	}
+	c.setEndpoint(to)
+	if err := c.writeEndpoint(l.dir); err != nil {
+		c.setEndpoint(from)
+		log.Error("hub nodes url not written", "path", l.dir, "nodes_url", to, "err", err)
+		return
+	}
+	log.Info("hub nodes url changed", "from", from, "to", to)
 }
 
 // closedWith is what a control connection that ended with err after bye

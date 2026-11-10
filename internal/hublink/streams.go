@@ -53,10 +53,10 @@ func (l *Link) Dial(ctx context.Context, nodeID string) (net.Conn, error) {
 	r, err := client.OpenStreamWithResponse(ctx, hubapi.OpenStream{NodeId: nodeID})
 	done()
 	if err != nil {
-		return nil, &UnreachableError{URL: c.NodesURL, Err: setupErr(ctx, err)}
+		return nil, &UnreachableError{URL: c.endpoint(), Err: setupErr(ctx, err)}
 	}
 	if r.JSON201 == nil {
-		err := refused(c.NodesURL, r.StatusCode(), r.ApplicationproblemJSONDefault)
+		err := refused(c.endpoint(), r.StatusCode(), r.ApplicationproblemJSONDefault)
 		log.Info("stream not opened", "node_id", nodeID, "err", err)
 		return nil, err
 	}
@@ -80,7 +80,7 @@ func (l *Link) join(ctx context.Context, c *credentials, id string) (net.Conn, e
 		rt = l.opts.WrapNodes(rt)
 	}
 	//nolint:bodyclose // the websocket closes it itself: "You never need to close resp.Body yourself."
-	conn, resp, err := websocket.Dial(ctx, c.NodesURL+"/v1/streams/"+url.PathEscape(id), &websocket.DialOptions{
+	conn, resp, err := websocket.Dial(ctx, c.endpoint()+"/v1/streams/"+url.PathEscape(id), &websocket.DialOptions{
 		HTTPClient: &http.Client{Transport: rt},
 		HTTPHeader: versionHeaders(),
 	})
@@ -96,7 +96,7 @@ func (l *Link) join(ctx context.Context, c *credentials, id string) (net.Conn, e
 			}
 			return nil, &HubError{Problem: hubapi.NewProblem(code, cut.Error())}
 		}
-		return nil, &UnreachableError{URL: c.NodesURL, Err: setupErr(ctx, err)}
+		return nil, &UnreachableError{URL: c.endpoint(), Err: setupErr(ctx, err)}
 	}
 	return l.keptAlive(conn, id), nil
 }

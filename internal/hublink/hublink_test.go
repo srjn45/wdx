@@ -664,6 +664,36 @@ func TestReconnectAfterHubRestart(t *testing.T) {
 	}
 }
 
+// A hub that moved to another name tells the node at its next welcome, and
+// the node keeps the new address, in login.json too.
+func TestFollowsTheHubMoving(t *testing.T) {
+	t.Parallel()
+	h := hubtest.Start(t)
+	n := newNode(t, h, nil)
+	n.loggedIn("desktop")
+	before := h.NodesURL
+	h.Move("localhost")
+	n.waitStatus("offline after the move", func(s Status) bool { return s.Connection != Connected })
+	n.waitConnection(Connected)
+	b, err := os.ReadFile(filepath.Join(identity.HubDir(n.home), loginFile))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var lj loginJSON
+	if err := json.Unmarshal(b, &lj); err != nil || lj.NodesURL != h.NodesURL || !strings.HasPrefix(lj.NodesURL, "https://localhost:") {
+		t.Fatalf("login.json %s, want nodes_url %s", b, h.NodesURL)
+	}
+	if lines := n.logged("hub nodes url changed"); len(lines) != 1 || lines[0]["from"] != before || lines[0]["to"] != h.NodesURL {
+		t.Fatalf("want the change logged once, from %s, got %v", before, lines)
+	}
+	n.link.mu.Lock()
+	dials := n.link.creds.endpoint()
+	n.link.mu.Unlock()
+	if dials != h.NodesURL {
+		t.Fatalf("the link dials %s, want %s", dials, h.NodesURL)
+	}
+}
+
 // waitStopped waits for the control loop of n to have stopped trying.
 func (n *node) waitStopped() {
 	n.t.Helper()

@@ -245,30 +245,31 @@ func NodeID(cert *x509.Certificate) (id string, ok bool) {
 // CertificatePEM is the CA's own certificate in PEM, as nodes are given it.
 func (c *CA) CertificatePEM() []byte { return encodeCert(c.cert.Raw) }
 
-// NodeEndpoint returns the node endpoint's key and certificate for host, the
-// host of public_url, which the CA issued: valid a year, its common name host
-// and its names host, or localhost and 127.0.0.1 both when it is either. It
-// loads them from the CA's directory, and issues them anew when they are
-// missing or unreadable, name another host or another CA, or two thirds of
-// their life have passed; never otherwise.
-func (c *CA) NodeEndpoint(ctx context.Context, host string) (tls.Certificate, error) {
+// NodeEndpoint returns the node endpoint's key and certificate for hosts,
+// the host nodes reach it at first and those they reached it at before,
+// which the CA issued: valid a year, its common name the first host and its
+// names every host, localhost and 127.0.0.1 both for either. It loads them
+// from the CA's directory, and issues them anew when they are missing or
+// unreadable, name other hosts or another CA, or two thirds of their life
+// have passed; never otherwise.
+func (c *CA) NodeEndpoint(ctx context.Context, hosts []string) (tls.Certificate, error) {
 	log := logging.FromContext(ctx)
-	cert, reason := c.loadNodeEndpoint(host)
+	cert, reason := c.loadNodeEndpoint(hosts)
 	if reason == "" {
-		log.Info("node endpoint certificate loaded", "host", host, "not_after", cert.Leaf.NotAfter)
+		log.Info("node endpoint certificate loaded", "hosts", hosts, "not_after", cert.Leaf.NotAfter)
 		return cert, nil
 	}
-	cert, err := c.issueNodeEndpoint(host)
+	cert, err := c.issueNodeEndpoint(hosts)
 	if err != nil {
 		return tls.Certificate{}, err
 	}
-	log.Info("node endpoint certificate issued", "host", host, "reason", reason, "not_after", cert.Leaf.NotAfter)
+	log.Info("node endpoint certificate issued", "hosts", hosts, "reason", reason, "not_after", cert.Leaf.NotAfter)
 	return cert, nil
 }
 
 // loadNodeEndpoint returns the node endpoint's certificate on disk, or why it
 // must be issued anew.
-func (c *CA) loadNodeEndpoint(host string) (tls.Certificate, string) {
+func (c *CA) loadNodeEndpoint(hosts []string) (tls.Certificate, string) {
 	cert, err := tls.LoadX509KeyPair(c.path(nodesCrtFile), c.path(nodesKeyFile))
 	switch {
 	case errors.Is(err, fs.ErrNotExist):
@@ -280,8 +281,8 @@ func (c *CA) loadNodeEndpoint(host string) (tls.Certificate, string) {
 	if _, err := leaf.Verify(x509.VerifyOptions{Roots: c.Pool(), CurrentTime: leaf.NotBefore, KeyUsages: []x509.ExtKeyUsage{x509.ExtKeyUsageServerAuth}}); err != nil {
 		return cert, "not issued by this ca"
 	}
-	if !slices.Equal(leaf.DNSNames, dnsNames(host)) || !slices.EqualFunc(leaf.IPAddresses, ipAddresses(host), net.IP.Equal) {
-		return cert, "names another host"
+	if !slices.Equal(leaf.DNSNames, dnsNames(hosts)) || !slices.EqualFunc(leaf.IPAddresses, ipAddresses(hosts), net.IP.Equal) {
+		return cert, "names other hosts"
 	}
 	life := leaf.NotAfter.Sub(leaf.NotBefore)
 	if !c.now().Before(leaf.NotBefore.Add(life * 2 / 3)) {
@@ -290,18 +291,18 @@ func (c *CA) loadNodeEndpoint(host string) (tls.Certificate, string) {
 	return cert, ""
 }
 
-// issueNodeEndpoint issues the node endpoint's key and certificate for host
+// issueNodeEndpoint issues the node endpoint's key and certificate for hosts
 // and writes them, the key first: a certificate whose key is not the one on
 // disk is issued anew.
-func (c *CA) issueNodeEndpoint(host string) (tls.Certificate, error) {
+func (c *CA) issueNodeEndpoint(hosts []string) (tls.Certificate, error) {
 	pub, key, err := ed25519.GenerateKey(rand.Reader)
 	if err != nil {
 		return tls.Certificate{}, err
 	}
 	der, err := c.Issue(pub, Request{
-		CommonName:  host,
-		DNSNames:    dnsNames(host),
-		IPAddresses: ipAddresses(host),
+		CommonName:  hosts[0],
+		DNSNames:    dnsNames(hosts),
+		IPAddresses: ipAddresses(hosts),
 		ExtKeyUsage: []x509.ExtKeyUsage{x509.ExtKeyUsageServerAuth},
 		Validity:    nodesValidity,
 	})
@@ -324,18 +325,27 @@ func (c *CA) issueNodeEndpoint(host string) (tls.Certificate, error) {
 	return tls.X509KeyPair(encodeCert(der), keyPEM)
 }
 
-// names are the names a certificate for host holds: host, or both local
-// names when it is one.
-func names(host string) []string {
-	if slices.Contains(localNames, host) {
-		return localNames
+// names are the names a certificate for hosts holds, each once in the order
+// given: a host, or both local names for either.
+func names(hosts []string) []string {
+	var all []string
+	for _, h := range hosts {
+		each := []string{h}
+		if slices.Contains(localNames, h) {
+			each = localNames
+		}
+		for _, n := range each {
+			if !slices.Contains(all, n) {
+				all = append(all, n)
+			}
+		}
 	}
-	return []string{host}
+	return all
 }
 
-func dnsNames(host string) []string {
+func dnsNames(hosts []string) []string {
 	var dns []string
-	for _, n := range names(host) {
+	for _, n := range names(hosts) {
 		if net.ParseIP(n) == nil {
 			dns = append(dns, n)
 		}
@@ -343,9 +353,9 @@ func dnsNames(host string) []string {
 	return dns
 }
 
-func ipAddresses(host string) []net.IP {
+func ipAddresses(hosts []string) []net.IP {
 	var ips []net.IP
-	for _, n := range names(host) {
+	for _, n := range names(hosts) {
 		if ip := net.ParseIP(n); ip != nil {
 			ips = append(ips, ip)
 		}

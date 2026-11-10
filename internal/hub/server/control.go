@@ -162,7 +162,7 @@ func (s *Server) control(parent context.Context, conn *websocket.Conn, n node.No
 
 	if err := wsjson.Write(life, conn, hubapi.ControlWelcome{
 		Type: hubapi.ControlWelcomeTypeWelcome, HubVersion: s.version(), ApiVersion: s.apiVersion,
-		Node: hubapi.NodeRef{Id: n.ID, Name: n.Name},
+		Node: hubapi.NodeRef{Id: n.ID, Name: n.Name}, NodesUrl: &s.nodesURL,
 	}); err != nil {
 		log.Info("control closed", "reason", "connection", "err", err)
 		return

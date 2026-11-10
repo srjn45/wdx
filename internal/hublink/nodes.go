@@ -25,7 +25,7 @@ func (l *Link) nodesClient() (*hubapi.ClientWithResponses, *credentials, func(),
 	if l.opts.WrapNodes != nil {
 		rt = l.opts.WrapNodes(rt)
 	}
-	client, err := hubapi.NewClientWithResponses(c.NodesURL, hubapi.WithHTTPClient(&http.Client{Transport: rt}), hubapi.WithRequestEditorFn(versionHeader))
+	client, err := hubapi.NewClientWithResponses(c.endpoint(), hubapi.WithHTTPClient(&http.Client{Transport: rt}), hubapi.WithRequestEditorFn(versionHeader))
 	if err != nil {
 		return nil, nil, nil, err
 	}
@@ -44,10 +44,10 @@ func (l *Link) Nodes(ctx context.Context) ([]hubapi.AccountNode, error) {
 	defer done()
 	r, err := client.ListNodesWithResponse(ctx)
 	if err != nil {
-		return nil, &UnreachableError{URL: c.NodesURL, Err: err}
+		return nil, &UnreachableError{URL: c.endpoint(), Err: err}
 	}
 	if r.JSON200 == nil {
-		return nil, refused(c.NodesURL, r.StatusCode(), r.ApplicationproblemJSONDefault)
+		return nil, refused(c.endpoint(), r.StatusCode(), r.ApplicationproblemJSONDefault)
 	}
 	logging.FromContext(ctx).Info("hub nodes listed", "count", len(r.JSON200.Nodes))
 	return r.JSON200.Nodes, nil
@@ -66,10 +66,10 @@ func (l *Link) Node(ctx context.Context, ref string) (hubapi.AccountNodeDetail, 
 	defer done()
 	r, err := client.GetNodeWithResponse(ctx, ref)
 	if err != nil {
-		return hubapi.AccountNodeDetail{}, &UnreachableError{URL: c.NodesURL, Err: err}
+		return hubapi.AccountNodeDetail{}, &UnreachableError{URL: c.endpoint(), Err: err}
 	}
 	if r.JSON200 == nil {
-		return hubapi.AccountNodeDetail{}, refused(c.NodesURL, r.StatusCode(), r.ApplicationproblemJSONDefault)
+		return hubapi.AccountNodeDetail{}, refused(c.endpoint(), r.StatusCode(), r.ApplicationproblemJSONDefault)
 	}
 	logging.FromContext(ctx).Info("hub node found", "ref", ref, "node_id", r.JSON200.Node.Id)
 	return r.JSON200.Node, nil
@@ -100,10 +100,10 @@ func (l *Link) RemoveNode(ctx context.Context, ref string) (hubapi.AccountNode, 
 	}
 	r, err := client.RemoveNodeWithResponse(ctx, ref)
 	if err != nil {
-		return hubapi.AccountNode{}, &UnreachableError{URL: c.NodesURL, Err: err}
+		return hubapi.AccountNode{}, &UnreachableError{URL: c.endpoint(), Err: err}
 	}
 	if r.JSON200 == nil {
-		return hubapi.AccountNode{}, refused(c.NodesURL, r.StatusCode(), r.ApplicationproblemJSONDefault)
+		return hubapi.AccountNode{}, refused(c.endpoint(), r.StatusCode(), r.ApplicationproblemJSONDefault)
 	}
 	logging.FromContext(ctx).Info("hub node removed", "ref", ref, "node_id", r.JSON200.Node.Id)
 	return r.JSON200.Node, nil
@@ -126,11 +126,11 @@ func (l *Link) Logout(ctx context.Context) (hubTold bool, err error) {
 	done()
 	switch {
 	case err != nil:
-		log.Info("hub not told of the logout", "err", &UnreachableError{URL: c.NodesURL, Err: err})
+		log.Info("hub not told of the logout", "err", &UnreachableError{URL: c.endpoint(), Err: err})
 	case r.JSON200 != nil:
 		hubTold = true
 	default:
-		err := refused(c.NodesURL, r.StatusCode(), r.ApplicationproblemJSONDefault)
+		err := refused(c.endpoint(), r.StatusCode(), r.ApplicationproblemJSONDefault)
 		// Revoked already: the hub has it so.
 		hubTold = Code(err) == hubapi.ErrorCodeNodeRevoked
 		log.Info("hub refused the logout", "err", err, "hub_told", hubTold)

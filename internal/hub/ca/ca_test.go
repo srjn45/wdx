@@ -58,10 +58,10 @@ func load(t *testing.T, dir string, clk *clock) (*CA, string) {
 	return c, log.String()
 }
 
-func nodeEndpoint(t *testing.T, c *CA, host string) (tls.Certificate, string) {
+func nodeEndpoint(t *testing.T, c *CA, hosts ...string) (tls.Certificate, string) {
 	t.Helper()
 	ctx, log := logged()
-	cert, err := c.NodeEndpoint(ctx, host)
+	cert, err := c.NodeEndpoint(ctx, hosts)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -229,8 +229,29 @@ func TestNodeEndpointReissuedForAnotherHost(t *testing.T) {
 	c, _ := load(t, filepath.Join(t.TempDir(), "ca"), &clock{now: start})
 	first, _ := nodeEndpoint(t, c, "hub.example.com")
 	moved, log := nodeEndpoint(t, c, "new.example.com")
-	if moved.Leaf.Equal(first.Leaf) || moved.Leaf.Subject.CommonName != "new.example.com" || !strings.Contains(log, `"reason":"names another host"`) {
+	if moved.Leaf.Equal(first.Leaf) || moved.Leaf.Subject.CommonName != "new.example.com" || !strings.Contains(log, `"reason":"names other hosts"`) {
 		t.Fatalf("want it issued for the new host, got %s", log)
+	}
+}
+
+// While the hub moves, its certificate names the new host and the old,
+// and is kept while they stay the same.
+func TestNodeEndpointNamesPreviousHosts(t *testing.T) {
+	t.Parallel()
+	c, _ := load(t, filepath.Join(t.TempDir(), "ca"), &clock{now: start})
+	first, _ := nodeEndpoint(t, c, "hub.example.com")
+	moving, log := nodeEndpoint(t, c, "new.example.com", "hub.example.com", "localhost")
+	leaf := moving.Leaf
+	if leaf.Equal(first.Leaf) || leaf.Subject.CommonName != "new.example.com" || !strings.Contains(log, `"reason":"names other hosts"`) {
+		t.Fatalf("want it issued for both hosts, got %s", log)
+	}
+	for _, host := range []string{"new.example.com", "hub.example.com", "localhost", "127.0.0.1"} {
+		if err := leaf.VerifyHostname(host); err != nil {
+			t.Errorf("%s: %v", host, err)
+		}
+	}
+	if again, log := nodeEndpoint(t, c, "new.example.com", "hub.example.com", "localhost"); !again.Leaf.Equal(leaf) || !strings.Contains(log, "certificate loaded") {
+		t.Fatalf("want the same certificate loaded, got %s", log)
 	}
 }
 

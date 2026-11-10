@@ -65,7 +65,11 @@ type Config struct {
 	// NodesURL is the address nodes reach the node endpoint at, without a
 	// trailing slash; empty for public_url's host with listen.nodes' port,
 	// which NodesEndpoint gives.
-	NodesURL         string
+	NodesURL string
+	// NodesURLPrevious are the addresses nodes reached the node endpoint at
+	// before, which its certificate still names while nodes move to
+	// NodesURL.
+	NodesURLPrevious []string
 	WebTLS           string // TLSOff or TLSFiles
 	WebTLSCert       string
 	WebTLSKey        string
@@ -184,6 +188,14 @@ var rows = []settings.Row[Config]{
 			return nil
 		},
 		Get: func(c Config) string { return c.NodesURL },
+	},
+	{
+		Key: "nodes_url_previous",
+		Description: "addresses, comma-separated, nodes reached the node endpoint at before nodes_url changed: its certificate " +
+			"names them too, so that nodes still dialling one are told the new address at their next connection",
+		Default: "",
+		Set:     setNodesURLPrevious,
+		Get:     func(c Config) string { return strings.Join(c.NodesURLPrevious, ",") },
 	},
 	{
 		Key:         "web.tls",
@@ -401,6 +413,24 @@ func checkPublicURL(v string) error {
 	if u.Scheme == "http" && !slices.Contains(localHosts, u.Hostname()) {
 		return fmt.Errorf("%q must be https: http is only for %s", v, strings.Join(localHosts, " and "))
 	}
+	return nil
+}
+
+// setNodesURLPrevious sets NodesURLPrevious from v, a list of addresses
+// each as nodes_url takes one.
+func setNodesURLPrevious(c *Config, v string) error {
+	var list []string
+	for u := range strings.SplitSeq(v, ",") {
+		u = strings.TrimSpace(u)
+		if u == "" {
+			continue
+		}
+		if err := checkNodesURL(u); err != nil {
+			return err
+		}
+		list = append(list, strings.TrimSuffix(u, "/"))
+	}
+	c.NodesURLPrevious = list
 	return nil
 }
 

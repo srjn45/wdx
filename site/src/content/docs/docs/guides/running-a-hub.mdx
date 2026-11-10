@@ -80,6 +80,17 @@ There is no third way: the hub does not get certificates itself. A public hub us
 
 With a proxy, `127.0.0.1:8080` stays closed to everyone else. The node endpoint's port is `listen.nodes`; when the nodes reach it at another address than the public url's host with that port, set `nodes_url`.
 
+## Moving the hub to another name
+
+The nodes keep the node endpoint's address from their login, and the hub tells it them again each time they connect: when it changed, they keep the new one, and stay logged in. To move the hub to another name:
+
+1. Point the new name at the hub, and set `nodes_url` to it.
+2. Set `nodes_url_previous` to the old address, such as `https://old.example.com:8443`, comma-separated for several. The endpoint's certificate then names the old name too, so nodes still dialling it connect and are told the new one.
+3. Restart the hub: `sudo systemctl restart wdx-hub`.
+4. Once every node has connected since, as the last seen of each user's nodes in `wdx-hub user get` shows, empty `nodes_url_previous` and restart it again.
+
+A node offline the whole time still has the old address: while the old name points at the hub and is in `nodes_url_previous`, it follows when it next connects.
+
 ## Users
 
 The hub's registration is closed: a person joins with an invite, a link that works once, for 24 hours. The install prints the first; make others with:

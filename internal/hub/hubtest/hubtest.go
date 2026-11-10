@@ -18,6 +18,7 @@ import (
 	"crypto/x509"
 	"encoding/json"
 	"log/slog"
+	"net"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -108,8 +109,24 @@ func (h *Hub) Restart() {
 	h.t.Helper()
 	h.stop()
 	h.opts.Config.ListenWeb = strings.TrimPrefix(h.URL, "http://")
-	h.opts.Config.ListenNodes = strings.TrimPrefix(h.NodesURL, "https://")
+	h.opts.Config.ListenNodes = h.Server.Addresses().Nodes
 	h.serve()
+}
+
+// Move restarts the hub with nodes_url set to https://<host> and the port
+// the node endpoint listens on, and nodes_url_previous to where nodes were
+// told before, as its operator moves it to another name; NodesURL is then
+// the new address.
+func (h *Hub) Move(host string) {
+	h.t.Helper()
+	_, port, err := net.SplitHostPort(h.Server.Addresses().Nodes)
+	if err != nil {
+		h.t.Fatal(err)
+	}
+	h.opts.Config.NodesURLPrevious = append(h.opts.Config.NodesURLPrevious, h.NodesURL)
+	h.opts.Config.NodesURL = "https://" + net.JoinHostPort(host, port)
+	h.Restart()
+	h.NodesURL = h.Server.NodesURL()
 }
 
 // serve listens and serves the hub with its options until stop.

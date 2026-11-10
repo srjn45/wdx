@@ -149,7 +149,7 @@ func (e *AlreadyRunningError) Error() string {
 
 // atStart are the settings the hub applies only when it starts; a reload
 // applies the others at once.
-var atStart = []string{"public_url", "listen.web", "listen.nodes", "nodes_url", "web.tls", "web.tls_cert", "web.tls_key", "master_key", "trusted_proxies"}
+var atStart = []string{"public_url", "listen.web", "listen.nodes", "nodes_url", "nodes_url_previous", "web.tls", "web.tls_cert", "web.tls_key", "master_key", "trusted_proxies"}
 
 // Addresses are where the endpoints listen.
 type Addresses struct {
@@ -294,8 +294,11 @@ func Listen(ctx context.Context, opts Options) (_ *Server, err error) {
 	// The address nodes are told, and the endpoint's certificate names, is
 	// known once it listens, on the port the system chose for port 0.
 	s.nodesURL = cfg.NodesEndpoint(nodes.Addr().(*net.TCPAddr).Port)
-	nodesHost := hostOf(s.nodesURL)
-	nodesCert, err := s.ca.NodeEndpoint(ctx, nodesHost)
+	nodesHosts := []string{hostOf(s.nodesURL)}
+	for _, u := range cfg.NodesURLPrevious {
+		nodesHosts = append(nodesHosts, hostOf(u))
+	}
+	nodesCert, err := s.ca.NodeEndpoint(ctx, nodesHosts)
 	if err != nil {
 		return nil, err
 	}

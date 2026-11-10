@@ -459,7 +459,7 @@ func (g *Login) Callback(ctx context.Context, cb Callback) error {
 // and starts the control connection.
 func (g *Login) finish(hc *hubapi.NodeCredentials) {
 	log := logging.FromContext(g.ctx)
-	c := &credentials{URL: g.url, NodesURL: strings.TrimRight(hc.NodesUrl, "/"), User: hc.User, Node: NodeRef{ID: hc.Node.Id, Name: hc.Node.Name}, Key: g.key}
+	c := &credentials{URL: g.url, nodesURL: strings.TrimRight(hc.NodesUrl, "/"), User: hc.User, Node: NodeRef{ID: hc.Node.Id, Name: hc.Node.Name}, Key: g.key}
 	if err := c.check([]byte(hc.Certificate), []byte(hc.CaCertificate)); err != nil {
 		g.fail(ProblemInternal, "the hub's credentials cannot be used: "+err.Error())
 		return

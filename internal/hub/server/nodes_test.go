@@ -724,6 +724,45 @@ func TestNodesURLSetting(t *testing.T) {
 	conn.Close()
 }
 
+// While the hub moves, the endpoint's certificate names the previous
+// addresses too, and the welcome tells nodes the new one.
+func TestNodesURLPrevious(t *testing.T) {
+	t.Parallel()
+	h := hubtest.Start(t, func(o *server.Options) {
+		o.Config.NodesURL = "https://nodes.example.com:9443"
+		o.Config.NodesURLPrevious = []string{"https://old.example.com:8443", "https://older.example.net"}
+	})
+	n := h.NewNode(h.User, "desktop")
+	for _, name := range []string{"nodes.example.com", "old.example.com", "older.example.net"} {
+		conn, err := tls.Dial("tcp", h.Server.Addresses().Nodes, &tls.Config{
+			MinVersion: tls.VersionTLS13, ServerName: name, RootCAs: h.CA(), Certificates: []tls.Certificate{n.Certificate},
+		})
+		if err != nil {
+			t.Errorf("the endpoint's certificate is not for %s: %v", name, err)
+			continue
+		}
+		conn.Close()
+	}
+	// A node logged in before dials the old name, where the hub listens.
+	ctx, cancel := context.WithDeadline(context.Background(), waittest.Deadline(t))
+	defer cancel()
+	client := &http.Client{Transport: &http.Transport{TLSClientConfig: &tls.Config{
+		MinVersion: tls.VersionTLS13, ServerName: "old.example.com", RootCAs: h.CA(), Certificates: []tls.Certificate{n.Certificate},
+	}}}
+	conn, _, err := websocket.Dial(ctx, "https://"+h.Server.Addresses().Nodes+"/v1/control", &websocket.DialOptions{HTTPClient: client})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = conn.CloseNow() }() // closed by the hub, or here
+	c := control{t: t, conn: conn, ctx: ctx}
+	if err := wsjson.Write(ctx, conn, hubapi.ControlHello{Type: hubapi.ControlHelloTypeHello, ApiVersion: "1", WdxVersion: "0.5.0", Os: "linux/amd64"}); err != nil {
+		t.Fatal(err)
+	}
+	if welcome := c.want("welcome"); welcome["nodes_url"] != "https://nodes.example.com:9443" {
+		t.Fatalf("welcome %v, want nodes_url https://nodes.example.com:9443", welcome)
+	}
+}
+
 // A node that saves a certificate after the hub sent another, renewing at
 // its next check before hearing back, has the one it saved recorded.
 func TestRenewalSavedAfterAnother(t *testing.T) {

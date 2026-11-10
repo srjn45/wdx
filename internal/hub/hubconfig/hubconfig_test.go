@@ -111,7 +111,8 @@ func TestEnvironmentOverFile(t *testing.T) {
 		"WDX_HUB_LOG_LEVEL": "warn", "WDX_HUB_LOG_RETENTION_DAYS": "9",
 		"WDX_HUB_OTEL_ENDPOINT": "https://env:4318", "WDX_HUB_OTEL_INTERVAL_SECONDS": "6",
 		"WDX_HUB_MASTER_KEY": testKey, "WDX_HUB_REGISTRATION": "open", "WDX_HUB_TRUSTED_PROXIES": "10.0.0.1",
-		"WDX_HUB_NODES_URL": "https://nodes.example.com:9443/", "WDX_HUB_UPDATE_CHANNEL": "dev",
+		"WDX_HUB_NODES_URL": "https://nodes.example.com:9443/", "WDX_HUB_NODES_URL_PREVIOUS": "https://old.example.com:9443",
+		"WDX_HUB_UPDATE_CHANNEL":  "dev",
 		"WDX_HUB_UPDATE_BASE_URL": "file:///srv/dist/",
 	}
 	maps.Copy(e, vars)
@@ -124,7 +125,7 @@ func TestEnvironmentOverFile(t *testing.T) {
 		WebTLS: TLSOff, WebTLSCert: "/env/cert", WebTLSKey: "/env/key", LogLevel: slog.LevelWarn, LogRetentionDays: 9,
 		OtelEndpoint: "https://env:4318", OtelInterval: 6 * time.Second,
 		MasterKey: testKeyBytes, Registration: RegistrationOpen, TrustedProxies: []netip.Prefix{netip.MustParsePrefix("10.0.0.1/32")},
-		NodesURL: "https://nodes.example.com:9443", UpdateChannel: "dev", UpdateBaseURL: "file:///srv/dist",
+		NodesURL: "https://nodes.example.com:9443", NodesURLPrevious: []string{"https://old.example.com:9443"}, UpdateChannel: "dev", UpdateBaseURL: "file:///srv/dist",
 	}
 	from := c.From
 	c.From = nil
@@ -203,6 +204,21 @@ func TestNodesURL(t *testing.T) {
 		if got := problems(t, "public_url: http://localhost\n", env{"WDX_HUB_NODES_URL": bad}); got["nodes_url"] == "" {
 			t.Errorf("%s: want it refused, got %v", bad, got)
 		}
+	}
+}
+
+func TestNodesURLPrevious(t *testing.T) {
+	t.Parallel()
+	_, e := homeWith(t, "public_url: http://localhost\nnodes_url_previous: https://old.example.com:8443/, https://older.example.net\n")
+	c, err := Load(e.getenv)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if want := []string{"https://old.example.com:8443", "https://older.example.net"}; !slices.Equal(c.NodesURLPrevious, want) {
+		t.Fatalf("got %v, want %v", c.NodesURLPrevious, want)
+	}
+	if got := problems(t, "public_url: http://localhost\n", env{"WDX_HUB_NODES_URL_PREVIOUS": "https://old.example.com,http://older.example.net"}); got["nodes_url_previous"] == "" {
+		t.Fatalf("want an http address refused, got %v", got)
 	}
 }
 

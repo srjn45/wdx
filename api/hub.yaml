@@ -800,6 +800,13 @@ components:
         hub_version: { type: string }
         api_version: { type: string, description: "The info.version of the hub's API." }
         node: { $ref: "#/components/schemas/NodeRef" }
+        nodes_url:
+          type: string
+          description: |
+            Where nodes reach the node endpoint now, its nodes_url. A node
+            whose login names another address writes this one in its place,
+            so that the hub can move while its nodes stay logged in. An
+            older hub sends none.
 
     ControlCertificate:
       type: object

@@ -65,14 +65,14 @@ func (l *Link) keepPushing(ctx context.Context, c *credentials, client *http.Cli
 		logging.FromContext(ctx).Info("docs push not started", "err", err)
 		return
 	}
-	nodes, err := hubapi.NewClientWithResponses(c.NodesURL, hubapi.WithHTTPClient(client), hubapi.WithRequestEditorFn(versionHeader))
+	nodes, err := hubapi.NewClientWithResponses(c.endpoint(), hubapi.WithHTTPClient(client), hubapi.WithRequestEditorFn(versionHeader))
 	if err != nil {
 		logging.FromContext(ctx).Error("docs push not started", "err", err)
 		return
 	}
 	backoff := l.opts.MinBackoff
 	for {
-		err := l.pushAll(ctx, nodes, c.NodesURL)
+		err := l.pushAll(ctx, nodes, c.endpoint())
 		if ctx.Err() != nil {
 			return
 		}
