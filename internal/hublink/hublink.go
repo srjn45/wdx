@@ -31,9 +31,10 @@ import (
 // The timings of a link, unless its Options say otherwise.
 const (
 	// DefaultMinBackoff is the wait before the first reconnection, doubled
-	// at each failure up to DefaultMaxBackoff.
+	// at each failure up to DefaultMaxBackoff, so that a node is back
+	// within a minute of the hub.
 	DefaultMinBackoff = time.Second
-	DefaultMaxBackoff = 5 * time.Minute
+	DefaultMaxBackoff = time.Minute
 	// DefaultLogoutTimeout is how long logging out waits for the hub to
 	// hear of it.
 	DefaultLogoutTimeout = 5 * time.Second

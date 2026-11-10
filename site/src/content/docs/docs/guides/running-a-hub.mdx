@@ -161,7 +161,7 @@ updated wdx-hub 0.5.0 -> 0.5.1
 - **Before anything changes,** the new release runs on the settings and writes the config file anew in a staging home: one that refuses them is `settings_invalid`, and nothing changed.
 - **It keeps** the old binary, a copy of the database and the config file in `/usr/local/lib/wdx-hub/previous/`, then stops the service, installs the new binary and the unit it prints, and starts it.
 - **If the new release does not answer** within 30 seconds, everything is put back and the old one started: `update_failed`, naming the step, and `journalctl -u wdx-hub` says why.
-- **Restarting** closes every node's connection and every session's stream through the hub. The nodes connect again on their own, waiting longer each time up to 5 minutes; an open attach or remote TIDE sees the connection lost, as for a network drop.
+- **Restarting** closes every node's connection and every session's stream through the hub. The nodes connect again on their own, waiting longer each time up to 1 minute; an open attach or remote TIDE sees the connection lost, as for a network drop.
 - `--channel dev` or `--version 0.5.1` choose another release this once.
 - **The shells' completions** are written again from the new binary, even when it is up to date; one it cannot write is a warning, and the update stands.
 

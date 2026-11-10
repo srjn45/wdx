@@ -859,3 +859,10 @@ func TestOpenWithHubDown(t *testing.T) {
 	}
 	n.waitConnection(Offline)
 }
+
+func TestBackInAMinute(t *testing.T) {
+	t.Parallel()
+	if got := (Options{}).withDefaults().MaxBackoff; got > time.Minute {
+		t.Errorf("a node waits up to %v to try the hub again, want at most a minute", got)
+	}
+}
