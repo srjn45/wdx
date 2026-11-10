@@ -254,7 +254,7 @@ func runWdx(ctx context.Context, t *testing.T, home string, adjust func(*Env), a
 	var stdout, stderr bytes.Buffer
 	env := Env{Stdin: strings.NewReader(""), Stdout: &stdout, Stderr: &stderr, Config: testConfig(home), Executable: wdxBinary, Environ: os.Environ()}
 	// A machine slowed down by other tests slows a run rather than fails it.
-	env.Timeouts.Completion = waittest.Limit(t)
+	env.Timeouts.Completion, env.Timeouts.NodeCompletion = waittest.Limit(t), waittest.Limit(t)
 	limit := holdertest.Patience(t)
 	env.Timeouts.Start, env.Timeouts.AttachExit, env.Timeouts.UpdatePreflight = limit, limit, limit
 	env.Timeouts.Holder = holdertest.Limits(t)

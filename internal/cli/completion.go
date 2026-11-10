@@ -18,12 +18,25 @@ import (
 // one that is slow offers nothing rather than hang the shell.
 const completionTimeout = 500 * time.Millisecond
 
+// nodeCompletionTimeout bounds a tab completion with --node, which opens a
+// stream to the host through the hub before it asks anything.
+const nodeCompletionTimeout = 5 * time.Second
+
+// completionWait is how long a completion of cmd waits for its answer.
+func completionWait(cmd *cobra.Command) time.Duration {
+	limits := envOf(cmd).Timeouts
+	if nodeOf(cmd) != "" {
+		return cmp.Or(limits.NodeCompletion, nodeCompletionTimeout)
+	}
+	return cmp.Or(limits.Completion, completionTimeout)
+}
+
 // completeProjects completes --id or --name, as key says, with the projects
 // in state, every project when state is empty. It offers nothing when the
 // daemon does not answer.
 func completeProjects(key string, state api.ProjectState) cobra.CompletionFunc {
 	return func(cmd *cobra.Command, _ []string, _ string) ([]cobra.Completion, cobra.ShellCompDirective) {
-		ctx, cancel := context.WithTimeout(cmd.Context(), cmp.Or(envOf(cmd).Timeouts.Completion, completionTimeout))
+		ctx, cancel := context.WithTimeout(cmd.Context(), completionWait(cmd))
 		defer cancel()
 		list, err := clientOf(cmd).ListProjects(ctx, state)
 		if err != nil {
@@ -48,7 +61,7 @@ func completeProjects(key string, state api.ProjectState) cobra.CompletionFunc {
 // answer.
 func completeTerminals(key string) cobra.CompletionFunc {
 	return func(cmd *cobra.Command, _ []string, _ string) ([]cobra.Completion, cobra.ShellCompDirective) {
-		ctx, cancel := context.WithTimeout(cmd.Context(), cmp.Or(envOf(cmd).Timeouts.Completion, completionTimeout))
+		ctx, cancel := context.WithTimeout(cmd.Context(), completionWait(cmd))
 		defer cancel()
 		var scope projectScope
 		scope.id, _ = cmd.Flags().GetString("project-id")
@@ -89,7 +102,7 @@ func completeParents(key string) cobra.CompletionFunc {
 
 func completeAgentsWhere(key string, keep func(api.Agent) bool) cobra.CompletionFunc {
 	return func(cmd *cobra.Command, _ []string, _ string) ([]cobra.Completion, cobra.ShellCompDirective) {
-		ctx, cancel := context.WithTimeout(cmd.Context(), cmp.Or(envOf(cmd).Timeouts.Completion, completionTimeout))
+		ctx, cancel := context.WithTimeout(cmd.Context(), completionWait(cmd))
 		defer cancel()
 		var scope projectScope
 		scope.id, _ = cmd.Flags().GetString("project-id")
@@ -129,7 +142,7 @@ func newCompletionCmd() *cobra.Command {
 
 // completeACAs offers the AI coding agents new agents can run, as the daemon says.
 func completeACAs(cmd *cobra.Command, _ []string, _ string) ([]cobra.Completion, cobra.ShellCompDirective) {
-	ctx, cancel := context.WithTimeout(cmd.Context(), cmp.Or(envOf(cmd).Timeouts.Completion, completionTimeout))
+	ctx, cancel := context.WithTimeout(cmd.Context(), completionWait(cmd))
 	defer cancel()
 	list, err := clientOf(cmd).ListAcas(ctx)
 	if err != nil {
@@ -146,7 +159,7 @@ func completeACAs(cmd *cobra.Command, _ []string, _ string) ([]cobra.Completion,
 // completeModels offers the models of the AI coding agent --aca names, or of the
 // default, each with its name.
 func completeModels(cmd *cobra.Command, _ []string, _ string) ([]cobra.Completion, cobra.ShellCompDirective) {
-	ctx, cancel := context.WithTimeout(cmd.Context(), cmp.Or(envOf(cmd).Timeouts.Completion, completionTimeout))
+	ctx, cancel := context.WithTimeout(cmd.Context(), completionWait(cmd))
 	defer cancel()
 	acaID, _ := cmd.Flags().GetString("aca")
 	id, err := chosenACA(ctx, clientOf(cmd), acaID)

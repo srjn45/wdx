@@ -551,7 +551,7 @@ func newPlanStatusCmd() *cobra.Command {
 // project the command line names, else of the one the working directory is in.
 func completePlans(key string) cobra.CompletionFunc {
 	return func(cmd *cobra.Command, _ []string, _ string) ([]cobra.Completion, cobra.ShellCompDirective) {
-		ctx, cancel := context.WithTimeout(cmd.Context(), cmp.Or(envOf(cmd).Timeouts.Completion, completionTimeout))
+		ctx, cancel := context.WithTimeout(cmd.Context(), completionWait(cmd))
 		defer cancel()
 		var scope projectScope
 		scope.id, _ = cmd.Flags().GetString("project-id")
@@ -580,7 +580,7 @@ func completePlans(key string) cobra.CompletionFunc {
 // completePlanRevisions completes --revision or --base with the revisions of the
 // plan the command line names.
 func completePlanRevisions(cmd *cobra.Command, _ []string, _ string) ([]cobra.Completion, cobra.ShellCompDirective) {
-	ctx, cancel := context.WithTimeout(cmd.Context(), cmp.Or(envOf(cmd).Timeouts.Completion, completionTimeout))
+	ctx, cancel := context.WithTimeout(cmd.Context(), completionWait(cmd))
 	defer cancel()
 	var ref planRef
 	ref.id, _ = cmd.Flags().GetString("id")

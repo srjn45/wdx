@@ -719,7 +719,7 @@ func completeDocLabels(cmd *cobra.Command, _ []string, _ string) ([]cobra.Comple
 // completionDocs are the docs of the project the command line names, else of the
 // one the working directory is in; none when the daemon does not answer.
 func completionDocs(cmd *cobra.Command) []api.Doc {
-	ctx, cancel := context.WithTimeout(cmd.Context(), cmp.Or(envOf(cmd).Timeouts.Completion, completionTimeout))
+	ctx, cancel := context.WithTimeout(cmd.Context(), completionWait(cmd))
 	defer cancel()
 	var scope projectScope
 	scope.id, _ = cmd.Flags().GetString("project-id")
@@ -739,7 +739,7 @@ func completionDocs(cmd *cobra.Command) []api.Doc {
 // completeDocRevisions completes --revision or --base with the revisions of the
 // doc the command line names.
 func completeDocRevisions(cmd *cobra.Command, _ []string, _ string) ([]cobra.Completion, cobra.ShellCompDirective) {
-	ctx, cancel := context.WithTimeout(cmd.Context(), cmp.Or(envOf(cmd).Timeouts.Completion, completionTimeout))
+	ctx, cancel := context.WithTimeout(cmd.Context(), completionWait(cmd))
 	defer cancel()
 	var ref docRef
 	ref.id, _ = cmd.Flags().GetString("id")

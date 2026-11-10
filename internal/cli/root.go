@@ -96,6 +96,9 @@ type Timeouts struct {
 	StartExpired <-chan time.Time
 	// Completion is how long a tab completion waits: completionTimeout.
 	Completion time.Duration
+	// NodeCompletion is how long a tab completion with --node waits:
+	// nodeCompletionTimeout.
+	NodeCompletion time.Duration
 	// AttachExit is how long attach waits for the daemon to record an exit:
 	// attachExitWait.
 	AttachExit time.Duration

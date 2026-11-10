@@ -8,6 +8,7 @@ import (
 	"slices"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/spf13/cobra"
 
@@ -388,6 +389,27 @@ func TestNodeCompletions(t *testing.T) {
 	slices.Sort(got)
 	if len(got) != 2 || !strings.HasPrefix(got[0], "desktop\t") || !strings.HasPrefix(got[1], "laptop\t") {
 		t.Errorf("the account's nodes: %v", got)
+	}
+
+	// With --node a completion waits NodeCompletion, as it opens a stream to
+	// the host first; Completion is this node's.
+	completed := func(adjust func(*Env), args ...string) string {
+		out := wdxWith(t, p.laptop.home, adjust, append([]string{"__complete", "project", "get"}, args...)...)
+		if out.Exit != clikit.ExitOK {
+			t.Fatalf("%v: %+v", args, out)
+		}
+		return out.Stdout
+	}
+	instant := func(env *Env) { env.Timeouts.Completion = time.Nanosecond }
+	if got := completed(instant, "--node", "desktop", "--name", ""); !strings.Contains(got, "on-desktop") {
+		t.Errorf("with --node, cut by this node's limit: %q", got)
+	}
+	if got := completed(instant, "--name", ""); strings.Contains(got, "on-laptop") {
+		t.Errorf("without --node, not cut by this node's limit: %q", got)
+	}
+	nodeInstant := func(env *Env) { env.Timeouts.NodeCompletion = time.Nanosecond }
+	if got := completed(nodeInstant, "--node", "desktop", "--name", ""); strings.Contains(got, "on-desktop") {
+		t.Errorf("with --node, not cut by its limit: %q", got)
 	}
 
 	// No session, nothing offered and nothing asked.

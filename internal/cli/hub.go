@@ -2,7 +2,6 @@ package cli
 
 import (
 	"bufio"
-	"cmp"
 	"context"
 	"errors"
 	"fmt"
@@ -682,11 +681,6 @@ type hubNodeRemoved api.HubNodeResult
 
 func (r hubNodeRemoved) Text(w io.Writer, st style.Style) {
 	fmt.Fprintf(w, "%s node %s from the account; the hub cut it off\n", st.Success("removed"), st.Name(r.Node.Name))
-}
-
-// completionWait is how long a completion that asks the hub waits.
-func completionWait(cmd *cobra.Command) time.Duration {
-	return cmp.Or(envOf(cmd).Timeouts.Completion, completionTimeout)
 }
 
 // completeHubNodes completes --id or --name, as key says, with the account's
