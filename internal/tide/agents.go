@@ -57,6 +57,9 @@ type agentList struct {
 	// missingTabs are the tabs whose file or worktree the last event said is gone,
 	// removed outside wdx: each stays, marked, until it is closed.
 	missingTabs map[string]bool
+	// goneAt are a remote TIDE's file tabs whose read answered that the file is
+	// not there, with what their worktree was then: each is missing until it changes.
+	goneAt map[string]string
 	// tombstones are the ids of the agents the last event had as tombstones: a
 	// remote TIDE closes an agent's tabs as it becomes one, and only then.
 	tombstones map[string]bool

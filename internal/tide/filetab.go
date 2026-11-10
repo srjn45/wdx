@@ -78,6 +78,23 @@ func sourceLines(text string) []string {
 	return lines
 }
 
+// fileGone marks a remote TIDE's file tab missing when its read, asked when its
+// worktree was seen, answered that the file is not there.
+func (m *Model) fileGone(l *agentList, tab, seen string, err error) {
+	e, ok := errors.AsType[*client.ProblemError](err)
+	if m.node == "" || !isFileTab(tab) || !ok || e.Problem.Code != api.ErrorCodeNotFound {
+		return
+	}
+	if l.goneAt == nil {
+		l.goneAt = map[string]string{}
+	}
+	if l.missingTabs == nil {
+		l.missingTabs = map[string]bool{}
+	}
+	l.goneAt[tab], l.missingTabs[tab] = seen, true
+	m.log.Info("tab missing", "tab", tab, "reason", "file not found")
+}
+
 // setSourceError says why a file cannot be read, when that is the file's doing, and
 // reports whether it did: what it showed is no longer so.
 func (v *diffView) setSourceError(err error) bool {

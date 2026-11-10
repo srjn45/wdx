@@ -200,6 +200,38 @@ func (m *Model) worktreesChanged() {
 	m.codeChanged()
 	m.landingsChanged()
 	m.keepWorktreeCursor()
+	if m.node != "" {
+		m.markMissingTabs()
+	}
+}
+
+// markMissingTabs marks a remote TIDE's diff and file tabs missing when their
+// worktree is missing or gone, and a file tab while its worktree is as it was when
+// the file was not there, as the host's daemon marks its own TIDE's tabs, which a
+// remote TIDE keeps in memory. A project from a daemon that sends no statuses
+// says nothing of them, and marks none.
+func (m *Model) markMissingTabs() {
+	l := m.list()
+	if m.worktreeStatuses() == nil {
+		return
+	}
+	l.missingTabs = map[string]bool{}
+	for _, tab := range l.tabs {
+		if !isDiffTab(tab) && !isFileTab(tab) {
+			continue
+		}
+		worktree, _ := diffTabOf(tab)
+		w, ok := m.worktreeNamed(worktree)
+		seen, gone := l.goneAt[tab]
+		switch {
+		case !ok || w.Missing:
+			l.missingTabs[tab] = true
+		case gone && seen == m.diffSeen(tab):
+			l.missingTabs[tab] = true
+		default:
+			delete(l.goneAt, tab)
+		}
+	}
 }
 
 // keepWorktreeCursor keeps the cursor on its row, or on the one that took its

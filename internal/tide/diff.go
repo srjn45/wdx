@@ -331,6 +331,7 @@ func (m *Model) diffLoaded(msg diffLoaded) tea.Cmd {
 	v.loading = false
 	if msg.err != nil {
 		m.log.Info("diff not read", "tab", msg.tab, "err", msg.err)
+		m.fileGone(l, msg.tab, v.seen, msg.err)
 		if !v.setSourceError(msg.err) {
 			v.err = msg.err.Error()
 		}

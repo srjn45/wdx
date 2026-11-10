@@ -516,3 +516,50 @@ func TestRemoteReopenReadsFailed(t *testing.T) {
 	}
 }
 
+// TestRemoteMissingTabs: a remote TIDE, to which the host's daemon marks no
+// tabs, marks a diff's or file's tab missing when its worktree is missing or
+// gone, and a file's when reading it answers not_found, until its worktree
+// changes. Antigravity's C6.
+func TestRemoteMissingTabs(t *testing.T) {
+	t.Parallel()
+	m, _ := remoteModel(style.New(false), noSession)
+	l := m.list()
+	file, diff := fileTab("main", "a.go"), committedTab("feat")
+	l.openTab(file)
+	l.openTab(diff)
+	m.layout.setFocus(agent)
+	statuses := func(worktrees ...api.WorktreeStatus) {
+		m.Update(projectEvent{gen: m.following.gen, event: client.ProjectEvent{Project: api.Project{Id: "proj-demo", Name: "demo", WorktreeStatuses: &worktrees}}})
+	}
+	main := api.WorktreeStatus{Name: "main", Path: "/r"}
+
+	statuses(main, api.WorktreeStatus{Name: "feat", Path: "/r/feat", Missing: true})
+	if row := titleRow(m); !strings.Contains(row, "[✗ ") {
+		t.Errorf("the strip %q", row)
+	}
+	if got := text(m); !strings.Contains(got, "worktree feat is no longer there") {
+		t.Fatalf("the missing worktree's pane:\n%s", got)
+	}
+	statuses(main)
+	if !l.missingTabs[diff] {
+		t.Fatal("the tab of a worktree gone is not missing")
+	}
+
+	l.active = file
+	m.diffSync()
+	m.Update(diffLoaded{projectID: "proj-demo", tab: file, err: problem(api.ErrorCodeNotFound, nil)})
+	if got := text(m); !strings.Contains(got, "file a.go is no longer in worktree main") {
+		t.Fatalf("the file not found:\n%s", got)
+	}
+	statuses(main)
+	if !l.missingTabs[file] {
+		t.Fatal("an event with the worktree as it was unmarked the file")
+	}
+
+	back := main
+	back.Files = []api.WorktreeFile{changed("a.go", api.WorktreeFileStatusEmpty)}
+	statuses(back)
+	if l.missingTabs[file] || !l.diffs[file].loading {
+		t.Fatalf("the file back: missing %v, view %+v", l.missingTabs[file], l.diffs[file])
+	}
+}
