@@ -291,8 +291,9 @@ func sessionOf(ctx context.Context) (remote.Session, bool) {
 
 // remoteRules serves a request that came through a session only when the
 // session is open still, which it moves the idle time of, the client speaks
-// an API version this node does, and its operation is one remoteOperations
-// allows.
+// an API version this node does, its oldest being no newer than this node's
+// own, and its operation is one remoteOperations allows. It runs before the
+// validator and every handler, so that a refused change never runs.
 func (d *Daemon) remoteRules(router routers.Router, next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		ctx := r.Context()
@@ -315,6 +316,14 @@ func (d *Daemon) remoteRules(router routers.Router, next http.Handler) http.Hand
 				err:     fmt.Errorf("node %s speaks API version %q, older than %d, the oldest this node speaks: update wdx on %s", session.Node.Name, r.Header.Get(api.APIVersionHeader), api.OldestCompatible, session.Node.Name),
 				details: map[string]any{"update": "client", "node": session.Node.Name, "client_version": r.Header.Get(api.APIVersionHeader), "oldest_compatible": api.OldestCompatible}})
 			return
+		}
+		if oldest := r.Header.Get(api.APIOldestHeader); oldest != "" {
+			if n, err := strconv.Atoi(oldest); err != nil || n > api.CurrentVersion {
+				failed(w, r, &hubError{code: api.ErrorCodeNodeVersionUnsupported,
+					err:     fmt.Errorf("node %s speaks API versions from %q, newer than %d, the newest this node speaks", session.Node.Name, oldest, api.CurrentVersion),
+					details: map[string]any{"update": "host", "node": session.Node.Name, "client_oldest": oldest, "host_version": api.CurrentVersion}})
+				return
+			}
 		}
 		route, _, err := router.FindRoute(r)
 		if err != nil {

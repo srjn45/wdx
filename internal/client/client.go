@@ -168,8 +168,10 @@ func (d *doer) Do(req *http.Request) (*http.Response, error) {
 	return resp, nil
 }
 
-// doNode sends req to the node Dial reaches, with this build's API version,
-// and refuses an answer from a host older than this build still speaks to. A
+// doNode sends req to the node Dial reaches, with this build's API version
+// and the oldest it speaks, which a host too old for it refuses before any
+// handler, and refuses an answer from a host older than this build still
+// speaks to, whose release did not check that. A
 // stream cut after the dial, before or while the answer is read, is
 // connection_lost: the session may still be open, and the request may have
 // run. Only the dial knows whether the session closed, and says so. No
@@ -179,6 +181,7 @@ func (d *doer) doNode(req *http.Request, start time.Time) (*http.Response, error
 	log := logging.FromContext(req.Context())
 	node := d.opts.Node
 	req.Header.Set(api.APIVersionHeader, strconv.Itoa(api.CurrentVersion))
+	req.Header.Set(api.APIOldestHeader, strconv.Itoa(api.OldestCompatible))
 	resp, err := d.http.Do(req)
 	if err != nil {
 		log.Info("node unreachable", "method", req.Method, "path", req.URL.Path, "node", node, "err", err)

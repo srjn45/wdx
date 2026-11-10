@@ -2,16 +2,23 @@ openapi: 3.0.3
 info:
   title: wdx daemon API
   # Raised by every change an older client or host cannot handle, the feat!
-  # changes; internal/api keeps it, and the oldest it still talks to, by hand.
+  # changes, and by every addition to a request served through a session,
+  # which leaves the oldest alone; internal/api keeps it, and the oldest it
+  # still talks to, by hand.
   version: "1"
   description: |
     The API of the wdx daemon, served over the Unix socket <home>/wdx.sock.
 
     Another node of the account reaches it through a session (connectHubNode),
-    sending Wdx-Api-Version, the version of this spec it was built with; the
-    daemon answers with its own, and refuses a client older than the oldest it
-    talks to with node_version_unsupported. Through a session, only some
-    operations are served: the others are route_not_allowed.
+    sending Wdx-Api-Version, the version of this spec it was built with, and
+    Wdx-Api-Oldest, the oldest it talks to; the daemon answers with its own
+    version. Before any handler runs, it refuses with node_version_unsupported
+    a client older than the oldest it talks to (details.update client), and a
+    client whose oldest is newer than its own version (details.update host). A
+    request a newer client sends that this daemon's spec does not allow is
+    node_version_unsupported (details.update host) too, not usage. Through a
+    session, only some operations are served: the others are
+    route_not_allowed.
 
     A request may send a Wdx-Debug-Id header (dbg- and 12 hex digits) to have
     the daemon log it under that id; the response echoes the id the request

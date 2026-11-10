@@ -41,14 +41,17 @@ func answer(w http.ResponseWriter, version string, status int, v any) {
 
 func TestNodeSendsAPIVersion(t *testing.T) {
 	t.Parallel()
-	var got string
+	var got, oldest string
 	c := nodeOf(t, func(w http.ResponseWriter, r *http.Request) {
-		got = r.Header.Get(api.APIVersionHeader)
+		got, oldest = r.Header.Get(api.APIVersionHeader), r.Header.Get(api.APIOldestHeader)
 		answer(w, strconv.Itoa(api.CurrentVersion), http.StatusOK, api.Version{Name: "wdx", Version: "1.2.3", Commit: "abc"})
 	})
 	v, err := c.Version(context.Background())
 	if err != nil || v.Version != "1.2.3" || got != strconv.Itoa(api.CurrentVersion) || c.APIVersion() != api.CurrentVersion {
 		t.Fatalf("version %+v, err %v, sent %q, host's %d", v, err, got, c.APIVersion())
+	}
+	if oldest != strconv.Itoa(api.OldestCompatible) {
+		t.Errorf("sent %q as the oldest, want %d", oldest, api.OldestCompatible)
 	}
 }
 

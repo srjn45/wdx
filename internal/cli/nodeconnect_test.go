@@ -80,6 +80,9 @@ type nodeClient struct {
 	transport *http.Transport
 	debugID   string
 	version   string
+	// oldest is the Wdx-Api-Oldest sent; "" sends none, as a client built
+	// before it did.
+	oldest string
 }
 
 func (hh *hubHome) nodeClient(node, version string) *nodeClient {
@@ -119,6 +122,9 @@ func (c *nodeClient) do(method, path string, body any) (int, http.Header, []byte
 	req.Header.Set(api.DebugIDHeader, c.debugID)
 	if c.version != "" {
 		req.Header.Set(api.APIVersionHeader, c.version)
+	}
+	if c.oldest != "" {
+		req.Header.Set(api.APIOldestHeader, c.oldest)
 	}
 	resp, err := (&http.Client{Transport: c.transport}).Do(req)
 	if err != nil {
@@ -453,4 +459,36 @@ func TestNodeConnectVersions(t *testing.T) {
 		}
 	}
 	p.laptop.nodeClient("desktop", strconv.Itoa(api.OldestCompatible)).want(http.MethodGet, "/v1/projects", nil, http.StatusOK, "")
+}
+
+// TestNodeConnectNewerClient sends requests from clients newer than the
+// host: one that still speaks the host's version is served, one whose
+// oldest is past it is refused before its change runs.
+func TestNodeConnectNewerClient(t *testing.T) {
+	t.Parallel()
+	p := openPair(t)
+	newer := strconv.Itoa(api.CurrentVersion + 1)
+	repo := gittest.Repo(t, "remote-app")
+	create := map[string]any{"source": map[string]any{"type": "local", "path": repo}}
+
+	for _, oldest := range []string{newer, "two"} {
+		c := p.laptop.nodeClient("desktop", newer)
+		c.oldest = oldest
+		b := c.want(http.MethodPost, "/v1/projects", create, http.StatusConflict, api.ErrorCodeNodeVersionUnsupported)
+		var problem api.Problem
+		_ = json.Unmarshal(b, &problem)
+		if problem.Details == nil || (*problem.Details)["update"] != "host" {
+			t.Errorf("oldest %q: %+v, want the host named to update", oldest, problem)
+		}
+		if v, _ := p.desktop.projectsJSON(); len(v) != 0 {
+			t.Fatalf("oldest %q: the desktop's projects %v, want the refused change never run", oldest, v)
+		}
+	}
+
+	c := p.laptop.nodeClient("desktop", newer)
+	c.oldest = strconv.Itoa(api.CurrentVersion)
+	c.want(http.MethodPost, "/v1/projects", create, http.StatusCreated, "")
+	if v, _ := p.desktop.projectsJSON(); len(v) != 1 || v[0] != "remote-app" {
+		t.Errorf("the desktop's projects %v, want the one a newer client that speaks its version created", v)
+	}
 }

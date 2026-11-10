@@ -115,6 +115,7 @@ func (d *doer) upgrade(ctx context.Context, conn net.Conn, path string) (*http.R
 	req.Header.Set(api.VersionHeader, identity.Version)
 	if d.opts.Dial != nil {
 		req.Header.Set(api.APIVersionHeader, strconv.Itoa(api.CurrentVersion))
+		req.Header.Set(api.APIOldestHeader, strconv.Itoa(api.OldestCompatible))
 	}
 	if d.opts.Quiet {
 		req.Header.Set(api.LogLevelHeader, api.LogLevelDebug)
