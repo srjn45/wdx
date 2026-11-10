@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/srjn45/wdx/internal/hub/audit"
 	"github.com/srjn45/wdx/internal/hub/node"
@@ -114,6 +115,39 @@ func TestUnknownLoginsLimited(t *testing.T) {
 		r.want(t, http.StatusNotFound, "", "No such login")
 	}
 	t.Fatal("21 unknown logins in a minute, none refused")
+}
+
+// A page that needs a recent second factor sends a browser logged in long ago
+// through the login, without signing it out: another site can make the
+// browser GET it. The new session replaces the old once the login passes.
+func TestFreshLoginKeepsTheSession(t *testing.T) {
+	t.Parallel()
+	h := startHub(t, nil)
+	b := h.browser()
+	p := h.signUp(b, "alice")
+	h.clock.advance(11 * time.Minute)
+	s := h.startLogin(node.FlowBrowser, "desktop")
+	for _, page := range []string{"/device", "/nodes/approve?login=" + s.ID} {
+		r := b.get(page)
+		r.want(t, http.StatusOK, "", "Log in")
+		if !strings.HasPrefix(r.path, "/login?next=") {
+			t.Fatalf("%s led to %s, want the login", page, r.path)
+		}
+		b.get("/security").want(t, http.StatusOK, "/security", "Logged in as <strong>alice</strong>")
+	}
+	sessions, err := h.server.Accounts().Sessions(h.ctx, h.userID("alice"))
+	if err != nil || len(sessions) != 1 {
+		t.Fatalf("sessions %+v, %v; want the one kept", sessions, err)
+	}
+
+	form := b.get("/nodes/approve?login=" + s.ID)
+	second := b.submit(form, "/login", map[string]string{"username": p.username, "password": p.password})
+	second.want(t, http.StatusOK, "", "Your authenticator")
+	b.submit(second, "/login/second-factor", map[string]string{"code": h.code(p.key)}).want(t, http.StatusOK, "/nodes/approve?login="+s.ID, "wants to join your account")
+	after, err := h.server.Accounts().Sessions(h.ctx, h.userID("alice"))
+	if err != nil || len(after) != 1 || after[0].ID == sessions[0].ID {
+		t.Fatalf("sessions %+v, %v; want one, the new one in place of %s", after, err, sessions[0].ID)
+	}
 }
 
 func TestDevicePageNeedsALogin(t *testing.T) {

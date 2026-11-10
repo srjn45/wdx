@@ -39,20 +39,29 @@ func approvalOf(l node.Login, userCode string) *approval {
 	return a
 }
 
+// factorFresh reports whether v passed their second factor within
+// freshFactor.
+func (p *pages) factorFresh(v visitor) bool {
+	return p.opts.Now().Sub(v.session.SecondFactor) <= freshFactor
+}
+
 // fresh reports whether v passed their second factor within freshFactor;
-// otherwise it signs the browser out and sends it through the login, back
-// to next.
+// otherwise it sends the browser through the login, back to next. A post
+// signs it out first; a GET, which another site can make the browser send,
+// keeps the session, which the login replaces once it passes.
 func (p *pages) fresh(w http.ResponseWriter, r *http.Request, v visitor, next string) bool {
-	if p.opts.Now().Sub(v.session.SecondFactor) <= freshFactor {
+	if p.factorFresh(v) {
 		return true
 	}
 	ctx := r.Context()
 	logging.FromContext(ctx).Info("page needs a fresh login", "path", r.URL.Path, "user_id", v.user.ID, "second_factor_at", v.session.SecondFactor)
-	if err := p.opts.Accounts.EndSession(ctx, p.by(r), v.user.ID, v.session.ID); err != nil && !errors.Is(err, account.ErrNoSession) {
-		p.failed(w, r, err)
-		return false
+	if r.Method != http.MethodGet {
+		if err := p.opts.Accounts.EndSession(ctx, p.by(r), v.user.ID, v.session.ID); err != nil && !errors.Is(err, account.ErrNoSession) {
+			p.failed(w, r, err)
+			return false
+		}
+		clearSession(w)
 	}
-	clearSession(w)
 	redirect(w, r, withNext("/login", next))
 	return false
 }

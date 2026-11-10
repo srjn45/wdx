@@ -16,6 +16,13 @@ func loginPage(v page) page {
 }
 
 func (p *pages) loginForm(w http.ResponseWriter, r *http.Request) {
+	// A browser logged in long ago that a page sends here to log in again,
+	// as approving a node needs, is shown the form; its session stays until
+	// the login passes.
+	if v, ok, err := p.visitor(r); err == nil && ok && v.passed() && !p.factorFresh(v) && p.next(r) != "" {
+		p.render(w, r, http.StatusOK, "login", loginPage(page{Next: p.next(r)}))
+		return
+	}
 	// A browser logged in, or half way, goes on to where it stands.
 	if _, ok := p.at(w, r, "/login"); !ok {
 		return
@@ -41,6 +48,9 @@ func (p *pages) login(w http.ResponseWriter, r *http.Request) {
 	case err != nil:
 		p.failed(w, r, err)
 	default:
+		if !p.replaced(w, r) {
+			return
+		}
 		setSession(w, started.Token)
 		if u.SecondFactor == "" {
 			logging.FromContext(ctx).Info("login goes on to enrolment", "user_id", u.ID, "reason", "no authenticator confirmed")
@@ -49,6 +59,27 @@ func (p *pages) login(w http.ResponseWriter, r *http.Request) {
 		}
 		redirect(w, r, withNext("/login/second-factor", v.Next))
 	}
+}
+
+// replaced ends the session the browser of r had before its login passed,
+// if any, as the new one takes its place; it answers the browser itself and
+// returns false when it cannot.
+func (p *pages) replaced(w http.ResponseWriter, r *http.Request) bool {
+	old, ok, err := p.visitor(r)
+	if err != nil {
+		p.failed(w, r, err)
+		return false
+	}
+	if !ok {
+		return true
+	}
+	ctx := r.Context()
+	if err := p.opts.Accounts.EndSession(ctx, p.by(r), old.user.ID, old.session.ID); err != nil && !errors.Is(err, account.ErrNoSession) {
+		p.failed(w, r, err)
+		return false
+	}
+	logging.FromContext(ctx).Info("session replaced", "user_id", old.user.ID)
+	return true
 }
 
 func (p *pages) secondFactorForm(w http.ResponseWriter, r *http.Request) {
