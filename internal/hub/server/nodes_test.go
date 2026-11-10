@@ -661,3 +661,40 @@ func TestNodesURLSetting(t *testing.T) {
 	}
 	conn.Close()
 }
+
+// A node that saves a certificate after the hub sent another, renewing at
+// its next check before hearing back, has the one it saved recorded.
+func TestRenewalSavedAfterAnother(t *testing.T) {
+	t.Parallel()
+	h := hubtest.Start(t, hubtest.RenewEvery(time.Millisecond))
+	n := h.NewNode(h.User, "desktop")
+	h.Clock.Advance(ca.NodeValidity * 3 / 4)
+	c := connect(t, h, n, "1")
+	c.want("welcome")
+	first, _ := time.Parse(time.RFC3339, c.want("certificate")["expires_at"].(string))
+	h.Clock.Advance(time.Minute) // so that the next ends later
+	for {
+		next, _ := time.Parse(time.RFC3339, c.want("certificate")["expires_at"].(string))
+		if next.After(first) {
+			break
+		}
+	}
+	if err := wsjson.Write(c.ctx, c.conn, hubapi.ControlCertificateSaved{Type: hubapi.ControlCertificateSavedTypeCertificateSaved, ExpiresAt: first}); err != nil {
+		t.Fatal(err)
+	}
+	waittest.For(t, "the first certificate's renewal recorded", func() bool { return len(h.Logged("certificate renewed")) == 1 })
+	// Those sent before the save was read may still come, then the bye.
+	h.Server.Nodes().CutOffUser(context.Background(), h.User.ID, node.ReasonShuttingDown)
+	for {
+		got, m := c.read()
+		if got == "bye" {
+			if m["reason"] != "shutting_down" {
+				t.Fatalf("bye %v", m)
+			}
+			break
+		}
+		if got != "certificate" {
+			t.Fatalf("got %s %v, want certificates then the bye", got, m)
+		}
+	}
+}

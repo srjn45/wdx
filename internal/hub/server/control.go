@@ -6,6 +6,7 @@ import (
 	"errors"
 	"log/slog"
 	"net/http"
+	"slices"
 	"sync"
 	"time"
 
@@ -170,10 +171,13 @@ func (s *Server) control(parent context.Context, conn *websocket.Conn, n node.No
 		log.Info("control closed", "reason", "connection", "err", err)
 		return
 	}
-	var sent time.Time // the expiry of the certificate sent and not yet saved
+	// The expiries of the certificates sent and not yet saved: the hub sends
+	// another at each check until one is, so a save may come for one sent
+	// before the last.
+	var sent []time.Time
 	renew := func() {
 		if exp, ok := s.renew(life, conn, n); ok {
-			sent = exp
+			sent = append(sent, exp)
 		}
 	}
 	renew()
@@ -195,15 +199,15 @@ func (s *Server) control(parent context.Context, conn *websocket.Conn, n node.No
 			s.closed(life, conn, log, context.Cause(ctx))
 			return
 		case exp := <-saved:
-			if sent.IsZero() || !exp.Equal(sent) {
-				log.Info("certificate saved ignored", "expires_at", exp, "reason", "not the one sent")
+			if !slices.ContainsFunc(sent, exp.Equal) {
+				log.Info("certificate saved ignored", "expires_at", exp, "reason", "not one sent")
 				continue
 			}
-			if err := s.nodes.CertificateRenewed(life, n, sent); err != nil {
+			if err := s.nodes.CertificateRenewed(life, n, exp); err != nil {
 				log.Error("certificate renewal not recorded", "err", err)
 				continue
 			}
-			n.CertExpiresAt, sent = sent, time.Time{}
+			n.CertExpiresAt, sent = exp, nil
 		case <-renewals.C:
 			renew()
 		case v := <-out:
