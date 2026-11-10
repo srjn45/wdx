@@ -92,7 +92,7 @@ They sign up on that page, set up their second factor, and from then on log thei
 
 ### Rate limits
 
-The hub's pages limit the tries, counted in memory, so a restart forgets them. A refused try is answered `429` with how long to wait.
+The hub's pages limit the tries, counted in memory, so a restart forgets them. A refused try is answered `429` with how long to wait. An IPv6 client is counted by its `/64`, the prefix one machine is given whole, so that a new address of it for every try counts as the same client.
 
 - **Per address,** at most 20 passwords, codes or tokens a minute, wrong invite and reset links counted, and 10 sign-ups. Each try is counted as it is let through, so a burst cannot pass before any is counted.
 - **Per username and address,** after 5 wrong passwords or codes in a row the next try from that address waits 1 second, doubling up to 15 minutes, until one passes. Wrong passwords from one address never lock the user out from another: the second factor, needed after the password, stops whoever guesses from many. The first refusal of a user's lockout is in the audit chain, as `user.locked_out`.

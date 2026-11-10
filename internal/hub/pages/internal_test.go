@@ -96,6 +96,42 @@ func TestLimitsSwept(t *testing.T) {
 	}
 }
 
+// An IPv6 client is counted by its /64: a machine is given the whole prefix
+// and may pick a new address of it for every try.
+func TestLimitsByIPv6Prefix(t *testing.T) {
+	t.Parallel()
+	now := time.Date(2026, 11, 8, 12, 0, 0, 0, time.UTC)
+	l := newLimits(func() time.Time { return now })
+	for i := range triesPerMinute {
+		if wait := l.takeTry(fmt.Sprintf("2001:db8:1:2::%x", i+1)); wait != 0 {
+			t.Fatalf("try %d: wait %s", i+1, wait)
+		}
+	}
+	if wait := l.takeTry("2001:db8:1:2:ffff::9"); wait == 0 {
+		t.Error("another address of the /64 let through")
+	}
+	if wait := l.takeTry("2001:db8:1:3::1"); wait != 0 {
+		t.Errorf("another /64 waits %s", wait)
+	}
+	for i := range freeTries {
+		l.wrong("alice", fmt.Sprintf("2001:db8:5:6::%x", i+1))
+	}
+	if wait, _ := l.try("2001:db8:5:6::abc", "alice"); wait == 0 {
+		t.Error("a username's streak from the /64 not counted")
+	}
+	for i := range loginStartsPerMinute {
+		l.loginStart(fmt.Sprintf("2001:db8:7:8::%x", i+1))
+	}
+	if wait := l.loginStart("2001:db8:7:8::ffff"); wait == 0 {
+		t.Error("login starts of the /64 not counted")
+	}
+	for _, a := range []string{"192.0.2.1", "::ffff:192.0.2.1", "not an address"} {
+		if got := limitKey(a); got != a {
+			t.Errorf("limitKey(%q) = %q", a, got)
+		}
+	}
+}
+
 // A burst from one address is let through only as far as its window allows:
 // each check counts the try it lets through.
 func TestTryCounted(t *testing.T) {

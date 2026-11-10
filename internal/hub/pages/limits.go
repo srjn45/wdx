@@ -1,6 +1,7 @@
 package pages
 
 import (
+	"net/netip"
 	"strings"
 	"sync"
 	"time"
@@ -91,7 +92,18 @@ func newLimits(now func() time.Time) *limits {
 }
 
 func keyOf(username, address string) streakKey {
-	return streakKey{username: strings.ToLower(username), address: address}
+	return streakKey{username: strings.ToLower(username), address: limitKey(address)}
+}
+
+// limitKey is what the limits count address under: an IPv6 address by its
+// /64, which one machine is given whole and may pick any address of, and
+// any other as it is.
+func limitKey(address string) string {
+	a, err := netip.ParseAddr(address)
+	if err != nil || !a.Is6() || a.Is4In6() {
+		return address
+	}
+	return netip.PrefixFrom(a, 64).Masked().String()
 }
 
 // wait returns how long the streak makes its next try wait at now.
@@ -111,6 +123,7 @@ func (s *streak) wait(now time.Time) time.Duration {
 // refusal is the first of the username's lockout from address; when it may
 // post now, it returns 0 and counts the post against the address.
 func (l *limits) try(address, username string) (wait time.Duration, first bool) {
+	address = limitKey(address)
 	l.mu.Lock()
 	defer l.mu.Unlock()
 	now := l.now()
@@ -138,13 +151,14 @@ func (l *limits) takeTry(address string) time.Duration {
 func (l *limits) countTry(address string) {
 	l.mu.Lock()
 	defer l.mu.Unlock()
-	l.count(l.tries, address, l.now())
+	l.count(l.tries, limitKey(address), l.now())
 }
 
 // signUp returns how long address must wait before its next sign-up, its
 // tries counted too when it carries an invite; when it may sign up now, it
 // returns 0 and counts the sign-up.
 func (l *limits) signUp(address string, invite bool) time.Duration {
+	address = limitKey(address)
 	l.mu.Lock()
 	defer l.mu.Unlock()
 	now := l.now()
@@ -161,6 +175,7 @@ func (l *limits) signUp(address string, invite bool) time.Duration {
 // loginStart returns how long address must wait before it starts its next
 // node login; when it may start one now, it returns 0 and counts it.
 func (l *limits) loginStart(address string) time.Duration {
+	address = limitKey(address)
 	l.mu.Lock()
 	defer l.mu.Unlock()
 	now := l.now()
