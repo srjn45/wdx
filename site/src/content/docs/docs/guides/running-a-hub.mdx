@@ -10,7 +10,7 @@ import Since from '../../../../components/Since.astro';
 
 A hub is the server your machines log in to, `wdx-hub`, which keeps accounts: it knows your nodes and which are online, keeps the docs your projects push, and passes the sessions between your nodes, end to end encrypted ([Hub](/wdx/docs/guides/hub/)). One person runs it, for themselves or a team, on a server every node can reach. wdx works the same without one.
 
-The hub is a program of its own, with its own home, database and settings, released beside wdx with the same version. Its home, `WDX_HUB_HOME`, holds the admin socket, whose path must fit the system's limit, 107 bytes on Linux and 103 on macOS: `wdx-hub serve` in a deeper home fails, naming the path and its length. It need not run the version its nodes run: they agree on the API, and `wdx hub status` says when they no longer do.
+The hub is a program of its own, with its own home, database and settings, released beside wdx with the same version. Its home, `WDX_HUB_HOME`, holds the admin socket, whose path must fit the system's limit, 107 bytes on Linux and 103 on macOS: `wdx-hub serve` in a deeper home fails, naming the path and its length. It need not run the version its nodes run: they agree on the API. A node newer than the hub is welcomed, so nodes may update before the hub; one whose wdx has a feature the hub is too old for refuses it with `hub_version_unsupported`, asking for the hub to be updated. A node older than the hub serves is refused with `node_version_unsupported`, and `wdx hub status` says which side to update.
 
 ## Install it
 

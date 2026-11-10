@@ -233,6 +233,7 @@ type Link struct {
 	creds    *credentials // nil when logged out
 	conn     Connection
 	hub      string // the hub's version, from its welcome
+	hubAPI   string // the hub's API version, from its welcome
 	inRange  *bool
 	behind   string
 	changed  chan struct{} // closed at the next change of the status
@@ -273,7 +274,7 @@ func Open(ctx context.Context, home string, opts Options) (*Link, error) {
 // loggedIn makes creds the link's login and starts its control connection;
 // l.mu is held.
 func (l *Link) loggedIn(creds *credentials) {
-	l.creds, l.hub, l.inRange, l.behind = creds, "", nil, ""
+	l.creds, l.hub, l.hubAPI, l.inRange, l.behind = creds, "", "", nil, ""
 	l.control = l.startControl(creds)
 	l.setConn(Connecting)
 }

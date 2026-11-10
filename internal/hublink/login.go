@@ -190,9 +190,21 @@ func (l *Link) webClient(hubURL string) (*hubapi.ClientWithResponses, error) {
 	return hubapi.NewClientWithResponses(hubURL, hubapi.WithHTTPClient(l.opts.HTTPClient), hubapi.WithRequestEditorFn(versionHeader))
 }
 
+// versionHeader sets the versions every request to the hub carries.
 func versionHeader(_ context.Context, req *http.Request) error {
-	req.Header.Set(hubapi.VersionHeader, identity.Version)
+	for k, v := range versionHeaders() {
+		req.Header[k] = v
+	}
 	return nil
+}
+
+// versionHeaders are this wdx's version and the hub API version it was
+// built with, which every request to the hub carries, a WebSocket's too.
+func versionHeaders() http.Header {
+	h := http.Header{}
+	h.Set(hubapi.VersionHeader, identity.Version)
+	h.Set(hubapi.APIVersionHeader, apiVersion())
+	return h
 }
 
 // refused is the problem of a hub's response that is not the one wanted,

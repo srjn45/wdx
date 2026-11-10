@@ -210,7 +210,7 @@ func loginHint(err error) error {
 	case api.ErrorCodeHubUnreachable:
 		hint = "check --url, and that the hub is up"
 	case api.ErrorCodeHubVersionUnsupported:
-		hint = "run " + identity.Name + " update, or ask the hub's admin to update it"
+		hint = versionHint(err, "run "+identity.Name+" update, or ask the hub's admin to update it")
 	}
 	if hint == "" {
 		return err
@@ -519,9 +519,25 @@ func notLoggedInHint(err error) error {
 	case api.ErrorCodeNotLoggedIn:
 		return &clikit.Hinted{Err: err, Hint: "run " + identity.Name + " hub status to see the login"}
 	case api.ErrorCodeHubVersionUnsupported:
-		return &clikit.Hinted{Err: err, Hint: "run " + identity.Name + " hub status to see which side to update"}
+		return &clikit.Hinted{Err: err, Hint: versionHint(err, "run "+identity.Name+" hub status to see which side to update")}
 	}
 	return err
+}
+
+// versionHint is what to do about hub_version_unsupported: update the side
+// its problem names, or otherwise what fallback says.
+func versionHint(err error, fallback string) string {
+	var update string
+	if e, ok := errors.AsType[*client.ProblemError](err); ok && e.Problem.Details != nil {
+		update, _ = (*e.Problem.Details)["update"].(string)
+	}
+	switch update {
+	case "node":
+		return "update wdx here: " + identity.Name + " update"
+	case "hub":
+		return "ask the hub's admin to update it"
+	}
+	return fallback
 }
 
 // nodeRef is how a node command names a node: --id or --name.

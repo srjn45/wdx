@@ -34,6 +34,9 @@ func (l *Link) nodesClient() (*hubapi.ClientWithResponses, *credentials, func(),
 
 // Nodes is the nodes of the account, from the hub.
 func (l *Link) Nodes(ctx context.Context) ([]hubapi.AccountNode, error) {
+	if err := l.hubLacks(featureNodes); err != nil {
+		return nil, err
+	}
 	client, c, done, err := l.nodesClient()
 	if err != nil {
 		return nil, err
@@ -53,6 +56,9 @@ func (l *Link) Nodes(ctx context.Context) ([]hubapi.AccountNode, error) {
 // Node is the node of the account ref names: its name, whatever its case,
 // or id: and its id.
 func (l *Link) Node(ctx context.Context, ref string) (hubapi.AccountNodeDetail, error) {
+	if err := l.hubLacks(featureNodes); err != nil {
+		return hubapi.AccountNodeDetail{}, err
+	}
 	client, c, done, err := l.nodesClient()
 	if err != nil {
 		return hubapi.AccountNodeDetail{}, err
@@ -81,6 +87,9 @@ func isThis(c *credentials, ref string) bool {
 // off at once, returning it as it was; this node is ErrNodeIsThis, as
 // leaving is Logout.
 func (l *Link) RemoveNode(ctx context.Context, ref string) (hubapi.AccountNode, error) {
+	if err := l.hubLacks(featureNodes); err != nil {
+		return hubapi.AccountNode{}, err
+	}
 	client, c, done, err := l.nodesClient()
 	if err != nil {
 		return hubapi.AccountNode{}, err
@@ -129,7 +138,7 @@ func (l *Link) Logout(ctx context.Context) (hubTold bool, err error) {
 
 	l.mu.Lock()
 	control := l.control
-	l.creds, l.control, l.hub, l.inRange, l.behind = nil, nil, "", nil, ""
+	l.creds, l.control, l.hub, l.hubAPI, l.inRange, l.behind = nil, nil, "", "", nil, ""
 	l.setConn(LoggedOut)
 	l.mu.Unlock()
 	if control != nil {

@@ -61,6 +61,10 @@ func (l *Link) keepPushing(ctx context.Context, c *credentials, client *http.Cli
 	if l.opts.Outbox == nil {
 		return
 	}
+	if err := l.hubLacks(featureDocs); err != nil {
+		logging.FromContext(ctx).Info("docs push not started", "err", err)
+		return
+	}
 	nodes, err := hubapi.NewClientWithResponses(c.NodesURL, hubapi.WithHTTPClient(client), hubapi.WithRequestEditorFn(versionHeader))
 	if err != nil {
 		logging.FromContext(ctx).Error("docs push not started", "err", err)
@@ -208,6 +212,10 @@ func (l *Link) enqueueAll(ctx context.Context) {
 	if l.opts.Outbox == nil {
 		return
 	}
+	if err := l.hubLacks(featureDocs); err != nil {
+		logging.FromContext(ctx).Info("docs push not started", "err", err)
+		return
+	}
 	if err := l.opts.Outbox.EnqueueAll(ctx); err != nil {
 		logging.FromContext(ctx).Error("docs not queued for the hub", "err", err)
 	}
@@ -217,6 +225,10 @@ func (l *Link) enqueueAll(ctx context.Context) {
 // must never reach another; a login's EnqueueAll replaces what is left.
 func (l *Link) clearOutbox(ctx context.Context) {
 	if l.opts.Outbox == nil {
+		return
+	}
+	if err := l.hubLacks(featureDocs); err != nil {
+		logging.FromContext(ctx).Info("docs push not started", "err", err)
 		return
 	}
 	if err := l.opts.Outbox.Clear(ctx); err != nil {

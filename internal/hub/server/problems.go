@@ -30,6 +30,16 @@ type noEndpointError struct {
 
 func (e *noEndpointError) Error() string { return "no such endpoint: " + e.method + " " + e.path }
 
+// nodeVersionError is a request from a node whose API version the hub does
+// not serve.
+type nodeVersionError struct {
+	version string
+}
+
+func (e *nodeVersionError) Error() string {
+	return fmt.Sprintf("the node speaks API version %q, older than %d, the oldest this hub serves", e.version, hubapi.MinAPIVersion)
+}
+
 // PathExistsError is a path something is at already.
 type PathExistsError struct {
 	Path string
@@ -77,6 +87,9 @@ func problemOf(ctx context.Context, err error) hubapi.Problem {
 func classify(err error) (hubapi.ErrorCode, map[string]any) {
 	if _, ok := errors.AsType[*requestError](err); ok {
 		return hubapi.ErrorCodeUsage, nil
+	}
+	if e, ok := errors.AsType[*nodeVersionError](err); ok {
+		return hubapi.ErrorCodeNodeVersionUnsupported, map[string]any{"update": hubapi.BehindNode, "api_version": e.version, "min_api_version": hubapi.MinAPIVersion}
 	}
 	if _, ok := errors.AsType[*noEndpointError](err); ok {
 		return hubapi.ErrorCodeNotFound, nil

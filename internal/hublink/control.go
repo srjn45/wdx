@@ -147,7 +147,7 @@ func (l *Link) connectOnce(ctx context.Context, c *credentials, client *http.Cli
 	//nolint:bodyclose // the websocket closes it itself: "You never need to close resp.Body yourself."
 	conn, resp, err := websocket.Dial(dialing, c.NodesURL+"/v1/control", &websocket.DialOptions{
 		HTTPClient: client,
-		HTTPHeader: http.Header{hubapi.VersionHeader: {identity.Version}},
+		HTTPHeader: versionHeaders(),
 	})
 	cancel()
 	if err != nil {
@@ -201,7 +201,7 @@ func (l *Link) connectOnce(ctx context.Context, c *credentials, client *http.Cli
 			welcomed = true
 			in := true
 			log.Info("control connected", "hub_version", w.HubVersion, "api_version", w.ApiVersion)
-			l.update(c, func() { l.conn, l.hub, l.inRange, l.behind = Connected, w.HubVersion, &in, "" })
+			l.update(c, func() { l.conn, l.hub, l.hubAPI, l.inRange, l.behind = Connected, w.HubVersion, w.ApiVersion, &in, "" })
 			if l.opts.AccountNodes != nil {
 				running.Go(func() { l.catchUp(others, c, client) })
 			}

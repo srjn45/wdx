@@ -10,4 +10,7 @@ const (
 	LogLevelDebug  = "debug"
 	// VersionHeader carries the version of the client or the hub.
 	VersionHeader = "Wdx-Version"
+	// APIVersionHeader carries the info.version of this API a node was
+	// built with, on every request it sends.
+	APIVersionHeader = "Wdx-Api-Version"
 )

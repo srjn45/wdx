@@ -435,13 +435,75 @@ func TestControlVersionUnsupported(t *testing.T) {
 	t.Parallel()
 	h := hubtest.Start(t)
 	n := h.NewNode(h.User, "desktop")
-	for version, behind := range map[string]string{"0": hubapi.BehindNode, "2": hubapi.BehindHub, "one": hubapi.BehindNode} {
+	for _, version := range []string{"0", "one"} {
 		c := connect(t, h, n, version)
 		_, _, err := c.conn.Read(c.ctx)
 		var closed websocket.CloseError
-		if !errors.As(err, &closed) || closed.Code != hubapi.CloseVersionUnsupported || closed.Reason != behind {
-			t.Errorf("api_version %s: want a close %d with %s, got %v", version, hubapi.CloseVersionUnsupported, behind, err)
+		if !errors.As(err, &closed) || closed.Code != hubapi.CloseVersionUnsupported || closed.Reason != hubapi.BehindNode {
+			t.Errorf("api_version %s: want a close %d with %s, got %v", version, hubapi.CloseVersionUnsupported, hubapi.BehindNode, err)
 		}
+	}
+}
+
+// A node newer than the hub is welcomed, told the hub's version, and decides
+// itself what it can use.
+func TestControlNewerNodeWelcomed(t *testing.T) {
+	t.Parallel()
+	h := hubtest.Start(t)
+	n := h.NewNode(h.User, "desktop")
+	c := connect(t, h, n, "99")
+	if welcome := c.want("welcome"); welcome["api_version"] != "1" {
+		t.Fatalf("welcome %v, want the hub's api_version 1", welcome)
+	}
+}
+
+// A request from a node older than the hub serves is refused, before it is
+// checked against the spec; a newer node's, or one without the header, is
+// served.
+func TestRequestAPIVersion(t *testing.T) {
+	t.Parallel()
+	h := hubtest.Start(t)
+	n := h.NewNode(h.User, "desktop")
+	ctx := context.Background()
+	sending := func(v string) hubapi.RequestEditorFn {
+		return func(_ context.Context, req *http.Request) error {
+			req.Header.Set(hubapi.APIVersionHeader, v)
+			return nil
+		}
+	}
+	for _, v := range []string{"0", "one", ""} {
+		r, err := h.NodesClient(n).ListNodesWithResponse(ctx, sending(v))
+		if err != nil || r.StatusCode() != http.StatusConflict || r.ApplicationproblemJSONDefault == nil || r.ApplicationproblemJSONDefault.Code != hubapi.ErrorCodeNodeVersionUnsupported {
+			t.Errorf("api version %q: want node_version_unsupported, got %v %d %s", v, err, r.StatusCode(), r.Body)
+			continue
+		}
+		if d := *r.ApplicationproblemJSONDefault.Details; d["update"] != hubapi.BehindNode {
+			t.Errorf("api version %q: details %v, want update node", v, d)
+		}
+	}
+	// A body the spec does not allow is refused for the version first.
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, h.URL+"/v1/node-logins", strings.NewReader("{}"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set(hubapi.APIVersionHeader, "0")
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp.Body.Close()
+	var p hubapi.Problem
+	if err := json.NewDecoder(resp.Body).Decode(&p); err != nil || p.Code != hubapi.ErrorCodeNodeVersionUnsupported {
+		t.Fatalf("an invalid login from an old node: %v %v, want node_version_unsupported", err, p)
+	}
+	for _, v := range []string{"1", "99"} {
+		if r, err := h.NodesClient(n).ListNodesWithResponse(ctx, sending(v)); err != nil || r.JSON200 == nil {
+			t.Errorf("api version %s: want the nodes, got %v %s", v, err, r.Body)
+		}
+	}
+	if r, err := h.NodesClient(n).ListNodesWithResponse(ctx); err != nil || r.JSON200 == nil {
+		t.Errorf("no api version: want the nodes, got %v %s", err, r.Body)
 	}
 }
 

@@ -497,6 +497,21 @@ func TestNodeHints(t *testing.T) {
 	}
 }
 
+// hub_version_unsupported hints at the side its problem names.
+func TestHubVersionHint(t *testing.T) {
+	t.Parallel()
+	for update, hint := range map[string]string{"node": "update wdx here", "hub": "ask the hub's admin", "": "hub status"} {
+		p := api.NewProblem(api.ErrorCodeHubVersionUnsupported, "x")
+		if update != "" {
+			p.Details = &map[string]any{"update": update}
+		}
+		hinted, ok := errors.AsType[*clikit.Hinted](notLoggedInHint(&client.ProblemError{Problem: p}))
+		if !ok || !strings.Contains(hinted.Hint, hint) {
+			t.Errorf("update %q: hint %v, want %q", update, hinted, hint)
+		}
+	}
+}
+
 // TestNodeThisMachine names this machine with --node: refused as a usage
 // error before any code is asked, by a command, by hub session open and by
 // TIDE, by name in any case or by id.

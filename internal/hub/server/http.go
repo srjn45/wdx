@@ -55,10 +55,10 @@ func (s *Server) handler(e endpoint) http.Handler {
 		BaseRouter:       http.NewServeMux(),
 		ErrorHandlerFunc: badRequest,
 	})
-	next := ownOnly(refuseTooLarge(sp.validate(routes)))
+	next := ownOnly(refuseTooLarge(refuseOldNode(sp.validate(routes))))
 	switch e {
 	case endpointAdmin:
-		next = ownOnly(refuseTooLarge(sp.validate(s.oneChangeAtATime(routes))))
+		next = ownOnly(refuseTooLarge(refuseOldNode(sp.validate(s.oneChangeAtATime(routes)))))
 	case endpointNodes:
 		// Before anything else, even a 404: the endpoint tells a node it
 		// does not know nothing.
@@ -247,6 +247,20 @@ func refuseTooLarge(next http.Handler) http.Handler {
 	})
 }
 
+// refuseOldNode refuses a request whose Wdx-Api-Version the hub does not
+// serve, before it is validated: what an older node sends may not be what
+// the spec now allows, and the version says why. A request without the
+// header, from a browser or wdx-hub's commands, goes on.
+func refuseOldNode(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if v, sent := r.Header[http.CanonicalHeaderKey(hubapi.APIVersionHeader)]; sent && (len(v) != 1 || !hubapi.Served(v[0])) {
+			failed(w, r, &nodeVersionError{version: strings.Join(v, ",")})
+			return
+		}
+		next.ServeHTTP(w, r)
+	})
+}
+
 func (s *Server) oneChangeAtATime(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.Method == http.MethodGet {
@@ -314,7 +328,8 @@ func (s *Server) logRequests(e endpoint, next http.Handler) http.Handler {
 			"method", r.Method,
 			"path", r.URL.Path,
 			"query", r.URL.RawQuery,
-			"client_version", r.Header.Get(hubapi.VersionHeader)}, received, origin)...)
+			"client_version", r.Header.Get(hubapi.VersionHeader),
+			"client_api_version", r.Header.Get(hubapi.APIVersionHeader)}, received, origin)...)
 
 		w.Header().Set(hubapi.DebugIDHeader, id)
 		w.Header().Set(hubapi.VersionHeader, s.version())

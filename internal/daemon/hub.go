@@ -117,8 +117,15 @@ func hubFailure(err error) error {
 		code = api.ErrorCodeTooManyStreams
 	case hubapi.ErrorCodeNameTaken:
 		code = api.ErrorCodeNameTaken
-	case hubapi.ErrorCodeHubVersionUnsupported:
-		code = api.ErrorCodeHubVersionUnsupported
+	case hubapi.ErrorCodeHubVersionUnsupported, hubapi.ErrorCodeNodeVersionUnsupported:
+		// The hub's problem names the side to update, which the hint tells.
+		var details map[string]any
+		if e, ok := errors.AsType[*hublink.HubError](err); ok && e.Problem.Details != nil {
+			if update, ok := (*e.Problem.Details)["update"].(string); ok {
+				details = map[string]any{"update": update}
+			}
+		}
+		return &hubError{code: api.ErrorCodeHubVersionUnsupported, err: err, details: details}
 	case hubapi.ErrorCodeInvalidArgument:
 		code = api.ErrorCodeInvalidArgument
 	case hubapi.ErrorCodeNodeRevoked:

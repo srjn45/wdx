@@ -363,6 +363,34 @@ func TestBrowserLogin(t *testing.T) {
 	}
 }
 
+// Every request the node sends the hub, the login's, the control
+// connection's and the node routes', carries its hub API version.
+func TestRequestsCarryAPIVersion(t *testing.T) {
+	t.Parallel()
+	h := hubtest.Start(t)
+	n := newNode(t, h, nil)
+	n.loggedIn("desktop")
+	if _, err := n.link.Nodes(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	ops := map[string]bool{}
+	for _, line := range h.Logged("request received") {
+		if line["client_version"] != identity.Version {
+			continue // the browser's
+		}
+		op, _ := line["operation"].(string)
+		ops[op] = true
+		if line["client_api_version"] != apiVersion() {
+			t.Errorf("%s sent api version %v, want %s", op, line["client_api_version"], apiVersion())
+		}
+	}
+	for _, op := range []string{"startNodeLogin", "openControl", "listNodes"} {
+		if !ops[op] {
+			t.Errorf("no %s from the node in %v", op, ops)
+		}
+	}
+}
+
 func TestBrowserLoginWrongState(t *testing.T) {
 	t.Parallel()
 	h := hubtest.Start(t)

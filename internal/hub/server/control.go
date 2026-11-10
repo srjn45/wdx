@@ -122,13 +122,9 @@ func (s *Server) control(parent context.Context, conn *websocket.Conn, n node.No
 		log.Info("control closed", "reason", "hello", "err", err)
 		return
 	}
-	behind, err := hubapi.Behind(hello.ApiVersion, s.apiVersion)
-	if err != nil {
-		behind = hubapi.BehindNode
-	}
-	if behind != "" {
-		log.Info("control refused", "reason", "hub_version_unsupported", "api_version", hello.ApiVersion, "behind", behind)
-		if err := conn.Close(hubapi.CloseVersionUnsupported, behind); err != nil {
+	if !hubapi.Served(hello.ApiVersion) {
+		log.Info("control refused", "reason", "hub_version_unsupported", "api_version", hello.ApiVersion, "behind", hubapi.BehindNode)
+		if err := conn.Close(hubapi.CloseVersionUnsupported, hubapi.BehindNode); err != nil {
 			log.Info("close not answered", "err", err)
 		}
 		return

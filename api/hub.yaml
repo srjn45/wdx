@@ -15,6 +15,14 @@ info:
     request at debug level, its failures excepted, as for tab completions;
     any other value is ignored.
 
+    A node sends Wdx-Api-Version, the info.version of this spec it was
+    built with, on every request. The hub serves every version from the
+    oldest it keeps, 1, up, newer ones included: the newer side decides
+    what it can use. A version below the oldest, or one that is no whole
+    number, is refused before the request is checked, with
+    node_version_unsupported. A request without the header, from a browser
+    or wdx-hub's own commands, is served.
+
     Errors are Problem Details (RFC 9457) with a stable "code"; each
     operation lists the codes it can return besides usage and internal.
 tags:
@@ -362,9 +370,12 @@ paths:
       description: |
         Upgraded to a WebSocket of JSON text messages, each an object with a
         type: the node sends ControlHello first, and the hub answers
-        ControlWelcome, or closes with status 4001 when it serves no API
-        version of the node's, its reason naming the side behind, node or
-        hub (hub_version_unsupported). The hub then sends
+        ControlWelcome, or closes with status 4001 when the node's API
+        version is older than the oldest the hub serves, its reason node,
+        the side behind (hub_version_unsupported); a node newer than the
+        hub is welcomed, and decides from the welcome's api_version what it
+        can use. An older hub may close with the reason hub for a node newer
+        than itself. The hub then sends
         ControlCertificate when two thirds of the node's certificate's life
         have passed, at the welcome and daily, which the node answers with
         ControlCertificateSaved once it wrote it, ControlStreamWaiting when
@@ -1029,6 +1040,7 @@ components:
         - node_revoked
         - account_disabled
         - hub_version_unsupported
+        - node_version_unsupported
         - invalid_grant
         - authorization_pending
         - slow_down

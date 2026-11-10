@@ -13,7 +13,6 @@ import (
 	"github.com/coder/websocket"
 
 	"github.com/srjn45/wdx/internal/hubapi"
-	"github.com/srjn45/wdx/internal/identity"
 	"github.com/srjn45/wdx/internal/logging"
 )
 
@@ -37,11 +36,14 @@ func (l *Link) Streams() <-chan Stream { return l.streams }
 // Dial asks the hub for a stream to the node nodeID of the account and joins
 // it, returning once the other node joined it too. It fails with
 // ErrNotLoggedIn, an *UnreachableError, or a *HubError: node_not_found,
-// node_offline, too_many_streams. Asking and joining run out after the
+// node_offline, too_many_streams, hub_version_unsupported. Asking and joining run out after the
 // link's SetupTimeout, as an *UnreachableError. The stream ends with the
 // link.
 func (l *Link) Dial(ctx context.Context, nodeID string) (net.Conn, error) {
 	log := logging.FromContext(ctx)
+	if err := l.hubLacks(featureStreams); err != nil {
+		return nil, err
+	}
 	client, c, done, err := l.nodesClient()
 	if err != nil {
 		return nil, err
@@ -80,7 +82,7 @@ func (l *Link) join(ctx context.Context, c *credentials, id string) (net.Conn, e
 	//nolint:bodyclose // the websocket closes it itself: "You never need to close resp.Body yourself."
 	conn, resp, err := websocket.Dial(ctx, c.NodesURL+"/v1/streams/"+url.PathEscape(id), &websocket.DialOptions{
 		HTTPClient: &http.Client{Transport: rt},
-		HTTPHeader: http.Header{hubapi.VersionHeader: {identity.Version}},
+		HTTPHeader: versionHeaders(),
 	})
 	if err != nil {
 		why := dialRefused(resp, err)
