@@ -14,6 +14,10 @@ import (
 
 func TestMain(m *testing.M) { os.Exit(runtest.Main(m)) }
 
+// MaxPath is a constant, so that no package can change the limit for the
+// daemon and the hub in the same process; a variable fails to compile here.
+const _ = MaxPath
+
 // The longest path Check lets through listens; one byte more is refused by
 // the system as by Check.
 func TestCheckIsTheSystemsLimit(t *testing.T) {

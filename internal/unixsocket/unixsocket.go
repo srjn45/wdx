@@ -11,7 +11,7 @@ import (
 // MaxPath is the longest path a socket may have on this system, in bytes:
 // the size of sun_path less its terminating NUL, 107 on Linux and 103 on
 // macOS.
-var MaxPath = len(syscall.RawSockaddrUnix{}.Path) - 1
+const MaxPath = len(syscall.RawSockaddrUnix{}.Path) - 1
 
 // TooLongError is a socket's path longer than the system allows.
 type TooLongError struct {
