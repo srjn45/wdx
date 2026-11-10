@@ -147,21 +147,21 @@ func (c *Client) HubSessionEvents(ctx context.Context) (*HubSessionStream, error
 	return &HubSessionStream{body: resp.Body, scanner: scanner}, nil
 }
 
-// Next waits for the sessions into this node as they are next. It returns
-// io.EOF once the daemon ended the stream.
-func (s *HubSessionStream) Next() ([]api.HubSession, error) {
+// Next waits for the sessions into this node and the wrong codes as they
+// are next. It returns io.EOF once the daemon ended the stream.
+func (s *HubSessionStream) Next() (api.HubSessionEvent, error) {
 	event, data, err := nextEvent(s.scanner)
 	if err != nil {
-		return nil, err
+		return api.HubSessionEvent{}, err
 	}
 	if event != "sessions" {
-		return nil, fmt.Errorf("unexpected event %q from the daemon", event)
+		return api.HubSessionEvent{}, fmt.Errorf("unexpected event %q from the daemon", event)
 	}
-	var v api.HubSessionList
+	var v api.HubSessionEvent
 	if err := json.Unmarshal([]byte(data), &v); err != nil {
-		return nil, fmt.Errorf("sessions event unreadable: %w", err)
+		return api.HubSessionEvent{}, fmt.Errorf("sessions event unreadable: %w", err)
 	}
-	return v.Sessions, nil
+	return v, nil
 }
 
 // Close stops following the sessions.

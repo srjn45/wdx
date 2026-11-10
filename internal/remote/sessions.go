@@ -110,6 +110,12 @@ func (r *Remote) Counts(ctx context.Context) (incoming, outgoing int, err error)
 	return incoming, outgoing, err
 }
 
+// WrongCodes is the wrong codes tried for sessions into this node since the
+// last one opened, and when the latest came, zero with none.
+func (r *Remote) WrongCodes(ctx context.Context) (int, time.Time, error) {
+	return nodeaudit.WrongCodes(ctx, r.opts.DB)
+}
+
 // insertSession writes s, opened, in tx.
 func insertSession(ctx context.Context, tx *sql.Tx, s Session) error {
 	var timeout any

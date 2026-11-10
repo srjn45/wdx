@@ -106,6 +106,21 @@ func AppendOne(ctx context.Context, db *sql.DB, e Entry) error {
 	return tx.Commit()
 }
 
+// WrongCodes counts the wrong codes recorded since the last session opened
+// into this node, and returns when the latest came, zero with none: what
+// the owner is shown, so that guessing at the code is never unseen.
+func WrongCodes(ctx context.Context, db *sql.DB) (int, time.Time, error) {
+	var count int
+	var latest sql.NullInt64
+	err := db.QueryRowContext(ctx, `SELECT COUNT(*), MAX(at) FROM hub_audit
+		WHERE action = ? AND id > (SELECT COALESCE(MAX(id), 0) FROM hub_audit WHERE action = ?)`,
+		ActionCodeWrong, ActionSessionOpened).Scan(&count, &latest)
+	if err != nil || !latest.Valid {
+		return count, time.Time{}, err
+	}
+	return count, time.UnixMilli(latest.Int64), nil
+}
+
 // Verify walks the chain in order, recomputing each row's hash, and stops at
 // the first that does not match.
 func Verify(ctx context.Context, db *sql.DB) (Verification, error) {

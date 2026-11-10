@@ -506,6 +506,8 @@ wdx hub status [flags]
 
 The connection is connected, connecting, offline (lost, and tried again), logged\_out, revoked (another node removed this one) or disabled (the hub's admin disabled the account). Not being logged in is a state, not an error.
 
+wrong\_codes counts the wrong codes other nodes tried since the last session opened into this one, with the time of the latest: a warning line when any.
+
 ### Examples
 
 ```sh

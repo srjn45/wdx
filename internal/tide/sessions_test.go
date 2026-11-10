@@ -15,21 +15,27 @@ import (
 // fakeSessions is a stream of the sessions into this node that the test
 // sends events on; closing it ends it.
 type fakeSessions struct {
-	events chan []api.HubSession
+	events chan api.HubSessionEvent
 	ended  chan struct{}
 }
 
 func newFakeSessions() *fakeSessions {
-	return &fakeSessions{events: make(chan []api.HubSession, 1), ended: make(chan struct{})}
+	return &fakeSessions{events: make(chan api.HubSessionEvent, 1), ended: make(chan struct{})}
 }
 
-func (f *fakeSessions) Next() ([]api.HubSession, error) {
+func (f *fakeSessions) Next() (api.HubSessionEvent, error) {
 	select {
-	case list := <-f.events:
-		return list, nil
+	case event := <-f.events:
+		return event, nil
 	case <-f.ended:
-		return nil, io.EOF
+		return api.HubSessionEvent{}, io.EOF
 	}
+}
+
+// event is the stream's event of the sessions incoming from nodes, with
+// wrong wrong codes.
+func event(wrong int, nodes ...string) api.HubSessionEvent {
+	return api.HubSessionEvent{Sessions: incomingFrom(nodes...), WrongCodes: api.HubWrongCodes{Count: wrong}}
 }
 
 func (f *fakeSessions) Close() error { return nil }
@@ -43,9 +49,10 @@ func incomingFrom(nodes ...string) []api.HubSession {
 }
 
 // TestHostIndicator: a local TIDE's bar says, in the Remote style, which
-// nodes have a session into this one while any has, as the stream says at
-// its start and at every event, asking for no timer; a stream that breaks
-// shows none and is opened again after a wait.
+// nodes have a session into this one while any has, and the wrong codes
+// since the last opened, as the stream says at its start and at every
+// event, asking for no timer; a stream that breaks shows none and is opened
+// again after a wait.
 func TestHostIndicator(t *testing.T) {
 	t.Parallel()
 	st := style.New(true)
@@ -67,10 +74,10 @@ func TestHostIndicator(t *testing.T) {
 	// step sends the stream's next event and runs what follows from it, up
 	// to the wait for the one after.
 	next := m.followSessions()
-	step := func(list []api.HubSession) {
+	step := func(e api.HubSessionEvent) {
 		t.Helper()
 		_, next = m.Update(next())
-		stream.events <- list
+		stream.events <- e
 		_, next = m.Update(next())
 	}
 	wantBar := func(prefix, style string) {
@@ -83,22 +90,32 @@ func TestHostIndicator(t *testing.T) {
 		}
 	}
 
-	step(incomingFrom())
+	step(event(0))
 	wantBar(" demo · project", live)
-	stream.events <- incomingFrom("laptop")
+	stream.events <- event(0, "laptop")
 	_, next = m.Update(next())
 	wantBar(" remote: laptop · demo · project", remote)
-	stream.events <- incomingFrom("laptop", "work", "laptop")
+	stream.events <- event(0, "laptop", "work", "laptop")
 	_, next = m.Update(next())
 	wantBar(" remote: laptop, work · demo · project", remote)
-	stream.events <- incomingFrom()
+	stream.events <- event(0)
+	_, next = m.Update(next())
+	wantBar(" demo · project", live)
+	// Wrong codes are shown as the sessions are, beside them.
+	stream.events <- event(3)
+	_, next = m.Update(next())
+	wantBar(" wrong codes: 3 · demo · project", remote)
+	stream.events <- event(4, "laptop")
+	_, next = m.Update(next())
+	wantBar(" remote: laptop · wrong codes: 4 · demo · project", remote)
+	stream.events <- event(0)
 	_, next = m.Update(next())
 	wantBar(" demo · project", live)
 	if opens != 1 || len(tk.waits) != waits {
 		t.Fatalf("opened %d times, %d waits asked for: want the stream followed once, on no timer", opens, len(tk.waits)-waits)
 	}
 
-	stream.events <- incomingFrom("laptop")
+	stream.events <- event(0, "laptop")
 	_, next = m.Update(next())
 	close(stream.ended)
 	if _, cmd := m.Update(next()); cmd != nil {

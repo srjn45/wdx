@@ -548,7 +548,11 @@ func TestWrongCodesFromOneNode(t *testing.T) {
 func TestConfirmStalls(t *testing.T) {
 	t.Parallel()
 	w := newWorld(t)
-	desktop := w.newNode(w.hub.User, "desktop", func(o *Options) { o.confirmTimeout = 50 * time.Millisecond })
+	var changes atomic.Int64
+	desktop := w.newNode(w.hub.User, "desktop", func(o *Options) {
+		o.confirmTimeout = 50 * time.Millisecond
+		o.Changed = func() { changes.Add(1) }
+	})
 	laptop := w.newNode(w.hub.User, "laptop")
 	desktop.setUp()
 
@@ -576,8 +580,11 @@ func TestConfirmStalls(t *testing.T) {
 	_, err = read(conn, msgOpened)
 	wantCode(t, err, CodeCodeWrong)
 
-	// A wrong code: the next try waits.
+	// A wrong code: the next try waits, and the session streams are told.
 	laptop.wantTooSoon(desktop, "after a stalled confirm")
+	if changes.Load() != 1 {
+		t.Errorf("Changed called %d times, want once, for the wrong code", changes.Load())
+	}
 	if got := desktop.audited(); len(got) != 1 || got[0] != nodeaudit.ActionCodeWrong {
 		t.Errorf("the desktop's audit chain %v, want the wrong code", got)
 	}

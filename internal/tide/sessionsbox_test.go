@@ -30,7 +30,7 @@ func sessionsModel(t *testing.T) (m *Model, feed func(nodes ...string), asked fu
 	_, next = m.Update(next())
 	feed = func(nodes ...string) {
 		t.Helper()
-		stream.events <- incomingFrom(nodes...)
+		stream.events <- event(0, nodes...)
 		_, next = m.Update(next())
 	}
 

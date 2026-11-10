@@ -73,7 +73,7 @@ When the session ends, closed on either node, by the node's daemon restarting, i
 
 ### Sessions into this node
 
-A TIDE on this machine <Since v="0.5.0" /> shows when another node has a session into it: the status line turns cyan and starts with `remote:` and the nodes, `remote: laptop · app · project`, or `remote: laptop, work` for two, for as long as any is open. It follows them as they open and close, never on a timer. `wdx hub session list` says the same from the CLI, and `wdx hub session close` ends one.
+A TIDE on this machine <Since v="0.5.0" /> shows when another node has a session into it: the status line turns cyan and starts with `remote:` and the nodes, `remote: laptop · app · project`, or `remote: laptop, work` for two, for as long as any is open. It follows them as they open and close, never on a timer. `wdx hub session list` says the same from the CLI, and `wdx hub session close` ends one. Wrong codes other nodes tried since the last session opened show beside them, `wrong codes: 3`, as `wdx hub status` counts them.
 
 **The Sessions dialog** <Since v="0.5.0" />, `C-q H` or a click on the status line's `remote:`, lists those sessions, one row per session in the order they opened: the node, when it opened, when it was last used, and when it closes unused. It follows them as the status line does, and closes itself when the last one ends. Each key asks first, `y` to go on, `n` or `Esc` to keep things as they are:
 

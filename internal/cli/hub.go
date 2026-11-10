@@ -371,7 +371,9 @@ func newHubStatusCmd() *cobra.Command {
 		Short: "Show this machine's login to a hub and its connection",
 		Long: "The connection is connected, connecting, offline (lost, and tried again),\n" +
 			"logged_out, revoked (another node removed this one) or disabled (the hub's\n" +
-			"admin disabled the account). Not being logged in is a state, not an error.",
+			"admin disabled the account). Not being logged in is a state, not an error.\n\n" +
+			"wrong_codes counts the wrong codes other nodes tried since the last session\n" +
+			"opened into this one, with the time of the latest: a warning line when any.",
 		Example: clikit.Examples(
 			"Whether this machine is connected", identity.Name+" hub status",
 			"As JSON", identity.Name+" hub status --json",
@@ -430,6 +432,10 @@ func (r hubStatus) Text(w io.Writer, st style.Style) {
 	}
 	if in, out := h.Sessions.Incoming, h.Sessions.Outgoing; in+out > 0 {
 		fmt.Fprintf(w, "sessions: %d incoming, %d outgoing\n", in, out)
+	}
+	if wc := h.WrongCodes; wc.Count > 0 && wc.LatestAt != nil {
+		fmt.Fprintf(w, "%s %d tried by other nodes since the last session opened into this one, the latest at %s\n",
+			st.Warning("wrong codes:"), wc.Count, wc.LatestAt.Local().Format(time.DateTime))
 	}
 	if h.CodeSetup && h.RemoteAccess == api.HubStatusRemoteAccessOff {
 		writeHint(w, st, "run "+identity.Name+" setting set --name hub.remote_access --value true to allow sessions into this node")

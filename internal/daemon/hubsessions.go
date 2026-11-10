@@ -115,7 +115,7 @@ func (s *server) StreamHubSessions(ctx context.Context, _ api.StreamHubSessionsR
 }
 
 // hubSessionStream sends the incoming sessions, then again after every
-// session opened or closed, until the client leaves or the daemon stops.
+// session opened or closed and every wrong code, until the client leaves or the daemon stops.
 type hubSessionStream struct {
 	ctx context.Context
 	s   *server
@@ -165,9 +165,14 @@ func (st *hubSessionStream) VisitStreamHubSessionsResponse(w http.ResponseWriter
 }
 
 // next is the stream's next event: the incoming sessions open, none when
-// the node is logged out or allows no remote access.
+// the node is logged out or allows no remote access, and the wrong codes
+// since the last opened.
 func (st *hubSessionStream) next() ([]byte, error) {
 	incoming := []api.HubSession{}
+	wrong := api.HubWrongCodes{}
+	if st.s.hub.Status().LoggedIn() {
+		wrong = st.s.wrongCodes(st.ctx)
+	}
 	if st.s.hub.Status().LoggedIn() && st.s.access.remoteAccess.Load() {
 		list, err := st.s.remote.Sessions(st.ctx)
 		if err != nil {
@@ -179,7 +184,7 @@ func (st *hubSessionStream) next() ([]byte, error) {
 			}
 		}
 	}
-	return json.Marshal(api.HubSessionList{Sessions: incoming})
+	return json.Marshal(api.HubSessionEvent{Sessions: incoming, WrongCodes: wrong})
 }
 
 func (s *server) OpenHubSession(ctx context.Context, req api.OpenHubSessionRequestObject) (api.OpenHubSessionResponseObject, error) {

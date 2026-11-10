@@ -124,3 +124,34 @@ func TestAppendRolledBackWithItsAct(t *testing.T) {
 		t.Errorf("Verify = %+v, want the row rolled back with its act", v)
 	}
 }
+
+func TestWrongCodes(t *testing.T) {
+	t.Parallel()
+	d := openDB(t)
+	ctx := context.Background()
+	wrong := func(at time.Time) {
+		t.Helper()
+		if err := AppendOne(ctx, d, Entry{At: at, Action: ActionCodeWrong, NodeID: "node-1a2b3c4d"}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	want := func(count int, latest time.Time) {
+		t.Helper()
+		n, at, err := WrongCodes(ctx, d)
+		if err != nil || n != count || !at.Equal(latest) {
+			t.Fatalf("got %d at %v (%v), want %d at %v", n, at, err, count, latest)
+		}
+	}
+
+	want(0, time.Time{})
+	wrong(start)
+	wrong(start.Add(time.Minute))
+	want(2, start.Add(time.Minute))
+	// A session opened starts the count again.
+	if err := AppendOne(ctx, d, Entry{At: start.Add(2 * time.Minute), Action: ActionSessionOpened, NodeID: "node-1a2b3c4d"}); err != nil {
+		t.Fatal(err)
+	}
+	want(0, time.Time{})
+	wrong(start.Add(3 * time.Minute))
+	want(1, start.Add(3*time.Minute))
+}

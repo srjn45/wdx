@@ -262,6 +262,13 @@ func TestHubSessionOpenRefused(t *testing.T) {
 	if got := p.desktop.auditActions(); got[len(got)-1] != "code.wrong" {
 		t.Errorf("the desktop's audit chain %v", got)
 	}
+	// The owner sees it, in both formats.
+	if s, _ := p.desktop.hubJSON(nil, "hub", "status"); s.Hub.WrongCodes.Count != 1 || s.Hub.WrongCodes.LatestAt == nil {
+		t.Errorf("the desktop's status: wrong codes %+v, want 1 with its time", s.Hub.WrongCodes)
+	}
+	if out := wdxWith(t, p.desktop.home, p.desktop.env(nil), "hub", "status"); !strings.Contains(out.Stdout, "wrong codes: 1 tried by other nodes") {
+		t.Errorf("the desktop's status says nothing of the wrong code:\n%s", out.Stdout)
+	}
 
 	v, exit = open("nosuch", "123456")
 	wantCodeExit(t, v.jsonOutput, exit, api.ErrorCodeNodeNotFound, clikit.ExitRejected)

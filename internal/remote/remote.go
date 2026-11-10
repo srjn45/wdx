@@ -118,7 +118,7 @@ type Options struct {
 	// the session closes. Without it, a stream ends once opened.
 	ServeStream func(ctx context.Context, conn net.Conn, s Session)
 	// Changed, when not nil, is called after a session opened or closed,
-	// either way; it must not block.
+	// either way, and after a wrong code; it must not block.
 	Changed func()
 	// idleChecked, when not nil, is called each time the idle timer has
 	// looked, for tests to wait on.

@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"slices"
+	"strconv"
 	"strings"
 	"time"
 
@@ -14,14 +15,14 @@ import (
 )
 
 // A local TIDE shows in its bar the sessions other nodes have open into
-// this one, following them with streamHubSessions (the wdx doc
-// HUB_REMOTE_TIDE, "The host's indicator"): read at start and at every
-// event, never on a timer.
+// this one, and the wrong codes they tried since the last opened, following
+// them with streamHubSessions (the wdx doc HUB_REMOTE_TIDE, "The host's
+// indicator"): read at start and at every event, never on a timer.
 
 // sessionStream is what TIDE reads the sessions into this node from: a
 // *client.HubSessionStream, or a test's.
 type sessionStream interface {
-	Next() ([]api.HubSession, error)
+	Next() (api.HubSessionEvent, error)
 	Close() error
 }
 
@@ -32,6 +33,7 @@ type incoming struct {
 	stream   sessionStream
 	sessions []api.HubSession // those open, by when they opened
 	nodes    []string         // the nodes of the sessions open, by when they opened
+	wrong    int              // the wrong codes since the last session opened
 	wait     time.Duration    // before a broken stream is opened again
 }
 
@@ -43,9 +45,9 @@ type (
 		err    error
 	}
 	sessionsEvent struct {
-		gen      int
-		sessions []api.HubSession
-		err      error
+		gen   int
+		event api.HubSessionEvent
+		err   error
 	}
 	reopenSessions struct{ gen int }
 )
@@ -100,8 +102,8 @@ func (m *Model) unfollowSessions() {
 func (m *Model) nextSessions() tea.Cmd {
 	in := m.incoming
 	return func() tea.Msg {
-		list, err := in.stream.Next()
-		return sessionsEvent{gen: in.gen, sessions: list, err: err}
+		event, err := in.stream.Next()
+		return sessionsEvent{gen: in.gen, event: event, err: err}
 	}
 }
 
@@ -129,7 +131,7 @@ func (m *Model) sessionsEvent(msg sessionsEvent) tea.Cmd {
 		return m.sessionsBroke(msg.err)
 	}
 	var nodes []string
-	for _, s := range msg.sessions {
+	for _, s := range msg.event.Sessions {
 		if !slices.Contains(nodes, s.Node.Name) {
 			nodes = append(nodes, s.Node.Name)
 		}
@@ -137,7 +139,10 @@ func (m *Model) sessionsEvent(msg sessionsEvent) tea.Cmd {
 	if !slices.Equal(nodes, in.nodes) {
 		m.log.Info("sessions into this node changed", "nodes", nodes)
 	}
-	in.sessions, in.nodes, in.wait = msg.sessions, nodes, 0
+	if wrong := msg.event.WrongCodes.Count; wrong != in.wrong {
+		m.log.Info("wrong codes into this node changed", "wrong_codes", wrong)
+	}
+	in.sessions, in.nodes, in.wrong, in.wait = msg.event.Sessions, nodes, msg.event.WrongCodes.Count, 0
 	m.sessionsChanged()
 	return m.nextSessions()
 }
@@ -152,7 +157,7 @@ func (m *Model) sessionsBroke(err error) tea.Cmd {
 		in.stream.Close()
 		in.stream = nil
 	}
-	in.sessions, in.nodes = nil, nil
+	in.sessions, in.nodes, in.wrong = nil, nil, 0
 	m.sessionsChanged()
 	if _, ok := errors.AsType[*client.ProblemError](err); ok {
 		m.log.Info("sessions not followed", "err", err)
@@ -181,4 +186,13 @@ func (m *Model) remoteSessions() string {
 		return ""
 	}
 	return "remote: " + m.st.BarName(strings.Join(m.incoming.nodes, ", "))
+}
+
+// wrongCodes is what the bar says of the wrong codes other nodes tried
+// since the last session opened into this one, "" with none.
+func (m *Model) wrongCodes() string {
+	if m.incoming.wrong == 0 {
+		return ""
+	}
+	return "wrong codes: " + m.st.BarName(strconv.Itoa(m.incoming.wrong))
 }

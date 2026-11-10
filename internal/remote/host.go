@@ -299,6 +299,7 @@ func (r *Remote) codeWrong(ctx context.Context, conn *tls.Conn, client hublink.N
 	if err := nodeaudit.AppendOne(ctx, r.opts.DB, nodeaudit.Entry{At: now, Action: nodeaudit.ActionCodeWrong, NodeID: client.ID, Details: map[string]any{"wait_ms": wait.Milliseconds()}}); err != nil {
 		log.Error("wrong code not in the audit chain", "err", err)
 	}
+	r.changed()
 	r.refuseStream(ctx, conn, refusal(CodeCodeWrong, "%s; the next try waits %s", why, wait), "")
 }
 

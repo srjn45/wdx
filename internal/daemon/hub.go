@@ -349,12 +349,28 @@ func (s *server) hubStatusView(ctx context.Context, h hublink.Status) api.HubSta
 		v.Url, v.User = &h.URL, &h.User
 		v.Node = &api.HubNodeRef{Id: h.Node.ID, Name: h.Node.Name}
 		v.CodeSetup = s.access.codeSetUp(ctx)
+		v.WrongCodes = s.wrongCodes(ctx)
 	}
 	in, out, err := s.remote.Counts(ctx)
 	if err != nil {
 		logging.FromContext(ctx).Error("sessions not counted", "err", err)
 	}
 	v.Sessions = api.HubSessionCounts{Incoming: in, Outgoing: out}
+	return v
+}
+
+// wrongCodes is the wrong codes since the last session opened into this
+// node, as the API gives them; none when they cannot be read, which is
+// logged.
+func (s *server) wrongCodes(ctx context.Context) api.HubWrongCodes {
+	n, latest, err := s.remote.WrongCodes(ctx)
+	if err != nil {
+		logging.FromContext(ctx).Error("wrong codes not counted", "err", err)
+	}
+	v := api.HubWrongCodes{Count: n}
+	if !latest.IsZero() {
+		v.LatestAt = utc(&latest)
+	}
 	return v
 }
 

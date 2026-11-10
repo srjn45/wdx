@@ -489,6 +489,11 @@ func (m *Model) statusLine() string {
 		state = style.StatusRemote
 		left = " " + m.st.BarName(m.node) + " ›" + left
 	}
+	if w := m.wrongCodes(); w != "" && m.node == "" {
+		// Another node tried wrong codes: so that guessing is never unseen.
+		state = style.StatusRemote
+		left = " " + w + " ·" + left
+	}
 	if r := m.remoteSessions(); r != "" && m.node == "" {
 		// Another node has a session into this one: so that it is never missed.
 		state = style.StatusRemote

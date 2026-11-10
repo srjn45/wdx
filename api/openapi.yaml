@@ -2657,9 +2657,10 @@ paths:
       description: |
         Server-sent events (text/event-stream), as streamProject sends, for
         as long as the client stays. Each event is "event: sessions" with a
-        HubSessionList as its data: the incoming sessions open now, by when
-        they opened. The first is sent at once; another after every session
-        opened or closed, never on a timer. With the node not logged in, or
+        HubSessionEvent as its data: the incoming sessions open now, by when
+        they opened, and the wrong codes since the last opened. The first is
+        sent at once; another after every session opened or closed and every
+        wrong code, never on a timer. With the node not logged in, or
         hub.remote_access off, the list is empty, and nothing more is sent
         until that changes. The stream ends when the daemon stops.
 
@@ -4407,7 +4408,7 @@ components:
 
     HubStatus:
       type: object
-      required: [url, user, node, connection, hub_version, in_range, behind, remote_access, code_setup, sessions]
+      required: [url, user, node, connection, hub_version, in_range, behind, remote_access, code_setup, sessions, wrong_codes]
       properties:
         url: { type: string, nullable: true, description: "The hub's web endpoint; null when logged out." }
         user: { type: string, nullable: true, description: "The account's username; null when logged out." }
@@ -4428,6 +4429,15 @@ components:
           description: Whether other nodes of the account may open sessions into this one, as the hub.remote_access setting says.
         code_setup: { type: boolean, description: "Whether an authenticator code is set up here (wdx hub code setup); false when logged out." }
         sessions: { $ref: "#/components/schemas/HubSessionCounts" }
+        wrong_codes: { $ref: "#/components/schemas/HubWrongCodes" }
+
+    HubWrongCodes:
+      type: object
+      required: [count, latest_at]
+      description: The wrong codes other nodes tried for sessions into this node since the last session opened into it, from its audit chain; a missing confirm counts as one.
+      properties:
+        count: { type: integer }
+        latest_at: { type: string, format: date-time, nullable: true, description: "When the latest came; null with none." }
 
     HubEnvelope:
       type: object
@@ -4505,6 +4515,15 @@ components:
         sessions:
           type: array
           items: { $ref: "#/components/schemas/HubSession" }
+
+    HubSessionEvent:
+      type: object
+      required: [sessions, wrong_codes]
+      properties:
+        sessions:
+          type: array
+          items: { $ref: "#/components/schemas/HubSession" }
+        wrong_codes: { $ref: "#/components/schemas/HubWrongCodes" }
 
     HubSessionOpen:
       type: object
