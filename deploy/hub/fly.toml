@@ -2,7 +2,7 @@
 # region, which are the admin's: every command takes --app. The wdx doc
 # HUB_FLY designs it; make hub-fly-deploy APP=<name> deploys a release tag.
 # A test in internal/hub/hubcli keeps the ports, the mount and the health
-# check in line with the hub's defaults.
+# check in line with the hub's defaults, and the machine's size.
 
 # Always on: nodes hold a control connection open, which a stopped machine
 # drops, and the volume ties the app to one machine anyway.
@@ -46,3 +46,9 @@
   source = "wdx_hub_data"
   destination = "/data"
   initial_size = "1gb"
+
+# The machine it runs on, named rather than left to Fly's default: the hub
+# needs about 30 MB, and two password hashes of 19 MiB at most at once.
+[[vm]]
+  size = "shared-cpu-1x"
+  memory = "256mb"

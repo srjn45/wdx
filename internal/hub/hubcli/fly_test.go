@@ -18,8 +18,9 @@ import (
 
 // TestFlyConfig checks that deploy/hub/fly.toml serves the ports the hub
 // listens on by default, mounts its volume where the Dockerfile puts the
-// hub's home and checks the hub's health on its version route, so that a
-// changed default fails here rather than at a deploy.
+// hub's home, checks the hub's health on its version route and names the
+// machine it runs on, so that a changed default fails here rather than at a
+// deploy.
 func TestFlyConfig(t *testing.T) {
 	t.Parallel()
 	fly := tomlSections(t, readTestFile(t, "../../../deploy/hub/fly.toml"))
@@ -33,6 +34,8 @@ func TestFlyConfig(t *testing.T) {
 		{"services", "internal_port", port(t, defaults.ListenNodes), "listen.nodes' default"},
 		{"mounts", "destination", dockerfileEnv(t, "WDX_HUB_HOME"), "the Dockerfile's WDX_HUB_HOME"},
 		{"http_service.checks", "path", version.URL.Path, "the web endpoint's version route"},
+		{"vm", "size", "shared-cpu-1x", "the machine the hub is sized for"},
+		{"vm", "memory", "256mb", "what two password hashes at once and the hub fit in"},
 	} {
 		if got := fly[c.section][c.key]; got != c.want {
 			t.Errorf("fly.toml's [%s] %s is %q, want %s, %s", c.section, c.key, got, c.want, c.from)

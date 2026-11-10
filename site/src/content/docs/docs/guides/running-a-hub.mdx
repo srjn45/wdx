@@ -198,7 +198,7 @@ It stops and removes the service, the binary, the shells' completions and `/usr/
 
 <Since v="0.5.0" /> [Fly.io](https://fly.io) runs the hub's container for you, from the repository's `deploy/hub/fly.toml` and `Dockerfile`: no server to keep, no proxy to set up, TLS for `https://<name>.fly.dev` by Fly. Choose it when the hub is for yourself or a few people and you would rather not look after a machine; choose a server of your own, with the install script above, when you want the hub on hardware or a network you control, a domain of your own without Fly in front, or `wdx-hub update` and its rollback.
 
-What it runs: one machine, always on, since the nodes keep a connection open that a stopped machine would drop; its web endpoint behind Fly's proxy, which terminates TLS on 443, and its node endpoint on 8443 as raw TCP, untouched, since the hub terminates the nodes' TLS itself; the hub's home on a 1 GB volume at `/data`, which Fly snapshots daily.
+What it runs: one machine, `shared-cpu-1x` with 256 MB, always on, since the nodes keep a connection open that a stopped machine would drop; its web endpoint behind Fly's proxy, which terminates TLS on 443, and its node endpoint on 8443 as raw TCP, untouched, since the hub terminates the nodes' TLS itself; the hub's home on a 1 GB volume at `/data`, which Fly snapshots daily.
 
 ### The first deploy
 
@@ -250,13 +250,14 @@ You need [flyctl](https://fly.io/docs/flyctl/install/), a Fly account and a chec
    $ wdx hub login --url https://<name>.fly.dev
    ```
 
-Then tell the hub which address is Fly's proxy. Every request comes to it from the proxy, so until then the page that approves a login shows the proxy's address under **From**, not yours, and the rate limits and the audit chain see the same. Take that address from the first approval page, or from the hub's log, where each request on the web endpoint says the client's `address`, as the hub believes it, and the connection's `peer` when it differs, and set it, once:
+Then tell the hub to believe Fly's proxy. Every request comes to it from the proxy, so until then the page that approves a login shows the proxy's address under **From**, not yours, the rate limits count every client as one, and the audit chain sees the same; the hub's log warns of it. Two addresses are needed: the range Fly's proxy connects from, `172.16.0.0/12`, and the app's dedicated IPv4, which `fly ips list --app <name>` shows, since the `X-Forwarded-For` Fly sends ends with the address the client reached. With the range alone, every client is that IPv4. Set both, once:
 
 ```console
-$ fly secrets set --app <name> WDX_HUB_TRUSTED_PROXIES=<the proxy's address>
+$ fly ips list --app <name>
+$ fly secrets set --app <name> WDX_HUB_TRUSTED_PROXIES=172.16.0.0/12,<the app's dedicated IPv4>
 ```
 
-Setting a secret restarts the machine; the next approval page shows your own address. Registration stays closed, as on any hub: others join by the invite you make for them the same way, and every other admin command runs through `fly ssh console --app <name> --user nonroot -C "wdx-hub …"`. The hub logs to Fly: `fly logs --app <name>`. Nothing completes on Tab there: the image has no shell, so each command runs on its own.
+Setting a secret restarts the machine; the next approval page shows your own address. The hub's log says, for each request on the web endpoint, the client's `address`, as the hub believes it, and the connection's `peer` when it differs: the `address` should be yours, not the IPv4. Registration stays closed, as on any hub: others join by the invite you make for them the same way, and every other admin command runs through `fly ssh console --app <name> --user nonroot -C "wdx-hub …"`. The hub logs to Fly: `fly logs --app <name>`. Nothing completes on Tab there: the image has no shell, so each command runs on its own.
 
 ### What `make hub-fly-deploy` does
 

@@ -56,6 +56,23 @@ func TestClientAddress(t *testing.T) {
 	}
 }
 
+// Fly's proxy connects from 172.16.0.0/12 and sends X-Forwarded-For as the
+// client, then the app's ingress IPv4 the client reached: with the range
+// alone every client is the ingress, as the log of 2026-11-10 showed; with
+// the ingress trusted too, the client is itself.
+func TestClientAddressOnFly(t *testing.T) {
+	t.Parallel()
+	r := &http.Request{RemoteAddr: "172.19.12.233:52000", Header: http.Header{"X-Forwarded-For": {"203.0.113.9, 137.66.38.109"}}}
+	rangeAlone := []netip.Prefix{netip.MustParsePrefix("172.16.0.0/12")}
+	if got := clientAddress(r, rangeAlone); got != "137.66.38.109" {
+		t.Errorf("with the range alone: %s, want the ingress, 137.66.38.109", got)
+	}
+	both := append(rangeAlone, netip.MustParsePrefix("137.66.38.109/32"))
+	if got := clientAddress(r, both); got != "203.0.113.9" {
+		t.Errorf("with the range and the ingress: %s, want the client, 203.0.113.9", got)
+	}
+}
+
 func TestStreakWaits(t *testing.T) {
 	t.Parallel()
 	at := time.Date(2026, 11, 8, 12, 0, 0, 0, time.UTC)
