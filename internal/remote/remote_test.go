@@ -17,6 +17,8 @@ import (
 	"testing"
 	"time"
 
+	"filippo.io/cpace"
+
 	"github.com/srjn45/wdx/internal/authcode"
 	"github.com/srjn45/wdx/internal/db"
 	"github.com/srjn45/wdx/internal/db/dbtest"
@@ -540,6 +542,44 @@ func TestWrongCodesFromOneNode(t *testing.T) {
 
 	if got := slicesCount(desktop.audited(), nodeaudit.ActionCodeWrong); got != 12 {
 		t.Errorf("%d wrong codes in the desktop's audit chain, want 12", got)
+	}
+}
+
+func TestConfirmStalls(t *testing.T) {
+	t.Parallel()
+	w := newWorld(t)
+	desktop := w.newNode(w.hub.User, "desktop", func(o *Options) { o.confirmTimeout = 50 * time.Millisecond })
+	laptop := w.newNode(w.hub.User, "laptop")
+	desktop.setUp()
+
+	// The laptop opens with the right code, and never confirms.
+	conn, me, hostKey, _, err := laptop.remote.dial(laptop.ctx, desktop.ref)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer conn.Close()
+	ex, err := exporter(conn.ConnectionState())
+	if err != nil {
+		t.Fatal(err)
+	}
+	b := binding{exporter: ex, client: me.key, host: hostKey, step: authcode.Step(w.clock.Now())}
+	msgA, _, err := cpace.Start(desktop.code(0), b.context())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := write(conn, message{Type: msgOpen, Version: protocolVersion, Step: b.step, CPace: msgA}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := read(conn, msgExchange); err != nil {
+		t.Fatal(err)
+	}
+	_, err = read(conn, msgOpened)
+	wantCode(t, err, CodeCodeWrong)
+
+	// A wrong code: the next try waits.
+	laptop.wantTooSoon(desktop, "after a stalled confirm")
+	if got := desktop.audited(); len(got) != 1 || got[0] != nodeaudit.ActionCodeWrong {
+		t.Errorf("the desktop's audit chain %v, want the wrong code", got)
 	}
 }
 

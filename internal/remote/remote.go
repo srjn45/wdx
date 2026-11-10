@@ -91,6 +91,10 @@ const (
 	lastNodeWait   = time.Hour
 )
 
+// confirmTimeout bounds the wait for a client's confirm, which holds the
+// host's open lock: a confirm that does not come counts as a wrong code.
+const confirmTimeout = 10 * time.Second
+
 // exchangeTimeout bounds a stream's TLS handshake and the messages that
 // follow it, so that a stream nobody speaks on ends.
 const exchangeTimeout = 30 * time.Second
@@ -122,6 +126,8 @@ type Options struct {
 	// linkCut, when not nil, is called in place of CutOff once the link
 	// is cut off, for tests.
 	linkCut func(ctx context.Context)
+	// confirmTimeout, when not 0, replaces confirmTimeout, for tests.
+	confirmTimeout time.Duration
 }
 
 // Remote is the node's sessions, both ways.
@@ -167,6 +173,9 @@ type slowdown struct {
 func New(ctx context.Context, opts Options) (*Remote, error) {
 	if opts.Exporter == nil {
 		opts.Exporter = exporter
+	}
+	if opts.confirmTimeout == 0 {
+		opts.confirmTimeout = confirmTimeout
 	}
 	ctx, stop := context.WithCancel(ctx)
 	r := &Remote{opts: opts, ctx: ctx, stop: stop, done: make(chan struct{}), watched: make(chan struct{}), slowed: map[string]*slowdown{}, streams: map[string]map[net.Conn]struct{}{}, kicked: make(chan struct{}, 1)}

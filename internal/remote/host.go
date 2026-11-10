@@ -232,18 +232,16 @@ func (r *Remote) hostOpen(ctx context.Context, conn *tls.Conn, host self, client
 		log.Info("stream ended", "err", err)
 		return
 	}
-	confirm, err := read(conn, msgConfirm)
+	// The open lock is held: a confirm that does not come in time is a
+	// wrong code, so that a stall cannot hold it again at once.
+	confirm, err := r.readConfirm(conn)
 	if err != nil {
-		log.Info("stream ended", "reason", "no confirmation", "err", err)
+		log.Info("no confirmation", "err", err)
+		r.codeWrong(ctx, conn, client, r.opts.Clock.Now(), "no confirmation came in time")
 		return
 	}
 	if !hmac.Equal(confirm.MAC, b.mac(key, "client")) {
-		wait := r.wrongCode(client.ID, now)
-		log.Info("code wrong", "client_node_name", client.Name, "wait_ms", wait.Milliseconds())
-		if err := nodeaudit.AppendOne(ctx, r.opts.DB, nodeaudit.Entry{At: now, Action: nodeaudit.ActionCodeWrong, NodeID: client.ID, Details: map[string]any{"wait_ms": wait.Milliseconds()}}); err != nil {
-			log.Error("wrong code not in the audit chain", "err", err)
-		}
-		r.refuseStream(ctx, conn, refusal(CodeCodeWrong, "the code is wrong; the next try waits %s", wait), "")
+		r.codeWrong(ctx, conn, client, now, "the code is wrong")
 		return
 	}
 	if err := r.opts.Code.Use(ctx, m.Step); err != nil {
@@ -266,6 +264,42 @@ func (r *Remote) hostOpen(ctx context.Context, conn *tls.Conn, host self, client
 	}
 	log.Info("session opened", "session_id", s.ID, "direction", Incoming, "node_id", client.ID, "node_name", client.Name, "host_node_id", host.node.ID, "idle_timeout_ms", timeout.Milliseconds())
 	r.Kick()
+}
+
+// readConfirm reads the client's confirm, giving up after confirmTimeout.
+// Not with a read deadline: the stream through the hub closes when one
+// passes, and the refusal could not be sent. Once it gives up, the read
+// ends when conn closes.
+func (r *Remote) readConfirm(conn *tls.Conn) (message, error) {
+	type result struct {
+		m   message
+		err error
+	}
+	got := make(chan result, 1)
+	go func() {
+		m, err := read(conn, msgConfirm)
+		got <- result{m, err}
+	}()
+	timer := time.NewTimer(r.opts.confirmTimeout)
+	defer timer.Stop()
+	select {
+	case res := <-got:
+		return res.m, res.err
+	case <-timer.C:
+		return message{}, errors.New("no confirm in time")
+	}
+}
+
+// codeWrong counts a wrong code from client at now, records it in the audit
+// chain and refuses it on conn, saying why and how long the next try waits.
+func (r *Remote) codeWrong(ctx context.Context, conn *tls.Conn, client hublink.NodeRef, now time.Time, why string) {
+	log := logging.FromContext(ctx)
+	wait := r.wrongCode(client.ID, now)
+	log.Info("code wrong", "client_node_name", client.Name, "wait_ms", wait.Milliseconds())
+	if err := nodeaudit.AppendOne(ctx, r.opts.DB, nodeaudit.Entry{At: now, Action: nodeaudit.ActionCodeWrong, NodeID: client.ID, Details: map[string]any{"wait_ms": wait.Milliseconds()}}); err != nil {
+		log.Error("wrong code not in the audit chain", "err", err)
+	}
+	r.refuseStream(ctx, conn, refusal(CodeCodeWrong, "%s; the next try waits %s", why, wait), "")
 }
 
 // opened records s, pinning key for its node if none is, with its audit row
