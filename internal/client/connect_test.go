@@ -79,7 +79,18 @@ func TestNodeProblemPassedOn(t *testing.T) {
 	}
 }
 
-func TestNodeStreamCutIsSessionClosed(t *testing.T) {
+// wantConnectionLost fails t unless err is connection_lost, naming the node.
+func wantConnectionLost(t *testing.T, err error) {
+	t.Helper()
+	p, ok := errors.AsType[*ProblemError](err)
+	if !ok || p.Problem.Code != api.ErrorCodeConnectionLost || p.Problem.Details == nil || (*p.Problem.Details)["node"] != "desktop" {
+		t.Fatalf("%v, want connection_lost naming the node", err)
+	}
+}
+
+// A stream cut before the answer's headers is connection_lost: the session
+// may still be open, which only a dial can tell.
+func TestNodeStreamCutIsConnectionLost(t *testing.T) {
 	t.Parallel()
 	c := nodeOf(t, func(w http.ResponseWriter, _ *http.Request) {
 		conn, _, err := w.(http.Hijacker).Hijack()
@@ -88,8 +99,67 @@ func TestNodeStreamCutIsSessionClosed(t *testing.T) {
 		}
 	})
 	_, err := c.Version(context.Background())
-	if p, ok := errors.AsType[*ProblemError](err); !ok || p.Problem.Code != api.ErrorCodeSessionClosed {
-		t.Fatalf("%v, want session_closed", err)
+	wantConnectionLost(t, err)
+}
+
+// A stream whose far end is closed as soon as it is dialed (Cursor's C2).
+func TestNodeStreamClosedAtOnce(t *testing.T) {
+	t.Parallel()
+	c := New(Options{DebugID: logging.NewDebugID(), Node: "desktop", Dial: func(context.Context) (net.Conn, error) {
+		near, far := net.Pipe()
+		far.Close()
+		return near, nil
+	}})
+	t.Cleanup(c.Close)
+	_, err := c.Version(context.Background())
+	wantConnectionLost(t, err)
+}
+
+// A stream cut while the body is read, after the headers, is connection_lost
+// too, whichever generated parser reads it (Codex's C5).
+func TestNodeBodyCutIsConnectionLost(t *testing.T) {
+	t.Parallel()
+	c := nodeOf(t, func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set(api.APIVersionHeader, strconv.Itoa(api.CurrentVersion))
+		w.Header().Set("Content-Type", "application/json")
+		w.Header().Set("Content-Length", "100")
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte(`{"name": "wdx", "vers`))
+	})
+	_, err := c.Version(context.Background())
+	wantConnectionLost(t, err)
+	if _, err := c.ListProjects(context.Background(), ""); err == nil {
+		t.Fatal("a body cut short read whole")
+	} else if p, ok := errors.AsType[*ProblemError](err); !ok || p.Problem.Code != api.ErrorCodeConnectionLost {
+		t.Fatalf("listing: %v, want connection_lost", err)
+	}
+}
+
+// A stream of events that is cut is a stream ending, as it was: its reader
+// takes it as it comes.
+func TestNodeEventStreamCutUnchanged(t *testing.T) {
+	t.Parallel()
+	c := nodeOf(t, func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set(api.APIVersionHeader, strconv.Itoa(api.CurrentVersion))
+		w.Header().Set("Content-Type", "text/event-stream")
+		w.WriteHeader(http.StatusOK)
+		w.(http.Flusher).Flush()
+		conn, _, err := w.(http.Hijacker).Hijack()
+		if err == nil {
+			conn.Close()
+		}
+	})
+	ctx, cancel := context.WithDeadline(context.Background(), waittest.Deadline(t))
+	defer cancel()
+	stream, err := c.ProjectEvents(ctx, "app")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer stream.Close()
+	if _, err := stream.Next(); err == nil {
+		t.Fatal("an event from a cut stream")
+	} else if _, ok := errors.AsType[*ProblemError](err); ok {
+		t.Fatalf("%v, want the stream's own end", err)
 	}
 }
 

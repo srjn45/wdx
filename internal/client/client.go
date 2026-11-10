@@ -6,6 +6,8 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
+	"mime"
 	"net"
 	"net/http"
 	"strconv"
@@ -168,9 +170,11 @@ func (d *doer) Do(req *http.Request) (*http.Response, error) {
 
 // doNode sends req to the node Dial reaches, with this build's API version,
 // and refuses an answer from a host older than this build still speaks to. A
-// stream that ends with the request unanswered is a session the host closed.
-// No version warning: two machines run different releases often, and the
-// API version is what they must agree on.
+// stream cut after the dial, before or while the answer is read, is
+// connection_lost: the session may still be open, and the request may have
+// run. Only the dial knows whether the session closed, and says so. No
+// version warning: two machines run different releases often, and the API
+// version is what they must agree on.
 func (d *doer) doNode(req *http.Request, start time.Time) (*http.Response, error) {
 	log := logging.FromContext(req.Context())
 	node := d.opts.Node
@@ -184,9 +188,7 @@ func (d *doer) doNode(req *http.Request, start time.Time) (*http.Response, error
 		if req.Context().Err() != nil {
 			return nil, err
 		}
-		p := api.NewProblem(api.ErrorCodeSessionClosed, fmt.Sprintf("the stream to node %s ended before it answered: %v", node, err))
-		p.Details = &map[string]any{"node": node}
-		return nil, &ProblemError{Problem: p}
+		return nil, d.cut(err)
 	}
 	version := d.recordAPIVersion(resp)
 	log.Info("node called", "method", req.Method, "path", req.URL.Path, "status", resp.StatusCode, "node", node, "api_version", version, logging.Duration(start))
@@ -195,7 +197,37 @@ func (d *doer) doNode(req *http.Request, start time.Time) (*http.Response, error
 		log.Warn("node api version unsupported", "node", node, "api_version", version, "oldest_compatible", api.OldestCompatible)
 		return nil, d.hostTooOld(version)
 	}
+	// A stream of events that ends is a stream ending, which its reader
+	// takes as it is.
+	if mediaType, _, _ := mime.ParseMediaType(resp.Header.Get("Content-Type")); mediaType != "text/event-stream" {
+		resp.Body = &nodeBody{ReadCloser: resp.Body, req: req, d: d}
+	}
 	return resp, nil
+}
+
+// cut is the problem of a stream to the node cut after the dial, by err.
+func (d *doer) cut(err error) error {
+	p := api.NewProblem(api.ErrorCodeConnectionLost, fmt.Sprintf("the stream to node %s ended before it answered: %v", d.opts.Node, err))
+	p.Details = &map[string]any{"node": d.opts.Node}
+	return &ProblemError{Problem: p}
+}
+
+// nodeBody is the body of an answer from the node, whose stream cut while
+// it is read is connection_lost, as one cut before the headers: whichever
+// generated parser reads it.
+type nodeBody struct {
+	io.ReadCloser
+	req *http.Request
+	d   *doer
+}
+
+func (b *nodeBody) Read(p []byte) (int, error) {
+	n, err := b.ReadCloser.Read(p)
+	if err != nil && !errors.Is(err, io.EOF) && b.req.Context().Err() == nil {
+		logging.FromContext(b.req.Context()).Info("node stream cut", "method", b.req.Method, "path", b.req.URL.Path, "node", b.d.opts.Node, "err", err)
+		return n, b.d.cut(err)
+	}
+	return n, err
 }
 
 // hostTooOld is the problem of a host that speaks API version, older than

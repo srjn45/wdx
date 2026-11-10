@@ -51,7 +51,7 @@ var Codes = map[ErrorCode]clikit.CodeInfo{
 	ErrorCodeAgentNotRunning:          codeInfo(http.StatusConflict, clikit.ExitRejected, "the agent's AI coding agent is not running"),
 	ErrorCodeAgentBusy:                codeInfo(http.StatusConflict, clikit.ExitRejected, "the agent is in the middle of something, which this would lose"),
 	ErrorCodeAttachUnsupported:        codeInfo(http.StatusConflict, clikit.ExitRejected, "the terminal was started by a wdx too old to attach to"),
-	ErrorCodeConnectionLost:           codeInfo(http.StatusServiceUnavailable, clikit.ExitSystem, "the connection to the terminal ended before its shell did"),
+	ErrorCodeConnectionLost:           codeInfo(http.StatusServiceUnavailable, clikit.ExitSystem, "the connection to the terminal or node ended before it answered"),
 	ErrorCodeDaemonUnavailable:        codeInfo(http.StatusServiceUnavailable, clikit.ExitSystem, "the daemon is not running or not answering"),
 	ErrorCodeAlreadyRunning:           codeInfo(http.StatusConflict, clikit.ExitRejected, "a daemon already serves this home"),
 	ErrorCodeRuntimeMissing:           codeInfo(http.StatusServiceUnavailable, clikit.ExitSystem, "neither Docker nor Podman is installed"),

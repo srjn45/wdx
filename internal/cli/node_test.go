@@ -17,6 +17,7 @@ import (
 	"github.com/srjn45/wdx/internal/clikit/clikittest"
 	"github.com/srjn45/wdx/internal/config"
 	"github.com/srjn45/wdx/internal/identity"
+	"github.com/srjn45/wdx/internal/waittest"
 )
 
 // laptopDir is a working directory on the laptop with the files the
@@ -361,6 +362,13 @@ func TestNodeSessionClosedMidCommand(t *testing.T) {
 	if v, exit := p.desktop.sessionJSON("hub", "session", "close", "--all"); exit != clikit.ExitOK {
 		t.Fatalf("close: %d %+v", exit, v.jsonOutput)
 	}
+	// The command's streams cut first: one kept for the next request would
+	// take it to a stream gone, connection_lost, as the dial cannot tell.
+	id := runID(t, p.laptop.home, []string{"project", "create", "--name", "app", "--node", "desktop"})
+	waittest.For(t, "the command's streams to desktop closed", func() bool {
+		lines := logLines(t, p.laptop.home, id)
+		return len(lineOf2(lines, "stream closed", nil)) == len(lineOf2(lines, "node stream opened", nil))
+	})
 	r.typeLine(t, "o")
 	out := p.laptop.wait(r.running)
 	if out.Exit != clikit.ExitRejected || !strings.Contains(out.Stderr, "[session_closed]") || strings.Contains(out.Stderr, "code for") {
@@ -412,6 +420,7 @@ func TestNodeHints(t *testing.T) {
 		{problem(api.ErrorCodeNodeVersionUnsupported, map[string]any{"update": "host"}), "update wdx on desktop"},
 		{problem(api.ErrorCodeNodeVersionUnsupported, map[string]any{"update": "client"}), "update wdx here"},
 		{problem(api.ErrorCodeSessionClosed, nil), "run the command again"},
+		{problem(api.ErrorCodeConnectionLost, map[string]any{"node": "desktop"}), "the stream to desktop was cut; the session may still be open"},
 		{problem(api.ErrorCodeRouteNotAllowed, map[string]any{"operation": "getDaemon"}), ""},
 		{problem(api.ErrorCodeNotFound, nil), ""},
 	} {

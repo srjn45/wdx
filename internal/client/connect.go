@@ -65,9 +65,7 @@ func (c *Client) switched(ctx context.Context, path string) (net.Conn, error) {
 		conn.Close()
 		if d.opts.Dial != nil {
 			log.Info("node unreachable", "method", http.MethodPost, "path", path, "node", d.opts.Node, "err", err)
-			p := api.NewProblem(api.ErrorCodeSessionClosed, fmt.Sprintf("the stream to node %s ended before it answered: %v", d.opts.Node, err))
-			p.Details = &map[string]any{"node": d.opts.Node}
-			return nil, &ProblemError{Problem: p}
+			return nil, d.cut(err)
 		}
 		log.Info("daemon unreachable", "method", http.MethodPost, "path", path, "socket", d.opts.Socket, "err", err)
 		return nil, &UnavailableError{Socket: d.opts.Socket, Err: err}

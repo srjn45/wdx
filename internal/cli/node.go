@@ -37,7 +37,7 @@ var nodeCodes = []api.ErrorCode{
 	api.ErrorCodeCodeNotSetUp, api.ErrorCodeCodeWrong, api.ErrorCodeNodeKeyMismatch, api.ErrorCodeTooManyStreams,
 	api.ErrorCodeHubUnreachable, api.ErrorCodeHubVersionUnsupported, api.ErrorCodeNodeVersionUnsupported,
 	api.ErrorCodeRouteNotAllowed, api.ErrorCodeSessionRequired, api.ErrorCodeSessionClosed, api.ErrorCodeRemoteNotForAgents,
-	api.ErrorCodeDaemonUnavailable,
+	api.ErrorCodeConnectionLost, api.ErrorCodeDaemonUnavailable,
 }
 
 // addNodeFlag gives cmd and the commands under it --node.
@@ -113,6 +113,8 @@ func nodeHint(err error, node string) error {
 		update, _ = (*p.Details)["update"].(string)
 	}
 	switch {
+	case p.Code == api.ErrorCodeConnectionLost:
+		return &clikit.Hinted{Err: err, Hint: "the stream to " + node + " was cut; the session may still be open: run it again, and check first whether it ran, as a change may have"}
 	case p.Code == api.ErrorCodeSessionClosed:
 		return &clikit.Hinted{Err: err, Hint: "run the command again, which asks for the code of " + node + " to open another"}
 	case p.Code == api.ErrorCodeNodeVersionUnsupported && update == "client":

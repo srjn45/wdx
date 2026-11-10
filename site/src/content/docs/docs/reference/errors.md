@@ -144,9 +144,9 @@ Exit 1 · HTTP 403 · returned by [`wdx hub code recover`](/wdx/docs/reference/c
 
 ## connection_lost
 
-The connection to the terminal ended before its shell did.
+The connection to the terminal or node ended before it answered.
 
-Exit 3 · HTTP 503 · returned by [`wdx agent attach`](/wdx/docs/reference/cli/agent/#wdx-agent-attach), [`wdx terminal attach`](/wdx/docs/reference/cli/terminal/#wdx-terminal-attach)
+Exit 3 · HTTP 503 · returned by [`wdx agent attach`](/wdx/docs/reference/cli/agent/#wdx-agent-attach), [`wdx terminal attach`](/wdx/docs/reference/cli/terminal/#wdx-terminal-attach) · and by every command with `--node`
 
 ## daemon_unavailable
 
