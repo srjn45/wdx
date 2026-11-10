@@ -440,7 +440,12 @@ func TestStreamPinged(t *testing.T) {
 	if _, err := out.Read(make([]byte, 1)); err == nil {
 		t.Fatal("the laptop read from a stream it heard no pong on")
 	}
-	if got := laptop.logged("stream closed"); len(got) != 1 || got[0]["reason"] != "no pong" {
+	// The ping's context ended closes the stream, before the link logs why.
+	var got []map[string]any
+	if !waittest.Until(t, func() bool {
+		got = laptop.logged("stream closed")
+		return len(got) == 1 && got[0]["reason"] == "no pong"
+	}) {
 		t.Fatalf("logged %v, want the stream closed for no pong", got)
 	}
 	read := make(chan error, 1)
