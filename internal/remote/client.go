@@ -20,8 +20,8 @@ import (
 const closeTimeout = 10 * time.Second
 
 // Open opens a session from this node into node with the host's code, as
-// its authenticator shows it now, unless one is open already: opened is
-// false then. It fails with the hub's errors from hublink.Dial, or an
+// its authenticator shows it now, unless one is open already, as a stream
+// to the host checks: opened is false then. It fails with the hub's errors from hublink.Dial, or an
 // *Error: remote_access_off, code_not_set_up, code_wrong,
 // node_version_unsupported, node_key_mismatch.
 func (r *Remote) Open(ctx context.Context, node hublink.NodeRef, code string) (s Session, opened bool, err error) {
@@ -29,10 +29,7 @@ func (r *Remote) Open(ctx context.Context, node hublink.NodeRef, code string) (s
 	ctx = logging.NewContext(ctx, log)
 	r.clientOpening.Lock()
 	defer r.clientOpening.Unlock()
-	if s, ok, err := r.outgoingTo(ctx, node.ID); err != nil || ok {
-		if ok {
-			log.Info("session open already", "session_id", s.ID)
-		}
+	if s, ok, err := r.stillOpen(ctx, node.ID); err != nil || ok {
 		return s, false, err
 	}
 	// The code is of the step it arrived in, not of the step the dial
@@ -80,6 +77,27 @@ func (r *Remote) Open(ctx context.Context, node hublink.NodeRef, code string) (s
 		return Session{}, false, err
 	}
 	log.Info("session opened", "session_id", s.ID, "direction", Outgoing, "node_id", node.ID, "node_name", node.Name, "idle_timeout_ms", timeout.Milliseconds())
+	return s, true, nil
+}
+
+// stillOpen is the session open from this node into nodeID, false when
+// there is none: the row is only this node's guess, so a stream checks it
+// with the host, and one the host closed is closed here too.
+func (r *Remote) stillOpen(ctx context.Context, nodeID string) (Session, bool, error) {
+	log := logging.FromContext(ctx)
+	if _, ok, err := r.outgoingTo(ctx, nodeID); err != nil || !ok {
+		return Session{}, false, err
+	}
+	conn, s, err := r.Stream(ctx, nodeID)
+	if e, ok := asError(err); ok && (e.Code == CodeSessionClosed || e.Code == CodeSessionNotFound) {
+		log.Info("session open here closed at the host", "code", e.Code, "reason", ReasonOf(e))
+		return Session{}, false, nil
+	}
+	if err != nil {
+		return Session{}, false, err
+	}
+	conn.Close()
+	log.Info("session open already", "session_id", s.ID)
 	return s, true, nil
 }
 

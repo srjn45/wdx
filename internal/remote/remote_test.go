@@ -406,7 +406,7 @@ func TestSessionOpened(t *testing.T) {
 		t.Errorf("the desktop's audit chain %v, want a session opened", got)
 	}
 
-	// One session per host: no code is needed, nor any stream.
+	// One session per host: no code is needed, once a stream checked it.
 	again, opened, err := laptop.open(desktop, "")
 	if err != nil || opened || again.ID != s.ID {
 		t.Fatalf("open again: %+v %v %v, want unchanged", again, opened, err)
@@ -753,6 +753,33 @@ func TestIdleSessionCloses(t *testing.T) {
 	}
 }
 
+// Claude's proof (REVIEW_COR_CLAUDE C1): a session the host closed is not
+// unchanged on the client, whose row was only its guess; the open goes on
+// with the code, which a wrong one fails.
+func TestStaleOutgoingOpensWithCode(t *testing.T) {
+	t.Parallel()
+	w := newWorld(t)
+	desktop := w.newNode(w.hub.User, "desktop")
+	laptop := w.newNode(w.hub.User, "laptop")
+	desktop.setUp()
+	s := laptop.mustOpen(desktop)
+	desktop.restart()
+
+	_, opened, err := laptop.open(desktop, desktop.wrongCode())
+	wantCode(t, err, CodeCodeWrong)
+	if opened {
+		t.Error("opened with a wrong code")
+	}
+	if got := laptop.closedReason(s.ID); got != ReasonRestart {
+		t.Errorf("the laptop's row closed %q, want restart as the host said", got)
+	}
+	w.clock.Advance(authcode.Period)
+	again := laptop.mustOpen(desktop)
+	if again.ID == s.ID || len(laptop.sessions(Outgoing)) != 1 || len(desktop.sessions(Incoming)) != 1 {
+		t.Errorf("open again: %+v; the laptop has %d, the desktop %d", again, len(laptop.sessions(Outgoing)), len(desktop.sessions(Incoming)))
+	}
+}
+
 func TestRestartClosesIncoming(t *testing.T) {
 	t.Parallel()
 	w := newWorld(t)
@@ -828,6 +855,26 @@ func TestClose(t *testing.T) {
 	wantCode(t, laptop.stream(desktop), CodeSessionClosed)
 	if got := laptop.closedReason(s.ID); got != ReasonClosed {
 		t.Errorf("the laptop's row closed %q, want closed", got)
+	}
+}
+
+// Closing a session the host closed already returns it: telling the host
+// closed the row, for the reason it gave (REVIEW_COR_CLAUDE C1).
+func TestCloseClosedAtHost(t *testing.T) {
+	t.Parallel()
+	w := newWorld(t)
+	desktop := w.newNode(w.hub.User, "desktop")
+	laptop := w.newNode(w.hub.User, "laptop")
+	desktop.setUp()
+	s := laptop.mustOpen(desktop)
+	desktop.restart()
+
+	closed, err := laptop.remote.CloseSession(laptop.ctx, s.ID)
+	if err != nil || closed.ID != s.ID {
+		t.Fatalf("close: %+v %v, want the session", closed, err)
+	}
+	if got := laptop.closedReason(s.ID); got != ReasonRestart {
+		t.Errorf("the laptop's row closed %q, want restart as the host said", got)
 	}
 }
 

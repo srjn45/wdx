@@ -90,16 +90,29 @@ func newHubSessionOpenCmd() *cobra.Command {
 }
 
 // openSessionInto is the session open from this node into the node named
-// name, false when there is none: then a code is needed.
+// name, false when there is none: then a code is needed. This node's row is
+// only its guess, so a stream checks it with the host, which closes it here
+// too when the host closed it.
 func openSessionInto(cmd *cobra.Command, name string) (api.HubSession, bool, error) {
-	list, err := clientOf(cmd).HubSessions(cmd.Context())
+	c := clientOf(cmd)
+	list, err := c.HubSessions(cmd.Context())
 	if err != nil {
 		return api.HubSession{}, false, err
 	}
 	for _, s := range list.Sessions {
-		if s.Direction == api.HubSessionDirectionOutgoing && (strings.EqualFold(s.Node.Name, name) || "id:"+s.Node.Id == name) {
-			return s, true, nil
+		if s.Direction != api.HubSessionDirectionOutgoing || !strings.EqualFold(s.Node.Name, name) && "id:"+s.Node.Id != name {
+			continue
 		}
+		conn, err := c.Connect(cmd.Context(), name)
+		if problemCode(err) == api.ErrorCodeSessionRequired {
+			logging.FromContext(cmd.Context()).Info("session closed at the host", "session_id", s.Id)
+			return api.HubSession{}, false, nil
+		}
+		if err != nil {
+			return api.HubSession{}, false, err
+		}
+		conn.Close()
+		return s, true, nil
 	}
 	return api.HubSession{}, false, nil
 }

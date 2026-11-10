@@ -313,6 +313,67 @@ func TestHubSessionOpenAsks(t *testing.T) {
 	}
 }
 
+// A session the host closed is not unchanged: the open goes on with the
+// code, which a wrong one fails (REVIEW_COR_CLAUDE C1).
+func TestHubSessionOpenClosedAtHost(t *testing.T) {
+	t.Parallel()
+	p := newHubPair(t)
+	p.setUp()
+	p.remoteAccess(true)
+	if _, exit := p.laptop.sessionJSON("hub", "session", "open", "--node", "desktop", "--code", p.code()); exit != clikit.ExitOK {
+		t.Fatalf("open: %d", exit)
+	}
+	if _, exit := p.desktop.sessionJSON("hub", "session", "close", "--all"); exit != clikit.ExitOK {
+		t.Fatalf("close at the host: %d", exit)
+	}
+	v, exit := p.laptop.sessionJSON("hub", "session", "open", "--node", "desktop", "--code", "000000")
+	wantCodeExit(t, v.jsonOutput, exit, api.ErrorCodeCodeWrong, clikit.ExitRejected)
+	if v, _ := p.laptop.sessionJSON("hub", "session", "list"); len(v.Sessions) != 0 {
+		t.Errorf("the laptop's sessions %+v, want the one the host closed closed", v.Sessions)
+	}
+}
+
+// Without --code, a session the host closed is checked too: the code is
+// asked for.
+func TestHubSessionOpenAsksClosedAtHost(t *testing.T) {
+	t.Parallel()
+	p := newHubPair(t)
+	p.setUp()
+	p.remoteAccess(true)
+	if _, exit := p.laptop.sessionJSON("hub", "session", "open", "--node", "desktop", "--code", p.code()); exit != clikit.ExitOK {
+		t.Fatalf("open: %d", exit)
+	}
+	if _, exit := p.desktop.sessionJSON("hub", "session", "close", "--all"); exit != clikit.ExitOK {
+		t.Fatalf("close at the host: %d", exit)
+	}
+	r := p.laptop.startOnTerminal("hub", "session", "open", "--node", "desktop")
+	r.asked(t, "code for desktop: ", 1)
+	r.typeLine(t, p.code())
+	if out := p.laptop.wait(r.running); out.Exit != clikit.ExitOK || !strings.HasPrefix(out.Stdout, "opened a session into node desktop, sess-") {
+		t.Fatalf("%+v", out)
+	}
+}
+
+// Closing a session the host closed already returns it, closed.
+func TestHubSessionCloseClosedAtHost(t *testing.T) {
+	t.Parallel()
+	p := newHubPair(t)
+	p.setUp()
+	p.remoteAccess(true)
+	v, exit := p.laptop.sessionJSON("hub", "session", "open", "--node", "desktop", "--code", p.code())
+	if exit != clikit.ExitOK {
+		t.Fatalf("open: %d", exit)
+	}
+	id := v.Session.Id
+	if _, exit := p.desktop.sessionJSON("hub", "session", "close", "--all"); exit != clikit.ExitOK {
+		t.Fatalf("close at the host: %d", exit)
+	}
+	v, exit = p.laptop.sessionJSON("hub", "session", "close", "--id", id)
+	if exit != clikit.ExitOK || v.Result != string(api.ResultClosed) || v.Session == nil || v.Session.Id != id {
+		t.Fatalf("close: %d %+v %+v", exit, v.jsonOutput, v.Session)
+	}
+}
+
 func TestHubSessionText(t *testing.T) {
 	t.Parallel()
 	p := newHubPair(t)

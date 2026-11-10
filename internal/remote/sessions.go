@@ -186,8 +186,8 @@ func (r *Remote) closeWhere(ctx context.Context, reason Reason, where string, ar
 
 // CloseSession closes the session open of id, either way, and returns it as
 // it was. An outgoing one tells its host first, best effort: the host of
-// an incoming one finds out at its next stream. It fails with
-// CodeSessionNotFound.
+// an incoming one finds out at its next stream. One the host had closed
+// already is returned too. It fails with CodeSessionNotFound.
 func (r *Remote) CloseSession(ctx context.Context, id string) (Session, error) {
 	s, err := r.scanSession(r.opts.DB.QueryRowContext(ctx, "SELECT "+sessionColumns+" FROM hub_sessions WHERE id = ? AND closed_at IS NULL", id).Scan)
 	if errors.Is(err, sql.ErrNoRows) {
@@ -203,8 +203,9 @@ func (r *Remote) CloseSession(ctx context.Context, id string) (Session, error) {
 	if err != nil {
 		return Session{}, err
 	}
-	if len(closed) == 0 { // closed meanwhile
-		return Session{}, refusal(CodeSessionNotFound, "no session %s is open", id)
+	if len(closed) == 0 {
+		// Closed meanwhile: by the host, as telling it found, or here.
+		return s, nil
 	}
 	return closed[0], nil
 }
