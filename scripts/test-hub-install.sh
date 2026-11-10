@@ -7,7 +7,9 @@
 # trusts only what root chose (SEC_FIXES F5, F15): not the release address in
 # the hub's config file, nor a logs/ that is a symlink, and that the log file
 # it opens is the hub's user's. Its releases are this tree, built by dist.sh
-# as three versions for this machine and read from file://; the third runs but
+# as three versions for this machine and read from file://. The first prints
+# its text output in capitals, so that the install works only by reading
+# --json, whose keys are a contract (ARCH_STD_FIXES Q9); the third runs but
 # never serves.
 #
 # It needs root through sudo without a password, and systemd: it installs
@@ -22,7 +24,7 @@ V2=0.0.2
 V3=0.0.3
 NAME=wdx-hub
 HUB_HOME=/var/lib/wdx-hub/.wdx-hub
-# Where the release that never serves keeps the real binary it runs.
+# Where the releases wrapped in a script keep the real binaries they run.
 REAL=/usr/local/lib/wdx-hub-test
 
 cd "$(dirname "$0")/.."
@@ -103,27 +105,57 @@ for v in "$V1" "$V2" "$V3"; do
 	DIST="$DIST" PLATFORMS="linux/$arch" scripts/dist.sh "$v" test >/dev/null
 done
 
+# wrap <version>: replaces the release's binary with the script on stdin, which
+# runs the real one, kept in $REAL/<version>, as $real.
+wrap() {
+	archive="${NAME}_${1}_linux_${arch}.tar.gz"
+	stage="$WORK/wrapped-$1"
+	mkdir -p "$stage"
+	tar -xzf "$DIST/v$1/$archive" -C "$stage"
+	sudo install -D -m 0755 "$stage/$NAME" "$REAL/$1/$NAME"
+	{
+		printf '#!/bin/sh\nreal=%s\n' "$REAL/$1/$NAME"
+		cat
+	} >"$stage/$NAME"
+	chmod 0755 "$stage/$NAME"
+	tar -czf "$DIST/v$1/$archive" -C "$stage" "$NAME" LICENSE NOTICE THIRD-PARTY-NOTICES.md
+	(cd "$DIST/v$1" && sha256sum ./*.tar.gz | sed 's| \./| |' >checksums.txt)
+}
+
+# The first release's setting, version and user print their text in
+# capitals, which install-hub.sh would misread if it parsed text.
+wrap "$V1" <<'EOF'
+case "${1:-}" in
+	setting | version | user)
+		case " $* " in
+			*" --json "*) ;;
+			*)
+				out="$("$real" "$@")"
+				status=$?
+				printf '%s\n' "$out" | tr '[:lower:]' '[:upper:]'
+				exit "$status"
+				;;
+		esac
+		;;
+esac
+exec "$real" "$@"
+EOF
+
 # The third release says it is V3 and writes the settings, so the update's
 # preflight passes, but its serve fails at once.
-archive="${NAME}_${V3}_linux_${arch}.tar.gz"
-stage="$WORK/broken"
-mkdir -p "$stage"
-tar -xzf "$DIST/v$V3/$archive" -C "$stage"
-sudo install -D -m 0755 "$stage/$NAME" "$REAL/$NAME"
-cat >"$stage/$NAME" <<EOF
-#!/bin/sh
-[ "\${1:-}" = serve ] && exit 1
-exec $REAL/$NAME "\$@"
+wrap "$V3" <<'EOF'
+[ "${1:-}" = serve ] && exit 1
+exec "$real" "$@"
 EOF
-chmod 0755 "$stage/$NAME"
-tar -czf "$DIST/v$V3/$archive" -C "$stage" "$NAME" LICENSE NOTICE THIRD-PARTY-NOTICES.md
-(cd "$DIST/v$V3" && sha256sum ./*.tar.gz | sed 's| \./| |' >checksums.txt)
 
 echo "installing $NAME $V1"
 out="$(sudo env WDX_DOWNLOAD_BASE="file://$DIST" WDX_VERSION="$V1" WDX_HUB_PUBLIC_URL=http://localhost:8080 \
 	sh scripts/install-hub.sh </dev/null)" || die "install: $out"
 echo "$out"
-echo "$out" | grep -q 'signup?invite=' || die "install printed no invite"
+echo "$out" | grep -q '^    http://localhost:8080/signup?invite=' || die "install printed no invite"
+echo "$out" | grep -q "answers, version $V1\$" || die "install did not read the version the hub answers"
+echo "$out" | grep -q 'listens on :8443 ' || die "install did not read the node endpoint's port"
+[ "$(sudo "$NAME" version)" = "$(sudo "$NAME" version | tr '[:lower:]' '[:upper:]')" ] || die "$V1 does not print its text in capitals"
 answers "$V1"
 hub user list >/dev/null || die "sudo $NAME user list failed"
 want ".update.current == \"$V1\" and .update.available" update

@@ -71,6 +71,16 @@ as_hub() {
 	(cd / && runuser -u "$HUB_USER" -- env -i HOME="$HUB_DIR" PATH="$SAFE_PATH" "$@")
 }
 
+# json_string prints the string value of key $1 in the JSON object on stdin,
+# or with $2 of key $1 in its object $2, flat as the hub's are; nothing when it
+# is null. wdx-hub's text output is for people and changes between releases;
+# its --json keys are a contract, and the values read here hold no quote.
+json_string() {
+	scope=
+	[ -n "${2:-}" ] && scope="\"$2\": *{[^}]*"
+	tr -d '\n' | sed -n "s/.*$scope\"$1\": *\"\([^\"]*\)\".*/\1/p"
+}
+
 # has_terminal is true when the questions can be asked: the script's stdin is
 # curl's pipe, so they are read from /dev/tty.
 has_terminal() { (: </dev/tty) 2>/dev/null; }
@@ -247,9 +257,9 @@ hub() { as_hub "$new" "$@" --color never; }
 # is not set in the file: an install over a hub set up by hand asks nothing it
 # has a value for.
 setting() {
-	out="$(hub setting get --name "$1" 2>/dev/null)" || return 1
-	printf '%s\n' "$out" | grep -q '^  from  *default$' && return 1
-	printf '%s\n' "$out" | sed -n "1s/^$1 //p"
+	out="$(hub setting get --name "$1" --json 2>/dev/null)" || return 1
+	[ "$(printf '%s\n' "$out" | json_string from)" = default ] && return 1
+	printf '%s\n' "$out" | json_string value
 }
 
 set_setting() {
@@ -348,7 +358,7 @@ write_completion zsh "$ZSH_COMPLETION" && completions=1
 write_completion fish "$FISH_COMPLETION" && completions=1
 
 # The release prints its own unit, as wdx-hub update writes it.
-listen_web="$(hub setting get --name listen.web | sed -n '1s/^listen.web //p')"
+listen_web="$(hub setting get --name listen.web --json | json_string value)"
 set -- service unit
 case "$listen_web" in
 	*:[0-9] | *:[0-9][0-9] | *:[0-9][0-9][0-9] | *:10[01][0-9] | *:102[0-3]) set -- "$@" --privileged-port ;;
@@ -363,15 +373,17 @@ info "installed $NAME $version -> $TARGET, the service $NAME.service"
 # --- wait -----------------------------------------------------------------
 running=
 for _ in $(seq 30); do
-	running="$(as_hub "$TARGET" version --color never 2>/dev/null | grep '^hub ' | grep -v '^hub not running')" && break
+	running="$(as_hub "$TARGET" version --json 2>/dev/null | json_string version hub)"
+	[ -n "$running" ] && break
 	running=
 	sleep 1
 done
 [ -n "$running" ] || die "$NAME did not answer within 30 seconds; see journalctl -u $NAME"
-info "$NAME answers: $running"
+info "$NAME answers, version $running"
 
 # --- what is left to do ---------------------------------------------------
-nodes_port="$(as_hub "$TARGET" setting get --name listen.nodes --color never | sed -n '1s/^listen.nodes .*://p')"
+listen_nodes="$(as_hub "$TARGET" setting get --name listen.nodes --json | json_string value)"
+nodes_port="${listen_nodes##*:}"
 case "$tls" in
 	off)
 		case "$public_url" in
@@ -383,11 +395,10 @@ case "$tls" in
 	files) info "open ports 443, the web endpoint, and $nodes_port, the node endpoint, in the firewall" ;;
 esac
 
-if as_hub "$TARGET" user list --color never | grep -q '^no users'; then
-	invite="$(as_hub "$TARGET" user invite --color never)" || die "could not invite the first user; run: sudo $NAME user invite"
-	until_when="$(printf '%s\n' "$invite" | sed -n '1s/.*until //p')"
-	info "invite the first user with this link, which works once, until $until_when:"
-	printf '%s\n' "$invite" | sed -n '2s/^/    /p'
+if as_hub "$TARGET" user list --json | tr -d '\n' | grep -q '"users": *\(\[ *\]\|null\)'; then
+	invite="$(as_hub "$TARGET" user invite --json)" || die "could not invite the first user; run: sudo $NAME user invite"
+	info "invite the first user with this link, which works once, until $(printf '%s\n' "$invite" | json_string expires_at invite):"
+	printf '    %s\n' "$(printf '%s\n' "$invite" | json_string link invite)"
 fi
 info "back up $HUB_HOME/config.yaml: it holds the master key, without which the hub's secrets are lost"
 info "run admin commands with sudo: sudo $NAME user list"
