@@ -476,3 +476,43 @@ func TestRemoteAgentTombstone(t *testing.T) {
 		t.Fatalf("the tab opened on the tombstone closed: %v", l.tabs)
 	}
 }
+
+// TestRemoteReopenReadsFailed: once a session opens again, every view that
+// holds an error, which the session closing may have caused, is read again,
+// though nothing it depends on changed; one read fine is not. Antigravity's C5.
+func TestRemoteReopenReadsFailed(t *testing.T) {
+	t.Parallel()
+	m, _ := remoteModel(style.New(false), noSession)
+	worktrees := []api.WorktreeStatus{{Name: "main", Path: "/r"}, {Name: "feat", Path: "/r/feat"}}
+	m.following.project.WorktreeStatuses = &worktrees
+	l := m.list()
+	failed, fine := committedTab("feat"), committedTab("main")
+	l.openTab(fine)
+	m.diffSync()
+	m.Update(diffLoaded{projectID: "proj-demo", tab: fine, committed: &api.WorktreeDiff{}})
+	l.openTab(failed)
+	m.diffSync()
+	m.Update(diffLoaded{projectID: "proj-demo", tab: failed, err: problem(api.ErrorCodeSessionClosed, nil)})
+	l.active = planTab("plan-a") // not shown, so that nothing reads them before the session opens
+	l.planViews = map[string]*planView{planTab("plan-a"): {asked: true, err: "session to desktop is closed"}}
+	l.code.files = map[string]*codeFiles{"main": {asked: true, failed: true}}
+	if v := l.diffs[failed]; v.err == "" || !v.asked || v.loading {
+		t.Fatalf("the failed diff: %+v", v)
+	}
+
+	p := *m.following.project
+	m.remote.ended = &sessionEnded{}
+	m.Update(sessionOpened{})
+	if l.planViews[planTab("plan-a")].asked || l.code.files["main"].asked {
+		t.Errorf("the plan or the files are not read again: plan %+v, files %+v", l.planViews[planTab("plan-a")], l.code.files["main"])
+	}
+	if !l.diffs[fine].asked {
+		t.Error("a diff read fine is read again")
+	}
+	l.active = failed
+	m.Update(projectEvent{gen: m.following.gen, event: client.ProjectEvent{Project: p}})
+	if v := l.diffs[failed]; !v.loading {
+		t.Fatalf("the failed diff is not read again: %+v", v)
+	}
+}
+

@@ -279,11 +279,35 @@ func (m *Model) sessionWasOpened(msg sessionOpened) tea.Cmd {
 	m.log.Info("session opened again", "node", m.node, "project", m.shown)
 	r.ended, r.lostSince, r.lostErr = nil, time.Time{}, nil
 	m.detachAll()
+	m.readFailedAgain()
 	cmds := []tea.Cmd{m.listProjects()}
 	if m.shown != "" {
 		cmds = append(cmds, m.follow(m.shown))
 	}
 	return tea.Batch(cmds...)
+}
+
+// readFailedAgain has every view that holds an error read again once it shows, as
+// what failed may have been the session: what it depends on need not change. The
+// stats are read again by the first event of the project's stream.
+func (m *Model) readFailedAgain() {
+	for _, l := range m.agentLists {
+		for _, v := range l.diffs {
+			if v.err != "" {
+				v.asked = false
+			}
+		}
+		for _, v := range l.planViews {
+			if v.err != "" {
+				v.asked = false
+			}
+		}
+		for _, f := range l.code.files {
+			if f.failed {
+				f.asked = false
+			}
+		}
+	}
 }
 
 // drawEnded draws the message over the whole window.
