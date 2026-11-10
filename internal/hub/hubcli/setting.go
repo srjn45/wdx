@@ -1,8 +1,10 @@
 package hubcli
 
 import (
+	"bufio"
 	"errors"
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 	"strings"
@@ -101,10 +103,13 @@ func newSettingSetCmd() *cobra.Command {
 			"the file again: log.level and the otel settings take effect at once, the\n" +
 			"listeners, web.tls and public_url when the hub next starts. A variable\n" +
 			hubconfig.EnvPrefix + "<KEY> set in the hub's environment wins over the file. The file is\n" +
-			"written anew, as by " + name + " setting write, so comments of your own are not kept.",
+			"written anew, as by " + name + " setting write, so comments of your own are not kept.\n" +
+			"With --value - the value is read from stdin, one line, so that a secret such\n" +
+			"as master_key is in no command line.",
 		Example: clikit.Examples(
 			"Log in more detail", name+" setting set --name log.level --value debug",
 			"Name the address browsers and nodes reach the hub at", name+" setting set --name public_url --value https://hub.example.com",
+			"Set the master key from stdin", name+" setting set --name master_key --value -",
 		),
 		Args: cobra.NoArgs,
 		Annotations: map[string]string{
@@ -124,6 +129,11 @@ func newSettingSetCmd() *cobra.Command {
 			if s.EnvOnly {
 				return clikit.NotInFile(s)
 			}
+			if value == valueFromStdin {
+				if value, err = readValue(cmd); err != nil {
+					return err
+				}
+			}
 			env := envOf(cmd)
 			home := env.Config.Home
 			if err := hubconfig.MakeHome(home); err != nil {
@@ -140,13 +150,13 @@ func newSettingSetCmd() *cobra.Command {
 			if r.Changed {
 				result = resultUpdated
 			}
-			log.Info("setting "+result, "name", s.Key, "value", value, "path", hubconfig.ConfigPath(home), "dropped", r.Dropped)
 			// What was just written loads: Set checked it and moved away the
 			// keys no setting has.
 			cfg, err := hubconfig.Load(homeEnv(env))
 			if err != nil {
 				return err
 			}
+			log.Info("setting "+result, "name", s.Key, "value", cfg.Shown(s.Key), "path", hubconfig.ConfigPath(home), "dropped", r.Dropped)
 			if from := cfg.From[s.Key]; from == s.EnvVar {
 				st := clikit.StderrStyle(cmd)
 				fmt.Fprintf(cmd.ErrOrStderr(), "%s: %s saved, but %s is set and wins over the file\n", name, st.Warning("warning:"), s.EnvVar)
@@ -155,12 +165,29 @@ func newSettingSetCmd() *cobra.Command {
 		},
 	}
 	cmd.Flags().StringVar(&key, "name", "", "`key` of the setting, such as log.level")
-	cmd.Flags().StringVar(&value, "value", "", "the new `value`")
+	cmd.Flags().StringVar(&value, "value", "", "the new `value`, or - to read it from stdin")
 	cmd.MarkFlagRequired("name")
 	cmd.MarkFlagRequired("value")
+	clikit.MeasureFlag(cmd, "value")
 	clikit.CompleteFlag(cmd, "name", clikit.CompleteSettings(hubconfig.Settings(), true))
 	clikit.CompleteFlag(cmd, "value", cobra.NoFileCompletions)
 	return cmd
+}
+
+// valueFromStdin is the --value that has setting set read the value from
+// stdin. No setting takes it as its value.
+const valueFromStdin = "-"
+
+// readValue reads the value of setting set from stdin: one line, without its
+// line ending.
+func readValue(cmd *cobra.Command) (string, error) {
+	line, err := bufio.NewReader(cmd.InOrStdin()).ReadString('\n')
+	if err != nil && (!errors.Is(err, io.EOF) || line == "") {
+		return "", &clikit.UsageError{Err: fmt.Errorf("--value -: no value on stdin: %w", err)}
+	}
+	line = strings.TrimSuffix(strings.TrimSuffix(line, "\n"), "\r")
+	logging.FromContext(cmd.Context()).Info("value read from stdin", "bytes", len(line))
+	return line, nil
 }
 
 // reloadHub has the running hub read the config file again and says what

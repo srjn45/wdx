@@ -116,6 +116,14 @@ $ journalctl -u wdx-hub
 
 Disabling or removing a user, as removing a node, cuts it off at once: the hub closes its control connections and every stream open between its nodes, and the nodes close their sessions.
 
+<Since v="0.5.0" /> `wdx-hub setting set --value -` reads the value from stdin, one line, so that a secret is in no command line, which `ps` shows to every user:
+
+```console
+$ head -c 32 /dev/urandom | base64 | sudo wdx-hub setting set --name master_key --value -
+```
+
+Only replace a master key that has sealed nothing yet: the secrets sealed under the old one are lost with it.
+
 `sudo -u wdx-hub -H wdx-hub …` works too. Each has `--help`, and `--json` as wdx's commands do.
 
 ### Tab completion
@@ -165,6 +173,7 @@ It puts the kept version back, with the config file as it was. The database stay
 ## Backups and the master key
 
 - **The master key,** in the config file, seals the secrets the hub keeps: its users' authenticator secrets and the keys of their docs. The install made it and never printed it. Without it they are lost for good, with any backup of the database. Keep a copy of `/var/lib/wdx-hub/.wdx-hub/config.yaml` somewhere safe, apart from the database's backups.
+- **A hub installed by a release before 0.5.0** has its master key in the log of the day it was installed, `/var/lib/wdx-hub/.wdx-hub/logs/wdx-hub-<date>.log`, as has any day a key was set with `wdx-hub setting set`. Delete those files, `sudo rm /var/lib/wdx-hub/.wdx-hub/logs/wdx-hub-<date>.log`, since the key cannot be changed; the hub deletes them anyway once they are older than `log.retention_days`, 7 days by default. Since 0.5.0, `setting set` logs only the length of the value it is given, and the install hands the key over on stdin, so that it is in no command line either.
 - **Each update** backs the database up to `/var/lib/wdx-hub/.wdx-hub/backups/hub-<version>.db`, and keeps the last 3.
 - **Any time,** back it up while the hub runs, to a path the `wdx-hub` user can write:
 

@@ -36,10 +36,22 @@ type Output struct {
 
 // Logged is where a test home's runs are logged, and the messages that
 // count the requests a run made to a server: one it had answered, one it gave
-// up on, and the server's end of one, logged under the run's debug id.
+// up on, and the server's end of one, logged under the run's debug id. Root,
+// when not nil, builds the program's tree, whose commands say the flags they
+// measure in the log.
 type Logged struct {
 	Dir                       string
 	Called, Abandoned, Served string
+	Root                      func() *cobra.Command
+}
+
+// argsLogged is args as the program logs them in command received.
+func (logs Logged) argsLogged(args []string) []string {
+	root := &cobra.Command{}
+	if logs.Root != nil {
+		root = logs.Root()
+	}
+	return clikit.ArgsLogged(root, args)
 }
 
 // LogLine is a line of a log, as far as the checks read it.
@@ -178,13 +190,14 @@ func WantLogged(t *testing.T, logs Logged, args []string, out Output, redact fun
 	// Runs of the same command line in one home are sequential, so the last
 	// one received is this one; a server started in the home runs others.
 	pid := cmp.Or(out.Pid, os.Getpid())
+	received := logs.argsLogged(args)
 	var id string
 	for _, l := range lines {
 		if l.Msg != "command received" || l.Pid != pid {
 			continue
 		}
-		var received []string
-		if json.Unmarshal(l.Args, &received) == nil && slices.Equal(received, clikit.ArgsLogged(args)) {
+		var logged []string
+		if json.Unmarshal(l.Args, &logged) == nil && slices.Equal(logged, received) {
 			id = l.DebugID
 		}
 	}

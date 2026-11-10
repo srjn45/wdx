@@ -29,7 +29,7 @@ func startup(t *testing.T, home string, args ...string) clikittest.Output {
 	env.Config = cfg
 	exit := Run(context.Background(), args, env)
 	out := clikittest.Output{Exit: exit, Stdout: stdout.String(), Stderr: stderr.String()}
-	logs := clikittest.Logged{Dir: hubconfig.LogsDir(home), Called: "hub called", Abandoned: "hub unreachable", Served: "request returned"}
+	logs := clikittest.Logged{Dir: hubconfig.LogsDir(home), Called: "hub called", Abandoned: "hub unreachable", Served: "request returned", Root: newRoot}
 	clikittest.WantLogged(t, logs, args, out, measureLinks)
 	return out
 }

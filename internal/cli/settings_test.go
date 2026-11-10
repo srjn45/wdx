@@ -215,6 +215,28 @@ func TestSettingSet(t *testing.T) {
 	}
 }
 
+// setting set measures --value in command received and command started: it
+// can be a secret.
+func TestSettingSetValueMeasured(t *testing.T) {
+	t.Parallel()
+	home := t.TempDir()
+	if _, exit := wdxJSON(t, home, "setting", "set", "--name", "update.channel", "--value", "dev"); exit != clikit.ExitOK {
+		t.Fatalf("want it set, got exit %d", exit)
+	}
+	var received, started bool
+	for _, l := range logLines(t, home, "") {
+		switch l["msg"] {
+		case "command received":
+			received = slices.Equal(l["args"].([]any), []any{"setting", "set", "--name", "update.channel", "--value", "<3 bytes>", "--json"})
+		case "command started":
+			started = l["flags"].(map[string]any)["value"] == "<3 bytes>"
+		}
+	}
+	if !received || !started {
+		t.Fatalf("want --value measured, got received %v, started %v: %v", received, started, logLines(t, home, ""))
+	}
+}
+
 func TestSettingSetCreatesFile(t *testing.T) {
 	t.Parallel()
 	home := t.TempDir()

@@ -64,7 +64,7 @@ sudo install -m 0755 wdx-hub /usr/local/bin/wdx-hub
 sudo install -m 0644 deploy/hub/wdx-hub.service /etc/systemd/system/wdx-hub.service
 sudo systemctl daemon-reload
 sudo wdx-hub setting set --name public_url --value https://hub.example.com
-sudo wdx-hub setting set --name master_key --value "$(head -c 32 /dev/urandom | base64)"
+head -c 32 /dev/urandom | base64 | sudo wdx-hub setting set --name master_key --value -
 sudo systemctl enable --now wdx-hub
 journalctl -u wdx-hub
 sudo wdx-hub version

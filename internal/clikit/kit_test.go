@@ -126,10 +126,10 @@ func (r greetResult) Text(w io.Writer, st style.Style) {
 }
 
 func newGreetCmd() *cobra.Command {
-	var name, dir, prompt, code string
+	var name, dir, prompt, code, token string
 	var yes, no bool
 	cmd := &cobra.Command{
-		Use:   "greet --name <name> [--yes | --no] [--dir <path>] [--prompt <text>] [--code <code>]",
+		Use:   "greet --name <name> [--yes | --no] [--dir <path>] [--prompt <text>] [--code <code>] [--token <token>]",
 		Short: "Greet someone, once you say yes",
 		Example: clikit.Examples(
 			"Greet ann", "kit greet --name ann --yes",
@@ -181,6 +181,8 @@ func newGreetCmd() *cobra.Command {
 	cmd.Flags().StringVar(&dir, "dir", "", "`path` to say where")
 	cmd.Flags().StringVar(&prompt, "prompt", "", "`text` never logged")
 	cmd.Flags().StringVar(&code, "code", "", "`code` never logged")
+	cmd.Flags().StringVar(&token, "token", "", "`token` measured by this command alone")
+	clikit.MeasureFlag(cmd, "token")
 	cmd.MarkFlagRequired("name")
 	cmd.MarkFlagsMutuallyExclusive("yes", "no")
 	clikit.CompleteFlag(cmd, "name", func(*cobra.Command, []string, string) ([]cobra.Completion, cobra.ShellCompDirective) {
@@ -189,6 +191,7 @@ func newGreetCmd() *cobra.Command {
 	clikit.CompleteFlag(cmd, "dir", clikit.CompleteDirs)
 	clikit.CompleteFlag(cmd, "prompt", cobra.NoFileCompletions)
 	clikit.CompleteFlag(cmd, "code", cobra.NoFileCompletions)
+	clikit.CompleteFlag(cmd, "token", cobra.NoFileCompletions)
 	return cmd
 }
 
@@ -323,7 +326,7 @@ func kitFailing(t *testing.T, home string, failure error, adjust func(*clikit.En
 	}
 	exit := clikit.Run(context.Background(), args, env, newKit(failure))
 	out := clikittest.Output{Exit: exit, Stdout: stdout.String(), Stderr: stderr.String()}
-	clikittest.WantLogged(t, clikittest.Logged{Dir: logsDir(home)}, args, out, nil)
+	clikittest.WantLogged(t, clikittest.Logged{Dir: logsDir(home), Root: newKit(failure)}, args, out, nil)
 	return out
 }
 

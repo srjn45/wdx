@@ -115,9 +115,8 @@ func Run(ctx context.Context, args []string, env Env, newRoot func() *cobra.Comm
 		log = logging.Quiet(log)
 		env.Stdout = io.MultiWriter(env.Stdout, &printed)
 	}
-	logReceived(log, args, env)
-
 	root := newRoot()
+	logReceived(log, root, args, env)
 	if completion {
 		registerCompletions(root)
 	}

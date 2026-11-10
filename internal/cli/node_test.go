@@ -55,9 +55,10 @@ func (p *hubPair) onLaptop(dir string, adjust func(*Env), args ...string) clikit
 func runID(t *testing.T, home string, args []string) string {
 	t.Helper()
 	lines := clikittest.LogLines(t, identity.LogsDir(home), args)
+	logged := clikit.ArgsLogged(testRoot(), args)
 	for i := len(lines) - 1; i >= 0; i-- {
 		var received []string
-		if l := lines[i]; l.Msg == "command received" && json.Unmarshal(l.Args, &received) == nil && slices.Equal(received, clikit.ArgsLogged(args)) {
+		if l := lines[i]; l.Msg == "command received" && json.Unmarshal(l.Args, &received) == nil && slices.Equal(received, logged) {
 			return l.DebugID
 		}
 	}

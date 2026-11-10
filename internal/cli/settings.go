@@ -126,13 +126,13 @@ func newSettingSetCmd() *cobra.Command {
 			if r.Changed {
 				result = resultUpdated
 			}
-			log.Info("setting "+result, "name", s.Key, "value", value, "path", identity.ConfigPath(home), "dropped", r.Dropped)
 			// What was just written loads: Rewrite checked it and moved away
 			// the keys no setting has.
 			cfg, err := config.LoadHome(home)
 			if err != nil {
 				return err
 			}
+			log.Info("setting "+result, "name", s.Key, "value", cfg.Shown(s.Key), "path", identity.ConfigPath(home), "dropped", r.Dropped)
 			return clikit.PrintResult(cmd, clikit.SettingSet{Result: result, Setting: viewOf(cfg, s), Reload: reloadDaemon(cmd), DroppedSettings: r.Dropped, Server: "the daemon"})
 		},
 	}
@@ -140,6 +140,7 @@ func newSettingSetCmd() *cobra.Command {
 	cmd.Flags().StringVar(&value, "value", "", "the new `value`")
 	cmd.MarkFlagRequired("name")
 	cmd.MarkFlagRequired("value")
+	clikit.MeasureFlag(cmd, "value")
 	clikit.CompleteFlag(cmd, "name", clikit.CompleteSettings(config.Settings(), true))
 	clikit.CompleteFlag(cmd, "value", cobra.NoFileCompletions)
 	return cmd

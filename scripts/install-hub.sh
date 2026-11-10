@@ -304,9 +304,11 @@ EOF
 	set_setting web.tls "$tls"
 fi
 
-# Never printed: the hub's secrets are sealed under it.
+# Never printed, and in no command line, which the hub's log and ps show: the
+# hub's secrets are sealed under it.
 if ! setting master_key >/dev/null; then
-	set_setting master_key "$(head -c 32 /dev/urandom | base64)"
+	head -c 32 /dev/urandom | base64 | hub setting set --name master_key --value - >/dev/null ||
+		die "could not set master_key"
 	info "made the master key"
 fi
 set_setting update.channel "$channel"

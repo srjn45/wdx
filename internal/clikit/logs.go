@@ -33,15 +33,16 @@ type nopCloser struct{ io.Writer }
 
 func (nopCloser) Close() error { return nil }
 
-// logReceived logs the command line as given and what else decides how it
-// runs: every setting with where it came from.
-func logReceived(log *slog.Logger, args []string, env Env) {
+// logReceived logs the command line as given, with the flags root's command
+// measures measured, and what else decides how it runs: every setting with
+// where it came from.
+func logReceived(log *slog.Logger, root *cobra.Command, args []string, env Env) {
 	var settings []any
 	for _, s := range env.Settings {
 		settings = append(settings, slog.Group(s.Key, "value", s.Value, "from", s.From))
 	}
 	log.Info("command received",
-		"args", ArgsLogged(args),
+		"args", ArgsLogged(root, args),
 		"version", env.Program.Version,
 		"commit", env.Program.Commit,
 		"cwd", env.WorkDir,
@@ -66,15 +67,43 @@ const (
 	CodeFlag   = "code"
 )
 
-// secretFlags are the flags measured in the log.
+// secretFlags are the flags measured in the log of every command.
 var secretFlags = []string{PromptFlag, CodeFlag}
 
+// measuredAnnotation marks a flag of one command that is measured in the log.
+const measuredAnnotation = "clikit_measured"
+
+// MeasureFlag has cmd's flag name measured in the log instead of logged, in
+// command received and command started: its value can be a secret.
+func MeasureFlag(cmd *cobra.Command, name string) {
+	if err := cmd.Flags().SetAnnotation(name, measuredAnnotation, []string{"true"}); err != nil {
+		panic(err)
+	}
+}
+
+func isMeasured(f *pflag.Flag) bool {
+	return slices.Contains(secretFlags, f.Name) || f.Annotations[measuredAnnotation] != nil
+}
+
 // ArgsLogged is args as command received logs them: with the values of
-// --prompt and --code measured instead.
-func ArgsLogged(args []string) []string {
+// --prompt, --code and the flags the command args run in root measures
+// measured instead.
+func ArgsLogged(root *cobra.Command, args []string) []string {
+	flags := slices.Clone(secretFlags)
+	find := args
+	if isCompletion(args) {
+		find = args[1:]
+	}
+	if cmd, _, err := root.Find(find); err == nil {
+		cmd.Flags().VisitAll(func(f *pflag.Flag) {
+			if isMeasured(f) && !slices.Contains(flags, f.Name) {
+				flags = append(flags, f.Name)
+			}
+		})
+	}
 	logged := slices.Clone(args)
 	for i, arg := range logged {
-		for _, flag := range secretFlags {
+		for _, flag := range flags {
 			if arg == "--"+flag && i+1 < len(logged) {
 				logged[i+1] = measured(logged[i+1])
 			}
@@ -96,7 +125,7 @@ func logStarted(cmd *cobra.Command, args []string) {
 	set := []string{}
 	cmd.Flags().VisitAll(func(f *pflag.Flag) {
 		flags[f.Name] = f.Value.String()
-		if slices.Contains(secretFlags, f.Name) {
+		if isMeasured(f) {
 			flags[f.Name] = measured(f.Value.String())
 		}
 		if f.Changed {

@@ -161,7 +161,7 @@ func hubWith(t *testing.T, home string, adjust func(*Env), args ...string) cliki
 	}
 	exit := Run(context.Background(), args, env)
 	out := clikittest.Output{Exit: exit, Stdout: stdout.String(), Stderr: stderr.String()}
-	logs := clikittest.Logged{Dir: hubconfig.LogsDir(home), Called: "hub called", Abandoned: "hub unreachable", Served: "request returned"}
+	logs := clikittest.Logged{Dir: hubconfig.LogsDir(home), Called: "hub called", Abandoned: "hub unreachable", Served: "request returned", Root: newRoot}
 	clikittest.WantLogged(t, logs, args, out, measureLinks)
 	return out
 }
@@ -382,6 +382,42 @@ func TestSettingSetRefused(t *testing.T) {
 	if got := load(t, home); got.Value("log.level") != "debug" || got.WebTLS != hubconfig.TLSOff {
 		t.Fatalf("want nothing saved, got %+v", got)
 	}
+}
+
+// A secret set with --value or read from stdin with --value - is saved, and
+// no part of it reaches the day's log.
+func TestSettingSetSecretNotLogged(t *testing.T) {
+	t.Parallel()
+	for _, fromStdin := range []bool{false, true} {
+		home := newHome(t)
+		key := make([]byte, hubconfig.MasterKeySize)
+		if _, err := rand.Read(key); err != nil {
+			t.Fatal(err)
+		}
+		secret := base64.StdEncoding.EncodeToString(key)
+		args := []string{"setting", "set", "--name", "master_key", "--value", secret, "--json"}
+		stdin := ""
+		if fromStdin {
+			args[5], stdin = "-", secret+"\n"
+		}
+		out := hubWith(t, home, func(env *Env) { env.Stdin = strings.NewReader(stdin) }, args...)
+		var v map[string]any
+		if err := json.Unmarshal(clikittest.JSON(t, args, out, codes), &v); err != nil {
+			t.Fatal(err)
+		}
+		want(t, v, out.Exit, clikit.ExitOK, "result", resultUpdated)
+		if got := load(t, home); !bytes.Equal(got.MasterKey, key) {
+			t.Fatalf("stdin %v: want the key saved, got %v", fromStdin, v)
+		}
+		wantNotLogged(t, home, secret)
+	}
+}
+
+// --value - with nothing on stdin is refused.
+func TestSettingSetEmptyStdin(t *testing.T) {
+	t.Parallel()
+	v, exit := hubJSON(t, newHome(t), "setting", "set", "--name", "log.level", "--value", "-")
+	want(t, v, exit, clikit.ExitUsage, "code", clikit.CodeUsage)
 }
 
 // A fresh home, its public_url not set, takes it from setting set, the one

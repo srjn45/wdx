@@ -391,3 +391,19 @@ func TestUpdateBaseURL(t *testing.T) {
 		}
 	}
 }
+
+// No setting takes a bare -, which setting set --value reads as stdin.
+func TestNoSettingTakesDash(t *testing.T) {
+	t.Parallel()
+	for _, s := range Settings() {
+		if s.EnvOnly {
+			continue
+		}
+		home, e := homeWith(t, "public_url: https://hub.example.com\n")
+		_, err := Set(home, s.Key, "-", e.getenv)
+		invalid, ok := errors.AsType[*settings.Error](err)
+		if !ok || !slices.ContainsFunc(invalid.Problems, func(p settings.Problem) bool { return p.Key == s.Key }) {
+			t.Errorf("%s: want - refused, got %v", s.Key, err)
+		}
+	}
+}

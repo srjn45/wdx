@@ -626,6 +626,33 @@ func TestCodeMeasured(t *testing.T) {
 	}
 }
 
+// A flag a command measures is measured in its run alone.
+func TestFlagMeasured(t *testing.T) {
+	t.Parallel()
+	home := kitHome(t)
+	kit(t, home, nil, "greet", "--name", "ann", "--yes", "--token", "hunter22")
+	kit(t, home, nil, "greet", "--name", "ann", "--yes", "--token=hunter222")
+	for _, l := range logged(t, home) {
+		if b, _ := json.Marshal(l); strings.Contains(string(b), "hunter") {
+			t.Fatalf("a token logged: %s", b)
+		}
+	}
+	received := loggedMsg(t, home, "command received")
+	if args := received[0]["args"].([]any); args[len(args)-1] != "<8 bytes>" {
+		t.Fatalf("want the token measured, got %v", args)
+	}
+	if args := received[1]["args"].([]any); args[len(args)-1] != "--token=<9 bytes>" {
+		t.Fatalf("want the token measured, got %v", args)
+	}
+	if flags := loggedMsg(t, home, "command started")[0]["flags"].(map[string]any); flags["token"] != "<8 bytes>" {
+		t.Fatalf("want the token flag measured, got %v", flags)
+	}
+	root := clikit.NewRoot(clikit.Root{Use: "kit", Short: "Run the test kit", Long: "kit tests clikit."})
+	if got := clikit.ArgsLogged(root, []string{"greet", "--token", "x"}); got[2] != "x" {
+		t.Fatalf("want another tree's --token logged, got %v", got)
+	}
+}
+
 func TestAbsolute(t *testing.T) {
 	t.Parallel()
 	for _, tc := range []struct{ dir, workDir, want string }{

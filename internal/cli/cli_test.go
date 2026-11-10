@@ -270,8 +270,11 @@ func runWdx(ctx context.Context, t *testing.T, home string, adjust func(*Env), a
 // wantLogged checks that wdx and its daemon logged the run of args in home.
 func wantLogged(t *testing.T, home string, args []string, out clikittest.Output) {
 	t.Helper()
-	clikittest.WantLogged(t, clikittest.Logged{Dir: identity.LogsDir(home), Called: "daemon called", Abandoned: "daemon unreachable", Served: "request returned"}, args, out, redacted(args, out))
+	clikittest.WantLogged(t, clikittest.Logged{Dir: identity.LogsDir(home), Called: "daemon called", Abandoned: "daemon unreachable", Served: "request returned", Root: testRoot}, args, out, redacted(args, out))
 }
+
+// testRoot is wdx's tree, for what its commands measure in the log.
+func testRoot() *cobra.Command { return newRoot(config.Default()) }
 
 // redacted turns what the run of args printed into what it logged: what wdx
 // measures or counts rather than logs.

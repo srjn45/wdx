@@ -542,3 +542,6 @@ func Settings() []settings.Setting { return table.Describe() }
 
 // Value returns the setting key formatted as a source would give it.
 func (c Config) Value(key string) string { return table.Value(c, key) }
+
+// Shown is Value as it may be shown: [secret] for a secret setting that is set.
+func (c Config) Shown(key string) string { return table.Shown(c, key) }
