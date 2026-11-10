@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"compress/gzip"
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -391,5 +392,104 @@ func TestPushLogoutAndLogin(t *testing.T) {
 	}
 	if got := hubContent(t, h, "doc-a", 2); got != "two" {
 		t.Fatalf("hub has %q", got)
+	}
+}
+
+// A batch the hub refuses whole as usage holds a change the spec does not
+// allow, here one of a kind a later node sends: it is sent again one change at
+// a time, and only that change's doc is held.
+func TestPushRefusedWhole(t *testing.T) {
+	t.Parallel()
+	h := hubtest.Start(t)
+	outbox := newMemOutbox()
+	n := pushNode(t, h, outbox, nil)
+	n.loggedIn("desktop")
+	renamed := metadata("doc-b", "b")
+	renamed.Change = "renamed"
+	outbox.add(revision(t, "doc-a", "a", 1, "a"), revision(t, "doc-b", "b", 1, "b"), renamed, revision(t, "doc-b", "b", 2, "b2"), revision(t, "doc-c", "c", 1, "c"))
+	n.link.Kick()
+	outbox.wait(t, "doc-b renamed failed:usage", "doc-b revision")
+	for _, id := range []string{"doc-a", "doc-b", "doc-c"} {
+		if got := hubContent(t, h, id, 1); got != id[len("doc-"):] {
+			t.Fatalf("hub has %q for %s", got, id)
+		}
+	}
+	if whole := n.logged("docs push refused whole"); len(whole) != 1 || whole[0]["sent"] != 5.0 {
+		t.Fatalf("whole refusals logged: %v", whole)
+	}
+	if failed := n.logged("docs push failed"); len(failed) != 0 {
+		t.Errorf("pushes failed %d times, want none: %v", len(failed), failed)
+	}
+}
+
+// refuseOnce answers the next push, once armed, as a hub that refuses the
+// node's version does, before the hub sees it.
+type refuseOnce struct {
+	next  http.RoundTripper
+	armed atomic.Bool
+}
+
+func (r *refuseOnce) RoundTrip(req *http.Request) (*http.Response, error) {
+	if req.URL.Path != "/v1/docs/changes" || !r.armed.CompareAndSwap(true, false) {
+		return r.next.RoundTrip(req)
+	}
+	if req.Body != nil {
+		_, _ = io.Copy(io.Discard, req.Body)
+		req.Body.Close()
+	}
+	p := hubapi.NewProblem(hubapi.ErrorCodeNodeVersionUnsupported, "the node speaks an older version")
+	b, err := json.Marshal(p)
+	if err != nil {
+		return nil, err
+	}
+	return &http.Response{
+		StatusCode: p.Status, Status: http.StatusText(p.Status), Request: req,
+		Header: http.Header{"Content-Type": []string{"application/problem+json"}},
+		Body:   io.NopCloser(bytes.NewReader(b)), ContentLength: int64(len(b)),
+	}, nil
+}
+
+// A batch refused whole for the node, not for a change, marks no doc failed:
+// it is sent again once the hub takes it.
+func TestPushNodeRefused(t *testing.T) {
+	t.Parallel()
+	h := hubtest.Start(t)
+	outbox := newMemOutbox()
+	refuse := &refuseOnce{}
+	n := pushNode(t, h, outbox, func(o *Options) {
+		o.WrapNodes = func(rt http.RoundTripper) http.RoundTripper { refuse.next = rt; return refuse }
+	})
+	n.loggedIn("desktop")
+	refuse.armed.Store(true)
+	outbox.add(revision(t, "doc-a", "a", 1, "one"), revision(t, "doc-b", "b", 1, "two"))
+	n.link.Kick()
+	outbox.wait(t)
+	if refuse.armed.Load() {
+		t.Fatal("no push was refused")
+	}
+	if failed := n.logged("docs push failed"); len(failed) != 1 {
+		t.Fatalf("pushes failed %d times, want once", len(failed))
+	}
+	if refusals := n.logged("doc push refused"); len(refusals) != 0 {
+		t.Fatalf("docs refused: %v", refusals)
+	}
+	if got := hubContent(t, h, "doc-b", 1); got != "two" {
+		t.Fatalf("hub has %q", got)
+	}
+}
+
+func TestRetried(t *testing.T) {
+	t.Parallel()
+	for code, want := range map[hubapi.ErrorCode]bool{
+		hubapi.ErrorCodeInternal:        true,
+		hubapi.ErrorCodeHubUnavailable:  true,
+		hubapi.ErrorCodeRevisionGap:     false,
+		hubapi.ErrorCodeInvalidArgument: false,
+		"a_code_of_a_later_hub":         false,
+		"":                              false,
+	} {
+		if got := retried(code); got != want {
+			t.Errorf("retried(%q) = %v, want %v", code, got, want)
+		}
 	}
 }
