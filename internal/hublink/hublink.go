@@ -17,6 +17,7 @@ import (
 	"crypto/tls"
 	"errors"
 	"fmt"
+	"net"
 	"net/http"
 	"runtime"
 	"sync"
@@ -41,8 +42,16 @@ const (
 	DefaultPingInterval = 30 * time.Second
 	// requestTimeout is how long a request to the web endpoint may take.
 	requestTimeout = 30 * time.Second
+	// DefaultSetupTimeout is how long reaching another node may take: asking
+	// the hub for a stream and joining it, or joining one the hub says waits.
+	DefaultSetupTimeout = 30 * time.Second
 	// dialTimeout is how long opening the control connection may take.
 	dialTimeout = 30 * time.Second
+	// nodeDialTimeout and nodeHeaderTimeout bound connecting to the node
+	// endpoint and waiting for its answer's headers; nothing bounds a whole
+	// request, as a stream outlives it.
+	nodeDialTimeout   = 10 * time.Second
+	nodeHeaderTimeout = 15 * time.Second
 )
 
 // Clock is the time a link goes by: when logins expire and how long it
@@ -71,6 +80,8 @@ type Options struct {
 	MinBackoff, MaxBackoff time.Duration
 	LogoutTimeout          time.Duration
 	PingInterval           time.Duration
+	// SetupTimeout bounds reaching another node; see DefaultSetupTimeout.
+	SetupTimeout time.Duration
 	// Outbox is the docs' changes the link pushes to the hub while
 	// connected; nil pushes none.
 	Outbox Outbox
@@ -97,6 +108,7 @@ func (o Options) withDefaults() Options {
 	o.MaxBackoff = max(cmp.Or(o.MaxBackoff, DefaultMaxBackoff), o.MinBackoff)
 	o.LogoutTimeout = cmp.Or(o.LogoutTimeout, DefaultLogoutTimeout)
 	o.PingInterval = cmp.Or(o.PingInterval, DefaultPingInterval)
+	o.SetupTimeout = cmp.Or(o.SetupTimeout, DefaultSetupTimeout)
 	return o
 }
 
@@ -322,7 +334,9 @@ func nodeTransport(creds *credentials) *http.Transport {
 				return &cert, nil
 			},
 		},
-		TLSHandshakeTimeout: dialTimeout,
-		IdleConnTimeout:     90 * time.Second,
+		DialContext:           (&net.Dialer{Timeout: nodeDialTimeout}).DialContext,
+		TLSHandshakeTimeout:   dialTimeout,
+		ResponseHeaderTimeout: nodeHeaderTimeout,
+		IdleConnTimeout:       90 * time.Second,
 	}
 }

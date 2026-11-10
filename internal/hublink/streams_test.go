@@ -7,6 +7,9 @@ import (
 	"fmt"
 	"io"
 	"net"
+	"net/http"
+	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -185,4 +188,149 @@ func TestSendState(t *testing.T) {
 	// At every connect, the last one given.
 	h.Restart()
 	saved(3, State{RemoteAccess: true, CodeSetup: true})
+}
+
+// silentHub stands for a hub that accepts the requests to paths starting
+// with prefix, of method, and never answers them: each waits until its
+// request is given up, and says so on stalled first.
+type silentHub struct {
+	next           http.RoundTripper
+	method, prefix string
+	stalled        chan string
+}
+
+func (s *silentHub) RoundTrip(req *http.Request) (*http.Response, error) {
+	if req.Method != s.method || !strings.HasPrefix(req.URL.Path, s.prefix) {
+		return s.next.RoundTrip(req)
+	}
+	s.stalled <- req.URL.Path
+	<-req.Context().Done()
+	return nil, req.Context().Err()
+}
+
+// silentNode is a node logged in as name, connected, whose requests the
+// silent hub never answers, on clock, with a setup timeout of setupTimeout.
+func silentNode(t *testing.T, h *hubtest.Hub, name string, clock Clock, silent *silentHub) *node {
+	t.Helper()
+	home := t.TempDir()
+	h.LogIn(home, h.User, name)
+	n := &node{t: t, h: h, home: home, clock: clock}
+	n.log = filepath.Join(home, "hublink.log")
+	n.opts = Options{Clock: clock, MinBackoff: time.Millisecond, MaxBackoff: 10 * time.Millisecond, SetupTimeout: setupTimeout,
+		WrapNodes: func(rt http.RoundTripper) http.RoundTripper { silent.next = rt; return silent }}
+	n.open()
+	t.Cleanup(n.wantNoSecrets)
+	n.waitConnection(Connected)
+	return n
+}
+
+// setupTimeout is the tests' setup timeout: none of the link's other waits
+// is as long.
+const setupTimeout = 7 * time.Second
+
+// TestDialHubSilent checks a hub that accepts and never answers, when asked
+// for a stream or when joining it, is unreachable once the setup timeout
+// passed.
+func TestDialHubSilent(t *testing.T) {
+	t.Parallel()
+	for _, c := range []struct{ what, method, prefix string }{
+		{"asked for a stream", http.MethodPost, "/v1/streams"},
+		{"joining it", http.MethodGet, "/v1/streams/"},
+	} {
+		t.Run(c.what, func(t *testing.T) {
+			t.Parallel()
+			h := hubtest.Start(t)
+			_, desktop := loggedInAs(t, h, h.User, "desktop")
+			clock := newFakeClock(h)
+			silent := &silentHub{method: c.method, prefix: c.prefix, stalled: make(chan string, 1)}
+			laptop := silentNode(t, h, "laptop", clock, silent)
+
+			failed := make(chan error, 1)
+			go func() {
+				_, err := laptop.link.Dial(laptop.ctx, desktop.ID)
+				failed <- err
+			}()
+			select {
+			case <-silent.stalled:
+			case <-waittest.After(t):
+				t.Fatal("the dial never reached the hub")
+			}
+			clock.waiting(t, setupTimeout)
+			clock.Advance(setupTimeout)
+			select {
+			case err := <-failed:
+				if ranOut, ok := errors.AsType[*setupRanOut](err); !isUnreachable(err) || !ok || ranOut.after != setupTimeout {
+					t.Fatalf("%v, want the hub unreachable after %s", err, setupTimeout)
+				}
+			case <-waittest.After(t):
+				t.Fatal("the dial did not return")
+			}
+		})
+	}
+}
+
+// TestAnswerHubSilent checks a stream waiting that the hub never lets the
+// node join is given up once the setup timeout passed, and that a logout
+// does not wait for it meanwhile.
+func TestAnswerHubSilent(t *testing.T) {
+	t.Parallel()
+	expire := make(chan time.Time)
+	h := hubtest.Start(t, hubtest.StreamExpiry(func(time.Duration) <-chan time.Time { return expire }))
+	laptop, _ := loggedInAs(t, h, h.User, "laptop")
+	clock := newFakeClock(h)
+	silent := &silentHub{method: http.MethodGet, prefix: "/v1/streams/", stalled: make(chan string, 1)}
+	desktop := silentNode(t, h, "desktop", clock, silent)
+	desktopID := desktop.link.Status().Node.ID
+
+	failed := make(chan error, 1)
+	go func() {
+		_, err := laptop.link.Dial(laptop.ctx, desktopID)
+		failed <- err
+	}()
+	select {
+	case <-silent.stalled:
+	case <-waittest.After(t):
+		t.Fatal("the desktop never tried to join")
+	}
+	clock.waiting(t, setupTimeout)
+
+	loggedOut := make(chan error, 1)
+	go func() {
+		_, err := desktop.link.Logout(desktop.ctx)
+		loggedOut <- err
+	}()
+	select {
+	case err := <-loggedOut:
+		if err != nil {
+			t.Fatal(err)
+		}
+	case <-waittest.After(t):
+		t.Fatal("the logout waited for the join")
+	}
+
+	clock.Advance(setupTimeout)
+	waittest.For(t, "the join given up", func() bool { return len(desktop.logged("stream not joined")) == 1 })
+	if err := desktop.logged("stream not joined")[0]["err"]; !strings.Contains(fmt.Sprint(err), "did not answer within "+setupTimeout.String()) {
+		t.Fatalf("logged %v, want the hub's silence", err)
+	}
+	var err error
+	select {
+	case err = <-failed:
+	case expire <- time.Now():
+		err = <-failed
+	}
+	if err == nil {
+		t.Fatal("the laptop joined a stream the desktop never joined")
+	}
+}
+
+// TestNodeTransportBounded checks connecting to the node endpoint and
+// waiting for its headers have limits, which a silent hub runs into without
+// any wait of the link's.
+func TestNodeTransportBounded(t *testing.T) {
+	t.Parallel()
+	tr := nodeTransport(&credentials{})
+	if tr.DialContext == nil || tr.ResponseHeaderTimeout != nodeHeaderTimeout || tr.TLSHandshakeTimeout == 0 {
+		t.Fatalf("dial %v, headers %s, TLS %s: want each bounded", tr.DialContext != nil, tr.ResponseHeaderTimeout, tr.TLSHandshakeTimeout)
+	}
 }

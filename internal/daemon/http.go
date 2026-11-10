@@ -96,6 +96,14 @@ func isHubPath(path string) bool {
 	return path == hubPath || strings.HasPrefix(path, hubPath+"/")
 }
 
+// isConnectPath reports whether path is a connect to another node, which
+// changes nothing: until it switches to a stream, it follows its client, so
+// that a client that left ends the dial; switched, it runs to its end.
+func isConnectPath(path string) bool {
+	node, rest, ok := strings.Cut(strings.TrimPrefix(path, hubNodesPath), "/")
+	return strings.HasPrefix(path, hubNodesPath) && ok && node != "" && rest == connectPathEnd
+}
+
 // isAttachPath reports whether path is a terminal's attach, a stream that
 // changes nothing.
 func isAttachPath(path string) bool {
@@ -107,6 +115,8 @@ const (
 	terminalsPath   = "/v1/terminals/"
 	attachPathEnd   = "attach"
 	hubPath         = "/v1/hub"
+	hubNodesPath    = "/v1/hub/nodes/"
+	connectPathEnd  = "connect"
 	tideViewPath    = "/v1/tide/view"
 	projectsPath    = "/v1/projects/"
 	viewPathEnd     = "view"
@@ -117,7 +127,7 @@ const (
 
 func (d *Daemon) oneChangeAtATime(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.Method == http.MethodGet {
+		if r.Method == http.MethodGet || isConnectPath(r.URL.Path) {
 			next.ServeHTTP(w, r)
 			return
 		}

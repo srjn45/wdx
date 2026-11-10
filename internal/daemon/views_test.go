@@ -2,6 +2,7 @@ package daemon
 
 import (
 	"context"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"reflect"
@@ -120,6 +121,33 @@ func TestChangesOutliveTheClient(t *testing.T) {
 		handler.ServeHTTP(httptest.NewRecorder(), httptest.NewRequestWithContext(left, http.MethodPut, path, nil))
 		if err != nil {
 			t.Errorf("%s: cancelled with its client: %v", path, err)
+		}
+	}
+}
+
+// TestConnectFollowsTheClient: a connect to another node changes nothing, so a
+// client that left ends it, as Ctrl-C on the CLI ends the dial to the hub.
+func TestConnectFollowsTheClient(t *testing.T) {
+	t.Parallel()
+	td := start(t)
+	var err error
+	handler := td.daemon.oneChangeAtATime(http.HandlerFunc(func(_ http.ResponseWriter, r *http.Request) { err = r.Context().Err() }))
+	left, leave := context.WithCancel(context.Background())
+	leave()
+	handler.ServeHTTP(httptest.NewRecorder(), httptest.NewRequestWithContext(left, http.MethodPost, "/v1/hub/nodes/desktop/connect", nil))
+	if !errors.Is(err, context.Canceled) {
+		t.Errorf("the connect went on once its client left: %v", err)
+	}
+	for path, want := range map[string]bool{
+		"/v1/hub/nodes/desktop/connect":   true,
+		"/v1/hub/nodes/id:node-1/connect": true,
+		"/v1/hub/nodes//connect":          false,
+		"/v1/hub/nodes/desktop":           false,
+		"/v1/hub/nodes/a/b/connect":       false,
+		"/v1/hub/sessions":                false,
+	} {
+		if got := isConnectPath(path); got != want {
+			t.Errorf("%s: %v", path, got)
 		}
 	}
 }

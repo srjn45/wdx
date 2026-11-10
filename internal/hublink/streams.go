@@ -3,6 +3,7 @@ package hublink
 import (
 	"context"
 	"errors"
+	"fmt"
 	"net"
 	"net/http"
 	"net/url"
@@ -35,17 +36,21 @@ func (l *Link) Streams() <-chan Stream { return l.streams }
 // Dial asks the hub for a stream to the node nodeID of the account and joins
 // it, returning once the other node joined it too. It fails with
 // ErrNotLoggedIn, an *UnreachableError, or a *HubError: node_not_found,
-// node_offline, too_many_streams. The stream ends with the link.
+// node_offline, too_many_streams. Asking and joining run out after the
+// link's SetupTimeout, as an *UnreachableError. The stream ends with the
+// link.
 func (l *Link) Dial(ctx context.Context, nodeID string) (net.Conn, error) {
 	log := logging.FromContext(ctx)
 	client, c, done, err := l.nodesClient()
 	if err != nil {
 		return nil, err
 	}
+	ctx, endSetup := l.setup(ctx)
+	defer endSetup()
 	r, err := client.OpenStreamWithResponse(ctx, hubapi.OpenStream{NodeId: nodeID})
 	done()
 	if err != nil {
-		return nil, &UnreachableError{URL: c.NodesURL, Err: err}
+		return nil, &UnreachableError{URL: c.NodesURL, Err: setupErr(ctx, err)}
 	}
 	if r.JSON201 == nil {
 		err := refused(c.NodesURL, r.StatusCode(), r.ApplicationproblemJSONDefault)
@@ -88,9 +93,39 @@ func (l *Link) join(ctx context.Context, c *credentials, id string) (net.Conn, e
 			}
 			return nil, &HubError{Problem: hubapi.NewProblem(code, cut.Error())}
 		}
-		return nil, &UnreachableError{URL: c.NodesURL, Err: err}
+		return nil, &UnreachableError{URL: c.NodesURL, Err: setupErr(ctx, err)}
 	}
 	return websocket.NetConn(l.ctx, conn, websocket.MessageBinary), nil
+}
+
+// setupRanOut is the cause of a setup context that ran out of time.
+type setupRanOut struct{ after time.Duration }
+
+func (e *setupRanOut) Error() string {
+	return fmt.Sprintf("the hub did not answer within %s", e.after)
+}
+
+// setup is ctx, ended as well once the link's SetupTimeout passed on its
+// clock; end releases it.
+func (l *Link) setup(ctx context.Context) (setupCtx context.Context, end func()) {
+	ctx, cancel := context.WithCancelCause(ctx)
+	go func() {
+		select {
+		case <-l.opts.Clock.After(l.opts.SetupTimeout):
+			cancel(&setupRanOut{after: l.opts.SetupTimeout})
+		case <-ctx.Done():
+		}
+	}()
+	return ctx, func() { cancel(context.Canceled) }
+}
+
+// setupErr is err, a step of reaching another node under ctx, or what ended
+// ctx when it ran out of time: "context canceled" says nothing of why.
+func setupErr(ctx context.Context, err error) error {
+	if ranOut, ok := errors.AsType[*setupRanOut](context.Cause(ctx)); ok {
+		return ranOut
+	}
+	return err
 }
 
 // answer joins the stream m names, which another node asked for, and hands
@@ -98,7 +133,9 @@ func (l *Link) join(ctx context.Context, c *credentials, id string) (net.Conn, e
 func (l *Link) answer(ctx context.Context, c *credentials, m hubapi.ControlStreamWaiting) {
 	log := logging.FromContext(ctx).With("stream_id", m.Stream, "client_node_id", m.Node.Id)
 	log.Info("stream waiting", "client_node_name", m.Node.Name)
-	conn, err := l.join(ctx, c, m.Stream)
+	joining, endSetup := l.setup(ctx)
+	conn, err := l.join(joining, c, m.Stream)
+	endSetup()
 	if err != nil {
 		log.Info("stream not joined", "err", err)
 		return

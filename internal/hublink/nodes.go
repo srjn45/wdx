@@ -21,7 +21,11 @@ func (l *Link) nodesClient() (*hubapi.ClientWithResponses, *credentials, func(),
 		return nil, nil, nil, ErrNotLoggedIn
 	}
 	transport := nodeTransport(c)
-	client, err := hubapi.NewClientWithResponses(c.NodesURL, hubapi.WithHTTPClient(&http.Client{Transport: transport}), hubapi.WithRequestEditorFn(versionHeader))
+	var rt http.RoundTripper = transport
+	if l.opts.WrapNodes != nil {
+		rt = l.opts.WrapNodes(rt)
+	}
+	client, err := hubapi.NewClientWithResponses(c.NodesURL, hubapi.WithHTTPClient(&http.Client{Transport: rt}), hubapi.WithRequestEditorFn(versionHeader))
 	if err != nil {
 		return nil, nil, nil, err
 	}
