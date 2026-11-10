@@ -827,6 +827,149 @@ func TestRemoteAccessOffClosesIncoming(t *testing.T) {
 	wantCode(t, err, CodeRemoteAccessOff)
 }
 
+// Cursor's C3: a host that cannot send opened closes the session it just
+// recorded, which the client never had.
+func TestOpenedNotSentCloses(t *testing.T) {
+	t.Parallel()
+	w := newWorld(t)
+	desktop := w.newNode(w.hub.User, "desktop", func(o *Options) {
+		o.recording = func(conn net.Conn) { conn.Close() }
+	})
+	laptop := w.newNode(w.hub.User, "laptop")
+	desktop.setUp()
+
+	if _, _, err := laptop.open(desktop, desktop.code(0)); err == nil {
+		t.Fatal("opened, though the host sent nothing")
+	}
+	desktop.serve.Wait() // the client may have given up first
+	if in := desktop.sessions(Incoming); len(in) != 0 {
+		t.Errorf("the desktop's sessions %+v, want none", in)
+	}
+	if len(laptop.sessions(Outgoing)) != 0 {
+		t.Error("the laptop recorded a session")
+	}
+}
+
+// A node opening a session closes its older ones on the host: one the
+// client closed while the host could not be told.
+func TestOpenClosesOlder(t *testing.T) {
+	t.Parallel()
+	w := newWorld(t)
+	desktop := w.newNode(w.hub.User, "desktop")
+	laptop := w.newNode(w.hub.User, "laptop")
+	phone := w.newNode(w.hub.User, "phone")
+	desktop.setUp()
+	old := laptop.mustOpen(desktop)
+	w.clock.Advance(authcode.Period)
+	kept := phone.mustOpen(desktop)
+	// Closed on the laptop alone, as when the host could not be told.
+	if _, err := laptop.remote.closeWhere(laptop.ctx, ReasonClosed, "id = ?", old.ID); err != nil {
+		t.Fatal(err)
+	}
+	w.clock.Advance(authcode.Period)
+	s := laptop.mustOpen(desktop)
+
+	if got := desktop.closedReason(old.ID); got != ReasonClosed {
+		t.Errorf("the older session closed %q, want closed", got)
+	}
+	in := desktop.sessions(Incoming)
+	if len(in) != 2 || in[0].ID != kept.ID || in[1].ID != s.ID {
+		t.Errorf("the desktop's sessions %+v, want the phone's and the laptop's new one", in)
+	}
+}
+
+// held is a host whose opens wait, once remote access was checked, until
+// release is closed; entered is told as each waits.
+func held(t *testing.T, w *world) (desktop *node, entered chan struct{}, release chan struct{}) {
+	t.Helper()
+	entered, release = make(chan struct{}, 1), make(chan struct{})
+	desktop = w.newNode(w.hub.User, "desktop", func(o *Options) {
+		o.Exporter = func(cs tls.ConnectionState) ([]byte, error) {
+			entered <- struct{}{}
+			<-release
+			return exporter(cs)
+		}
+	})
+	desktop.setUp()
+	return desktop, entered, release
+}
+
+// incomingRows is how many incoming sessions the node ever recorded.
+func (n *node) incomingRows() int {
+	n.t.Helper()
+	var rows int
+	if err := n.db.QueryRow("SELECT COUNT(*) FROM hub_sessions WHERE direction = 'incoming'").Scan(&rows); err != nil {
+		n.t.Fatal(err)
+	}
+	return rows
+}
+
+// Codex's proof (REVIEW_COR_CODEX C4): an open crossing remote access
+// turned off is refused, and leaves no session.
+func TestOpenCrossingAccessOff(t *testing.T) {
+	t.Parallel()
+	w := newWorld(t)
+	desktop, entered, release := held(t, w)
+	laptop := w.newNode(w.hub.User, "laptop")
+
+	opened := make(chan error, 1)
+	go func() {
+		_, _, err := laptop.open(desktop, desktop.code(0))
+		opened <- err
+	}()
+	<-entered
+	desktop.access.Store(false)
+	applied := make(chan struct{})
+	go func() {
+		defer close(applied)
+		desktop.remote.Apply(desktop.ctx)
+	}()
+	close(release)
+	err := <-opened
+	<-applied
+	desktop.serve.Wait()
+	wantCode(t, err, CodeRemoteAccessOff)
+	if e, _ := asError(err); ReasonOf(e) != ReasonRemoteAccessOff {
+		t.Errorf("refused %v, want the reason remote_access_off", e.Details)
+	}
+	if rows := desktop.incomingRows(); rows != 0 || len(laptop.sessions(Outgoing)) != 0 {
+		t.Errorf("the desktop recorded %d sessions, the laptop %d", rows, len(laptop.sessions(Outgoing)))
+	}
+}
+
+// Antigravity's C10: an open crossing a cut off is refused, and leaves no
+// session. It waits once the code was checked, as the hub cuts the stream.
+func TestOpenCrossingCutOff(t *testing.T) {
+	t.Parallel()
+	w := newWorld(t)
+	entered, release := make(chan struct{}, 1), make(chan struct{})
+	desktop := w.newNode(w.hub.User, "desktop", func(o *Options) {
+		o.recording = func(net.Conn) {
+			entered <- struct{}{}
+			<-release
+		}
+	})
+	desktop.setUp()
+	laptop := w.newNode(w.hub.User, "laptop")
+
+	opened := make(chan error, 1)
+	go func() {
+		_, _, err := laptop.open(desktop, desktop.code(0))
+		opened <- err
+	}()
+	<-entered
+	w.hub.DisableUser("alice")
+	waitConnection(t, desktop, hublink.Disabled)
+	close(release)
+	if err := <-opened; err == nil {
+		t.Error("opened across the cut off")
+	}
+	desktop.serve.Wait() // the hub cut the stream: the client gave up first
+	if rows := desktop.incomingRows(); rows != 0 {
+		t.Errorf("the desktop recorded %d sessions, want none", rows)
+	}
+}
+
 func TestClose(t *testing.T) {
 	t.Parallel()
 	w := newWorld(t)

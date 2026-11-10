@@ -492,6 +492,7 @@ With `--json`, `result` is one of: `opened` or `unchanged`.
 | [`node_version_unsupported`](/wdx/docs/reference/errors/#node_version_unsupported) | 1 | the two nodes speak no version in common between them: update the older |
 | [`not_logged_in`](/wdx/docs/reference/errors/#not_logged_in) | 1 | this node is not logged in to a hub, or the hub cut it off |
 | [`remote_access_off`](/wdx/docs/reference/errors/#remote_access_off) | 1 | the node allows no sessions: hub.remote\_access is off there |
+| [`session_closed`](/wdx/docs/reference/errors/#session_closed) | 1 | the host closed the session: it went idle, its daemon restarted, remote access went off, the hub cut a node off, or it was closed |
 | [`too_many_streams`](/wdx/docs/reference/errors/#too_many_streams) | 1 | the account has as many streams open through the hub as it may |
 | [`usage`](/wdx/docs/reference/errors/#usage) | 2 | the request, command line or a setting is invalid |
 | [`internal`](/wdx/docs/reference/errors/#internal) | 3 | an unexpected failure: database, filesystem or git |

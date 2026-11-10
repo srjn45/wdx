@@ -53,7 +53,7 @@ func newHubSessionOpenCmd() *cobra.Command {
 			clikit.OutputNote:    "The session.\n" + `With --json: {"result": "opened", "session": {...}}`,
 			clikit.Results:       clikit.Annotation(string(api.ResultOpened), string(api.ResultUnchanged)),
 			clikit.Errors: clikit.CodeList(api.ErrorCodeCodeNotSetUp, api.ErrorCodeCodeWrong, api.ErrorCodeNodeKeyMismatch, api.ErrorCodeNodeNotFound,
-				api.ErrorCodeNodeOffline, api.ErrorCodeNodeVersionUnsupported, api.ErrorCodeRemoteAccessOff, api.ErrorCodeTooManyStreams,
+				api.ErrorCodeNodeOffline, api.ErrorCodeNodeVersionUnsupported, api.ErrorCodeRemoteAccessOff, api.ErrorCodeSessionClosed, api.ErrorCodeTooManyStreams,
 				api.ErrorCodeHubUnreachable, api.ErrorCodeHubVersionUnsupported, api.ErrorCodeNotLoggedIn, api.ErrorCodeDaemonUnavailable),
 			clikit.JSONRequires: clikit.CodeFlag,
 		},

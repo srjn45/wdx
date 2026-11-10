@@ -524,7 +524,7 @@ Exit 3 · HTTP 500 · returned by [`wdx agent send`](/wdx/docs/reference/cli/age
 
 The host closed the session: it went idle, its daemon restarted, remote access went off, the hub cut a node off, or it was closed.
 
-Exit 1 · HTTP 409 · and by every command with `--node`
+Exit 1 · HTTP 409 · returned by [`wdx hub session open`](/wdx/docs/reference/cli/hub/#wdx-hub-session-open) · and by every command with `--node`
 
 ## session_not_found
 

@@ -125,6 +125,9 @@ type Options struct {
 	linkCut func(ctx context.Context)
 	// confirmTimeout, when not 0, replaces confirmTimeout, for tests.
 	confirmTimeout time.Duration
+	// recording, when not nil, is given the stream of a session whose
+	// code was right, before it is recorded, for tests.
+	recording func(net.Conn)
 }
 
 // Remote is the node's sessions, both ways.
@@ -137,7 +140,8 @@ type Remote struct {
 
 	// opening is one session opened into this node at a time, so that the
 	// waits after wrong codes count every one: a code checked at once
-	// beside another would not wait.
+	// beside another would not wait. Turning remote access off and a cut
+	// off take it too, so that no open crosses them.
 	opening sync.Mutex
 	// clientOpening is one session opened from this node at a time, so
 	// that it keeps one per host.
@@ -231,6 +235,8 @@ func (r *Remote) watchLink() {
 // their streams: the hub removed this node from its account or disabled
 // the account, so no other node can be told, and none may go on.
 func (r *Remote) CutOff(ctx context.Context) error {
+	r.opening.Lock() // an open going on is refused, or closed here
+	defer r.opening.Unlock()
 	_, err := r.closeWhere(ctx, ReasonCutOff, "1")
 	return err
 }
@@ -247,9 +253,11 @@ func (r *Remote) Kick() {
 // every incoming session closes.
 func (r *Remote) Apply(ctx context.Context) {
 	if !r.opts.RemoteAccess() {
+		r.opening.Lock() // an open going on is refused, or closed here
 		if _, err := r.closeWhere(ctx, ReasonRemoteAccessOff, "direction = 'incoming'"); err != nil {
 			logging.FromContext(ctx).Error("incoming sessions not closed", "reason", ReasonRemoteAccessOff, "err", err)
 		}
+		r.opening.Unlock()
 	}
 	r.Kick()
 }

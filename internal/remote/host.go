@@ -137,8 +137,10 @@ func (r *Remote) hostSession(ctx context.Context, conn *tls.Conn, client hublink
 // CodeSessionClosed, whose ReasonOf says why when it is known.
 func (r *Remote) Use(ctx context.Context, id string, client hublink.NodeRef) (Session, error) {
 	if cutOff(r.opts.Link.Status().Connection) {
-		// The link's watch closes them all, which this may come before.
-		if err := r.CutOff(ctx); err != nil {
+		// The link's watch closes them all, which this may come before;
+		// without the open lock, which an open may hold for a while, as an
+		// open checks the link again under it.
+		if _, err := r.closeWhere(ctx, ReasonCutOff, "1"); err != nil {
 			return Session{}, err
 		}
 	}
@@ -260,6 +262,19 @@ func (r *Remote) hostOpen(ctx context.Context, conn *tls.Conn, host self, client
 		return
 	}
 	r.rightCode(client.ID)
+	if r.opts.recording != nil {
+		r.opts.recording(conn)
+	}
+	if e := r.closingAll(); e != nil {
+		r.refuseStream(ctx, conn, e, ReasonOf(e))
+		return
+	}
+	// One session per node: an older one is the client's no more, as it
+	// opens one only with none open.
+	if _, err := r.closeWhere(ctx, ReasonClosed, "direction = 'incoming' AND node_id = ?", client.ID); err != nil {
+		log.Error("older sessions not closed", "err", err)
+		return
+	}
 	s, err := r.opened(ctx, Session{ID: newSessionID(), Direction: Incoming, Node: client, OpenedAt: now, LastUsedAt: now}, clientKey)
 	if err != nil {
 		log.Error("session not recorded", "err", err)
@@ -267,10 +282,33 @@ func (r *Remote) hostOpen(ctx context.Context, conn *tls.Conn, host self, client
 	}
 	timeout := r.opts.IdleTimeout()
 	if err := write(conn, message{Type: msgOpened, MAC: b.mac(key, "host"), Session: s.ID, IdleTimeoutMS: timeout.Milliseconds()}); err != nil {
+		// The client records its session only once it read this.
 		log.Info("stream ended", "err", err)
+		if _, err := r.closeWhere(ctx, ReasonClosed, "id = ?", s.ID); err != nil {
+			log.Error("session not closed", "err", err)
+		}
+		return
 	}
 	log.Info("session opened", "session_id", s.ID, "direction", Incoming, "node_id", client.ID, "node_name", client.Name, "host_node_id", host.node.ID, "idle_timeout_ms", timeout.Milliseconds())
 	r.Kick()
+}
+
+// closingAll is the refusal of a session opened now, nil when it may open:
+// with remote access off, or this node cut off by the hub, every incoming
+// one closes, which one opened while the code was checked would outlive.
+// It is checked under the open lock, which Apply and CutOff take too.
+func (r *Remote) closingAll() *Error {
+	if cutOff(r.opts.Link.Status().Connection) {
+		e := refusal(CodeSessionClosed, "this node was cut off by the hub while the session opened")
+		e.Details = map[string]any{"reason": string(ReasonCutOff)}
+		return e
+	}
+	if !r.opts.RemoteAccess() {
+		e := refusal(CodeRemoteAccessOff, "remote access was turned off on this node while the session opened: turn hub.remote_access on there")
+		e.Details = map[string]any{"reason": string(ReasonRemoteAccessOff)}
+		return e
+	}
+	return nil
 }
 
 // readConfirm reads the client's confirm, giving up after confirmTimeout.
