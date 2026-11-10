@@ -5,6 +5,8 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"net/netip"
+	"strings"
 	"testing"
 
 	"github.com/srjn45/wdx/internal/hubapi"
@@ -106,5 +108,49 @@ func TestIdleTimeouts(t *testing.T) {
 		if srv.ReadTimeout != 0 {
 			t.Errorf("%s: read timeout %v, which would stay on a hijacked connection", e, srv.ReadTimeout)
 		}
+	}
+}
+
+// warnings counts the warnings the hub at home logged with msg.
+func warnings(t *testing.T, home, msg string) int {
+	t.Helper()
+	n := 0
+	for _, line := range logLines(t, home) {
+		if line["level"] == "WARN" && line["msg"] == msg {
+			n++
+		}
+	}
+	return n
+}
+
+// Serving plain HTTP with no proxy trusted is the Fly case before
+// trusted_proxies is set: every client counts as the proxy. The hub warns at
+// its start, and once at the first request from a peer not on this machine.
+func TestNoProxyTrustedWarned(t *testing.T) {
+	t.Parallel()
+	th := start(t, nil)
+	if n := warnings(t, th.home, "no proxy trusted"); n != 1 {
+		t.Fatalf("warned %d times at the start, want once", n)
+	}
+	web := th.server.handler(endpointWeb)
+	for _, peer := range []string{"127.0.0.1:4000", "[::1]:4000", "203.0.113.5:4000", "198.51.100.7:4000"} {
+		r := httptest.NewRequest(http.MethodGet, "/v1/version", nil)
+		r.RemoteAddr = peer
+		web.ServeHTTP(httptest.NewRecorder(), r)
+		want := 1
+		if strings.HasPrefix(peer, "127.") || strings.HasPrefix(peer, "[::1]") {
+			want = 0
+		}
+		if n := warnings(t, th.home, "request from a peer not on this machine"); n != want {
+			t.Fatalf("after a request from %s: warned %d times, want %d", peer, n, want)
+		}
+	}
+
+	trusted := start(t, func(o *Options) { o.Config.TrustedProxies = []netip.Prefix{netip.MustParsePrefix("172.16.0.0/12")} })
+	r := httptest.NewRequest(http.MethodGet, "/v1/version", nil)
+	r.RemoteAddr = "203.0.113.5:4000"
+	trusted.server.handler(endpointWeb).ServeHTTP(httptest.NewRecorder(), r)
+	if n := warnings(t, trusted.home, "no proxy trusted") + warnings(t, trusted.home, "request from a peer not on this machine"); n != 0 {
+		t.Errorf("warned %d times with a proxy trusted", n)
 	}
 }

@@ -65,6 +65,8 @@ Then tell the hub to believe the address the proxy forwards, which its rate limi
 $ sudo wdx-hub setting set --name trusted_proxies --value 127.0.0.1
 ```
 
+Until it is set, every client counts as the proxy, so one client's wrong tries make everyone wait. <Since v="0.5.0" /> With `web.tls off` and `trusted_proxies` empty, the hub warns in its log, `no proxy trusted` at its start and `request from a peer not on this machine` at the first request from another machine, with that peer's address.
+
 **Certificate files on this machine** (choice 2, `web.tls files`): the hub serves TLS itself on `:443`, with a certificate (PEM, with its chain) and a key at the absolute paths you give, which the `wdx-hub` user must be able to read: `sudo chgrp wdx-hub key.pem && sudo chmod g+r key.pem`. The service then gets the one capability it needs to listen on a port below 1024. Renewing the files is up to you; the hub reads them at its start.
 
 There is no third way: the hub does not get certificates itself. A public hub uses a proxy that does.

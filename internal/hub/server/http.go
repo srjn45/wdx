@@ -9,10 +9,12 @@ import (
 	"io"
 	"log/slog"
 	"net/http"
+	"net/netip"
 	"runtime/debug"
 	"slices"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/getkin/kin-openapi/openapi3"
@@ -23,6 +25,7 @@ import (
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/metric"
 
+	"github.com/srjn45/wdx/internal/hub/hubconfig"
 	"github.com/srjn45/wdx/internal/hub/pages"
 	"github.com/srjn45/wdx/internal/hubapi"
 	"github.com/srjn45/wdx/internal/logging"
@@ -69,7 +72,35 @@ func (s *Server) handler(e endpoint) http.Handler {
 	mux := http.NewServeMux()
 	mux.Handle("/v1/", operations)
 	mux.Handle("/", s.logPages(s.pages))
-	return mux
+	return s.warnUntrusted(mux)
+}
+
+// untrustedWarning is what the hub warns of when it serves plain HTTP and
+// believes no proxy: behind one, every client counts as the proxy's address,
+// in the rate limits and the audit chain alike.
+const untrustedWarning = "web.tls is off and trusted_proxies is empty: behind a proxy, every client counts as the proxy"
+
+// noProxyTrusted reports whether the web endpoint serves plain HTTP with no
+// proxy trusted, as before trusted_proxies is set behind Fly's proxy.
+func (s *Server) noProxyTrusted() bool {
+	return s.opts.Config.WebTLS == hubconfig.TLSOff && len(s.opts.Config.TrustedProxies) == 0
+}
+
+// warnUntrusted warns once, at the first request from a peer not on this
+// machine, when no proxy is trusted: that peer is likely a proxy whose
+// clients all count as it.
+func (s *Server) warnUntrusted(next http.Handler) http.Handler {
+	if !s.noProxyTrusted() {
+		return next
+	}
+	var warned atomic.Bool
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if a, err := netip.ParseAddr(pages.Peer(r)); err == nil && !a.IsLoopback() && !warned.Swap(true) {
+			s.log.Warn("request from a peer not on this machine", "peer", a.String(), "warning", untrustedWarning,
+				"hint", "set trusted_proxies to the proxy's address")
+		}
+		next.ServeHTTP(w, r)
+	})
 }
 
 // logPages logs every page request from received to returned with its

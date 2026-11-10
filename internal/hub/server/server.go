@@ -314,6 +314,9 @@ func Listen(ctx context.Context, opts Options) (_ *Server, err error) {
 	s.log.Info("hub listening",
 		"web", a.Web, "web_tls", cfg.WebTLS, "nodes", a.Nodes, "admin", a.Admin,
 		"public_url", cfg.PublicURL, "nodes_url", s.nodesURL, "home", cfg.Home)
+	if s.noProxyTrusted() {
+		s.log.Warn("no proxy trusted", "warning", untrustedWarning, "hint", "set trusted_proxies to the proxy's address")
+	}
 	return s, nil
 }
 
