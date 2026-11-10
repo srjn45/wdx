@@ -14,6 +14,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/srjn45/wdx/internal/hub/audit"
 	"github.com/srjn45/wdx/internal/logging"
 	"github.com/srjn45/wdx/internal/sqlite"
 )
@@ -193,7 +194,8 @@ func nullable(s string) sql.NullString { return sql.NullString{String: s, Valid:
 
 // StartLogin starts a login of req, which lives LoginLife, for the address
 // in by. The device flow's codes are in the result alone: the hub keeps
-// their hashes.
+// their hashes. Its start is audited only when it is approved or denied: a
+// login no one answers has no account, and anyone may start one.
 func (s *Store) StartLogin(ctx context.Context, by By, req StartRequest) (Started, error) {
 	log := logging.FromContext(ctx)
 	if err := checkStart(req); err != nil {
@@ -216,20 +218,23 @@ func (s *Store) StartLogin(ctx context.Context, by By, req StartRequest) (Starte
 		started.UserCode, normal = newUserCode()
 		userCodeHash = hashOf(normal)
 	}
-	err = s.inTx(ctx, func(tx *sql.Tx) error {
-		if _, err := sqlite.Exec(ctx, tx, "INSERT INTO node_logins (id, flow, code_hash, pkce_challenge, callback, user_code_hash, name, os, version, public_key, status, address, created_at, expires_at) "+
-			"VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
-			id, string(req.Flow), secretOrNull(codeHash), nullable(req.PKCEChallenge), nullable(req.Callback), secretOrNull(userCodeHash),
-			req.Name, req.OS, req.Version, []byte(req.PublicKey), StatusPending, by.Address, ms(now), ms(started.ExpiresAt)); err != nil {
-			return err
-		}
-		return s.record(ctx, tx, by, "", "", ActionLoginStarted, map[string]any{"login_id": id, "flow": string(req.Flow), "name": req.Name})
-	})
-	if err != nil {
+	if _, err := sqlite.Exec(ctx, s.db, "INSERT INTO node_logins (id, flow, code_hash, pkce_challenge, callback, user_code_hash, name, os, version, public_key, status, address, created_at, expires_at) "+
+		"VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+		id, string(req.Flow), secretOrNull(codeHash), nullable(req.PKCEChallenge), nullable(req.Callback), secretOrNull(userCodeHash),
+		req.Name, req.OS, req.Version, []byte(req.PublicKey), StatusPending, by.Address, ms(now), ms(started.ExpiresAt)); err != nil {
 		return Started{}, err
 	}
 	log.Info("login started", "login_id", id, "flow", string(req.Flow), "name", req.Name, "address", by.Address)
 	return started, nil
+}
+
+// recordStarted audits the start of l, as it is approved or denied by
+// userID: the row is written with the answer, from the address that started
+// it.
+func (s *Store) recordStarted(ctx context.Context, tx *sql.Tx, userID string, l Login) error {
+	by := By{Actor: audit.ActorUser, Address: l.Address}
+	return s.record(ctx, tx, by, userID, "", ActionLoginStarted, map[string]any{
+		"login_id": l.ID, "flow": string(l.Flow), "name": l.Name, "started_at": l.CreatedAt.Format(time.RFC3339Nano)})
 }
 
 // secretOrNull is a hash as Exec logs it, or NULL for none.
@@ -351,6 +356,9 @@ func (s *Store) Approve(ctx context.Context, by By, userID, id, name string) (Ap
 			StatusApproved, userID, nodeID, secretOrNull(codeHash), id); err != nil {
 			return err
 		}
+		if err := s.recordStarted(ctx, tx, userID, l); err != nil {
+			return err
+		}
 		l.Status, l.UserID, l.NodeID = StatusApproved, userID, nodeID
 		a.Login = l
 		a.Node = Node{ID: nodeID, UserID: userID, Name: name, PublicKey: l.PublicKey, OS: l.OS, Version: l.Version, CreatedAt: time.UnixMilli(ms(now)).UTC()}
@@ -372,6 +380,9 @@ func (s *Store) Deny(ctx context.Context, by By, userID, id string) error {
 			return err
 		}
 		if _, err := sqlite.Exec(ctx, tx, "UPDATE node_logins SET status = ?, user_id = ? WHERE id = ?", StatusDenied, userID, id); err != nil {
+			return err
+		}
+		if err := s.recordStarted(ctx, tx, userID, l); err != nil {
 			return err
 		}
 		return s.record(ctx, tx, by, userID, "", ActionDenied, map[string]any{"login_id": id, "flow": string(l.Flow), "name": l.Name, "login_address": l.Address})

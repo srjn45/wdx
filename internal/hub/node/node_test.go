@@ -335,6 +335,34 @@ func TestDeny(t *testing.T) {
 	}
 }
 
+// A login's start is audited only once a user answers it: anyone may start
+// one, and a login no one answers would grow the chain with no account.
+func TestLoginStartedAudited(t *testing.T) {
+	t.Parallel()
+	f := newFixture(t)
+	alice := f.user(t, "alice")
+	unanswered := f.start(t, newMachine(t).device("laptop"))
+	f.start(t, newMachine(t).browser("desktop"))
+	if got := f.actions(t); len(got) != 0 {
+		t.Fatalf("audit %v after two starts, want none", got)
+	}
+	started := f.clock.now()
+	f.clock.advance(time.Minute)
+	if err := f.Deny(f.ctx, By{Actor: audit.ActorUser, Address: "198.51.100.7"}, alice, unanswered.ID); err != nil {
+		t.Fatal(err)
+	}
+	var userID, address, details string
+	if err := f.db.QueryRow("SELECT user_id, address, details FROM audit WHERE action = ?", ActionLoginStarted).Scan(&userID, &address, &details); err != nil {
+		t.Fatal(err)
+	}
+	if userID != alice || address != from.Address || !strings.Contains(details, `"started_at":"`+started.Format(time.RFC3339Nano)+`"`) {
+		t.Errorf("login started row: user %q, address %q, details %s; want %q from %q, started at %v", userID, address, details, alice, from.Address, started)
+	}
+	if got := f.actions(t); !slices.Equal(got, []string{ActionLoginStarted, ActionDenied}) {
+		t.Errorf("audit %v", got)
+	}
+}
+
 func TestExpiry(t *testing.T) {
 	t.Parallel()
 	f := newFixture(t)
