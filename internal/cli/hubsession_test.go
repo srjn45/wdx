@@ -326,7 +326,7 @@ func TestHubSessionOpenClosedAtHost(t *testing.T) {
 	if _, exit := p.desktop.sessionJSON("hub", "session", "close", "--all"); exit != clikit.ExitOK {
 		t.Fatalf("close at the host: %d", exit)
 	}
-	v, exit := p.laptop.sessionJSON("hub", "session", "open", "--node", "desktop", "--code", "000000")
+	v, exit := p.laptop.sessionJSON("hub", "session", "open", "--node", "desktop", "--code", p.desktop.wrongCode(p.secret))
 	wantCodeExit(t, v.jsonOutput, exit, api.ErrorCodeCodeWrong, clikit.ExitRejected)
 	if v, _ := p.laptop.sessionJSON("hub", "session", "list"); len(v.Sessions) != 0 {
 		t.Errorf("the laptop's sessions %+v, want the one the host closed closed", v.Sessions)

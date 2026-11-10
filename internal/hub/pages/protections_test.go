@@ -181,8 +181,9 @@ func TestLockout(t *testing.T) {
 	// too.
 	second := b.submit(form, "/login", map[string]string{"username": "alice", "password": p.password})
 	second.want(t, http.StatusOK, "/login/second-factor")
-	b.submit(second, "/login/second-factor", map[string]string{"code": "000000"}).want(t, http.StatusUnprocessableEntity, "")
-	b.submit(second, "/login/second-factor", map[string]string{"code": "000000"}).want(t, http.StatusTooManyRequests, "", "Wait 4 seconds")
+	wrongCode := h.wrongCode(p.key)
+	b.submit(second, "/login/second-factor", map[string]string{"code": wrongCode}).want(t, http.StatusUnprocessableEntity, "")
+	b.submit(second, "/login/second-factor", map[string]string{"code": wrongCode}).want(t, http.StatusTooManyRequests, "", "Wait 4 seconds")
 	// The code is computed, and the clock moves past the wait.
 	b.submit(second, "/login/second-factor", map[string]string{"code": h.code(p.key)}).want(t, http.StatusOK, "/security")
 	other := h.browser()
@@ -203,13 +204,15 @@ func TestEnrolmentLockout(t *testing.T) {
 	h.secret(password)
 	b := h.browser()
 	enrol := b.submit(b.get(h.invite()), "/signup", map[string]string{"username": "alice", "password": password, "password2": password})
-	h.secret(keyOf(t, enrol))
+	key := keyOf(t, enrol)
+	h.secret(key)
+	wrongCode := h.wrongCode(key)
 	for i := range 5 {
-		if got := b.submit(enrol, "/enrol", map[string]string{"code": "000000"}); got.status != http.StatusUnprocessableEntity {
+		if got := b.submit(enrol, "/enrol", map[string]string{"code": wrongCode}); got.status != http.StatusUnprocessableEntity {
 			t.Fatalf("wrong code %d: %d", i+1, got.status)
 		}
 	}
-	b.submit(enrol, "/enrol", map[string]string{"code": "000000"}).want(t, http.StatusTooManyRequests, "", "Wait 1 second")
+	b.submit(enrol, "/enrol", map[string]string{"code": wrongCode}).want(t, http.StatusTooManyRequests, "", "Wait 1 second")
 }
 
 // A wrong current password on the Security page counts too: a browser left

@@ -9,6 +9,7 @@ import (
 	"encoding/hex"
 	"errors"
 	"log/slog"
+	mrand "math/rand/v2"
 	"path/filepath"
 	"strings"
 	"sync"
@@ -77,7 +78,7 @@ func newFixtureWith(t *testing.T, adjust func(*Options)) *fixture {
 		t.Fatal(err)
 	}
 	c := &clock{t: at}
-	opts := Options{MasterKey: key, Now: c.now, Argon2: light}
+	opts := Options{MasterKey: key, Now: c.now, Argon2: light, SecretRand: newFixedRand()}
 	if adjust != nil {
 		adjust(&opts)
 	}
@@ -145,6 +146,39 @@ func (f *fixture) login(t *testing.T, u user) Started {
 
 // step is the 30-second step of the clock, moved by d steps.
 func (f *fixture) step(d int64) int64 { return f.clock.now().Unix()/totpPeriod + d }
+
+// fixedRand is the same bytes in every run: the authenticators' secrets made
+// from it, and so their codes at the fixture's steps, are fixed.
+type fixedRand struct {
+	mu sync.Mutex
+	r  *mrand.ChaCha8
+}
+
+func newFixedRand() *fixedRand { return &fixedRand{r: mrand.NewChaCha8([32]byte{'w', 'd', 'x'})} }
+
+func (f *fixedRand) Read(b []byte) (int, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return f.r.Read(b)
+}
+
+// wantDistinct fails unless the codes of keys at the fixture's steps from
+// to to are all different, which a test that takes one of them for wrong
+// where another is accepted needs. The secrets being fixed, it fails in every
+// run or in none.
+func (f *fixture) wantDistinct(t *testing.T, from, to int64, keys ...*otp.Key) {
+	t.Helper()
+	seen := map[string]bool{}
+	for _, key := range keys {
+		for step := f.step(from); step <= f.step(to); step++ {
+			c := code(t, key, step)
+			if seen[c] {
+				t.Fatalf("the code %s comes twice among the keys' codes from step %d to %d: change fixedRand's seed", c, from, to)
+			}
+			seen[c] = true
+		}
+	}
+}
 
 // code is the authenticator's code at step.
 func code(t *testing.T, key *otp.Key, step int64) string {
@@ -451,6 +485,7 @@ func TestEnrolment(t *testing.T) {
 	if err != nil || again.Secret() == key.Secret() {
 		t.Fatalf("enrolling again: %v", err)
 	}
+	f.wantDistinct(t, -1, 1, key, again)
 	if got, err := f.User(f.ctx, u.ID); err != nil || got.SecondFactor != "" {
 		t.Fatalf("before confirming, user %+v, %v", got, err)
 	}
@@ -507,6 +542,7 @@ func TestTOTPTolerance(t *testing.T) {
 	u := f.enrolled(t, "alice")
 	// The step before is not the one enrolling used.
 	f.clock.advance(totpPeriod * time.Second)
+	f.wantDistinct(t, -2, 2, u.key)
 	pass := func(step int64) error {
 		started := f.login(t, u)
 		_, err := f.PassTOTP(f.ctx, browser, u.ID, started.ID, code(t, u.key, step))
@@ -624,6 +660,7 @@ func TestReplaceTOTP(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	f.wantDistinct(t, -1, 2, u.key, key)
 	// The old authenticator works until the new one is confirmed.
 	if _, err := f.PassTOTP(f.ctx, browser, u.ID, f.login(t, u).ID, code(t, u.key, f.step(0))); err != nil {
 		t.Fatalf("the old one while replacing: %v", err)
@@ -1192,6 +1229,7 @@ func TestScopedToTheUser(t *testing.T) {
 		t.Fatal(err)
 	}
 	pending := f.login(t, a) // alice's session, its second factor not passed
+	f.wantDistinct(t, -1, 1, a.key, b.key)
 
 	wantErr(t, "EndSession", f.EndSession(f.ctx, browser, b.ID, a.session.ID), ErrNoSession)
 	_, err = f.PassTOTP(f.ctx, browser, b.ID, pending.ID, code(t, b.key, f.step(0)))

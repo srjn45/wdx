@@ -16,6 +16,7 @@ import (
 	"encoding/base64"
 	"errors"
 	"fmt"
+	"io"
 	"sync"
 	"time"
 
@@ -96,6 +97,10 @@ type Options struct {
 	// AroundHash runs every argon2id hash, given it; it is run directly when
 	// nil. Tests count and hold the hashes with it.
 	AroundHash func(hash func())
+	// SecretRand is where the authenticators' secrets come from; crypto/rand
+	// when nil. Tests make them fixed with it, so that the codes they use
+	// are known to differ.
+	SecretRand io.Reader
 }
 
 // Store keeps the accounts in the hub's database.
@@ -105,6 +110,8 @@ type Store struct {
 	now    func() time.Time
 	argon  Argon2
 	issuer string
+	// secretRand is Options.SecretRand, nil for crypto/rand.
+	secretRand io.Reader
 	// dummy is the hash a login for a username that does not exist checks
 	// against, so that it takes as long as one that does.
 	dummy func() string
@@ -119,7 +126,7 @@ func New(db *sql.DB, opts Options) (*Store, error) {
 		return nil, fmt.Errorf("the master key is %d bytes, not %d", len(opts.MasterKey), seal.KeySize)
 	}
 	s := &Store{db: db, key: opts.MasterKey, now: opts.Now, argon: opts.Argon2, issuer: opts.Issuer,
-		hashSlots: newSlots(hashSlotCount, hashWaiting), aroundHash: opts.AroundHash}
+		hashSlots: newSlots(hashSlotCount, hashWaiting), aroundHash: opts.AroundHash, secretRand: opts.SecretRand}
 	if s.aroundHash == nil {
 		s.aroundHash = func(hash func()) { hash() }
 	}

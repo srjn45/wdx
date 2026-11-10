@@ -11,6 +11,7 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"io"
 	"log/slog"
 	"net"
 	"net/http"
@@ -78,6 +79,9 @@ type Options struct {
 	// AroundHash runs every password hash, given it, as account.Options has
 	// it; nil in production. Tests count and hold the hashes with it.
 	AroundHash func(hash func())
+	// SecretRand is where the authenticators' secrets come from, as
+	// account.Options has it; crypto/rand when nil.
+	SecretRand io.Reader
 	// HousekeepingInterval is how often the hub deletes what has expired and
 	// logs the head of its audit chain, besides at startup;
 	// DefaultHousekeepingInterval when 0.
@@ -275,7 +279,7 @@ func Listen(ctx context.Context, opts Options) (_ *Server, err error) {
 	if s.db, err = hubdb.Open(ctx, hubconfig.DBPath(cfg.Home)); err != nil {
 		return nil, err
 	}
-	if s.accounts, err = account.New(s.db, account.Options{MasterKey: cfg.MasterKey, Now: opts.Now, Argon2: opts.Argon2, AroundHash: opts.AroundHash}); err != nil {
+	if s.accounts, err = account.New(s.db, account.Options{MasterKey: cfg.MasterKey, Now: opts.Now, Argon2: opts.Argon2, AroundHash: opts.AroundHash, SecretRand: opts.SecretRand}); err != nil {
 		return nil, err
 	}
 	s.nodes = node.New(s.db, node.Options{Now: opts.Now, Removed: func(n node.Node) any {

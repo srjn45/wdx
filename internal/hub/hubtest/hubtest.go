@@ -237,7 +237,8 @@ func (h *Hub) AddUser(username string) User {
 }
 
 // Code is a code of u's authenticator once the hub's time moved on to the
-// next 30-second step, so that each code is another: each is accepted once.
+// next 30-second step, so that each is of a step not used yet: each step is
+// accepted once.
 // The time moves first, so that the hub checks the code at the step it was
 // made at or the next, which a step crossed meanwhile in real time makes.
 func (h *Hub) Code(u User) string {

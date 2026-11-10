@@ -34,7 +34,7 @@ const RecoveryCodes = 10
 // userID, so that a sealed secret copied to another user's row does not
 // open.
 func (s *Store) newKey(userID, username string) (*otp.Key, []byte, error) {
-	key, err := totp.Generate(totp.GenerateOpts{Issuer: s.issuer, AccountName: username, Period: totpPeriod, Digits: totpDigits, Algorithm: otp.AlgorithmSHA1})
+	key, err := totp.Generate(totp.GenerateOpts{Issuer: s.issuer, AccountName: username, Period: totpPeriod, Digits: totpDigits, Algorithm: otp.AlgorithmSHA1, Rand: s.secretRand})
 	if err != nil {
 		return nil, nil, err
 	}

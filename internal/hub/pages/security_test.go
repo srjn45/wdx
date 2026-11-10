@@ -47,7 +47,7 @@ func TestReplaceAuthenticator(t *testing.T) {
 	if key == p.key {
 		t.Fatal("the new key is the old")
 	}
-	wrong := b.submit(replace, "/security/authenticator/confirm", map[string]string{"code": h.code(p.key)})
+	wrong := b.submit(replace, "/security/authenticator/confirm", map[string]string{"code": h.codeNotOf(p.key, key)})
 	wrong.want(t, http.StatusUnprocessableEntity, "", "That code is wrong")
 	if keyOf(t, wrong) != key {
 		t.Fatal("a wrong code showed another key")
@@ -56,7 +56,7 @@ func TestReplaceAuthenticator(t *testing.T) {
 
 	other := h.browser()
 	second := other.submit(other.get("/login"), "/login", map[string]string{"username": "alice", "password": p.password})
-	other.submit(second, "/login/second-factor", map[string]string{"code": h.code(p.key)}).want(t, http.StatusUnprocessableEntity, "", "That code is wrong")
+	other.submit(second, "/login/second-factor", map[string]string{"code": h.codeNotOf(p.key, key)}).want(t, http.StatusUnprocessableEntity, "", "That code is wrong")
 	p.key = key
 	other.submit(second, "/login/second-factor", map[string]string{"code": h.code(p.key)}).want(t, http.StatusOK, "/security")
 	if got := h.actions(); count(got, account.ActionFactorReplaced) != 1 {

@@ -9,6 +9,7 @@ import (
 	"html"
 	"io"
 	"log/slog"
+	mrand "math/rand/v2"
 	"net"
 	"net/http"
 	"net/http/cookiejar"
@@ -84,7 +85,7 @@ func startHub(t *testing.T, adjust func(*server.Options)) *hub {
 		t.Fatal(err)
 	}
 	c := &clock{t: time.Date(2026, 11, 8, 12, 0, 0, 0, time.UTC)}
-	o := server.Options{Config: cfg, Now: c.now, Argon2: account.Argon2{Memory: 8, Time: 1, Threads: 1}}
+	o := server.Options{Config: cfg, Now: c.now, Argon2: account.Argon2{Memory: 8, Time: 1, Threads: 1}, SecretRand: newFixedRand()}
 	if adjust != nil {
 		adjust(&o)
 	}
@@ -441,16 +442,70 @@ func codesOf(t *testing.T, r response) []string {
 }
 
 // code is the authenticator's code for key at the hub's time, which then
-// moves to the next 30-second step, so that the next code is another.
+// moves to the next 30-second step, so that the next code is of a step not
+// used yet: the string may still be one used before.
 func (h *hub) code(key string) string {
 	h.t.Helper()
-	c, err := totp.GenerateCodeCustom(key, h.clock.now(), totp.ValidateOpts{Period: 30, Digits: otp.DigitsSix, Algorithm: otp.AlgorithmSHA1})
-	if err != nil {
-		h.t.Fatal(err)
-	}
+	c := h.codeAt(key, 0)
 	h.clock.advance(30 * time.Second)
 	h.secret(c)
 	return c
+}
+
+// codeAt is the code for key steps 30-second steps from the hub's time.
+func (h *hub) codeAt(key string, steps int) string {
+	h.t.Helper()
+	at := h.clock.now().Add(time.Duration(steps) * 30 * time.Second)
+	c, err := totp.GenerateCodeCustom(key, at, totp.ValidateOpts{Period: 30, Digits: otp.DigitsSix, Algorithm: otp.AlgorithmSHA1})
+	if err != nil {
+		h.t.Fatal(err)
+	}
+	return c
+}
+
+// wrongCode is a code that is key's at no step the hub accepts now, one
+// either side of its time's.
+func (h *hub) wrongCode(key string) string {
+	h.t.Helper()
+	right := map[string]bool{}
+	for steps := -1; steps <= 1; steps++ {
+		right[h.codeAt(key, steps)] = true
+	}
+	for _, c := range []string{"000000", "111111", "222222", "333333"} {
+		if !right[c] {
+			return c
+		}
+	}
+	panic("four codes taken")
+}
+
+// codeNotOf is code for key, failing first when it is also other's at a
+// step the hub accepts now: the secrets are fixed, so it fails in every run
+// or in none.
+func (h *hub) codeNotOf(key, other string) string {
+	h.t.Helper()
+	c := h.codeAt(key, 0)
+	for steps := -1; steps <= 1; steps++ {
+		if h.codeAt(other, steps) == c {
+			h.t.Fatalf("the code %s is both keys': change fixedRand's seed", c)
+		}
+	}
+	return h.code(key)
+}
+
+// fixedRand is the same bytes in every run: the authenticators' secrets made
+// from it, and so their codes at the hub's fixed time, are fixed.
+type fixedRand struct {
+	mu sync.Mutex
+	r  *mrand.ChaCha8
+}
+
+func newFixedRand() *fixedRand { return &fixedRand{r: mrand.NewChaCha8([32]byte{'w', 'd', 'x'})} }
+
+func (f *fixedRand) Read(b []byte) (int, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return f.r.Read(b)
 }
 
 const password = "correct horse battery"

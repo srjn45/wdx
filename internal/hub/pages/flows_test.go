@@ -34,7 +34,7 @@ func TestSignUp(t *testing.T) {
 	if again := keyOf(t, b.get("/enrol")); again != key {
 		t.Fatalf("enrolment showed another key")
 	}
-	wrong := b.submit(enrol, "/enrol", map[string]string{"code": "000000"})
+	wrong := b.submit(enrol, "/enrol", map[string]string{"code": h.wrongCode(key)})
 	wrong.want(t, http.StatusUnprocessableEntity, "/enrol", "That code is wrong")
 	if keyOf(t, wrong) != key {
 		t.Fatalf("a wrong code showed another key")
@@ -127,7 +127,7 @@ func TestLoginWithAuthenticator(t *testing.T) {
 	before := b.session()
 	// Half way, the Security page is the second factor's.
 	b.get("/security").want(t, http.StatusOK, "/login/second-factor")
-	b.submit(second, "/login/second-factor", map[string]string{"code": "000000"}).want(t, http.StatusUnprocessableEntity, "/login/second-factor", "That code is wrong")
+	b.submit(second, "/login/second-factor", map[string]string{"code": h.wrongCode(p.key)}).want(t, http.StatusUnprocessableEntity, "/login/second-factor", "That code is wrong")
 	code := h.code(p.key)
 	b.submit(second, "/login/second-factor", map[string]string{"code": code}).want(t, http.StatusOK, "/security", "Logged in as")
 	if b.session() == before {

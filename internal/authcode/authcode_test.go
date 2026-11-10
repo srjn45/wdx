@@ -14,16 +14,32 @@ var now = time.Date(2026, 11, 8, 12, 0, 0, 0, time.UTC)
 
 func setUp(t *testing.T) (*Files, Pending, string) {
 	t.Helper()
-	p, err := Generate("wdx", "ann@desktop")
-	if err != nil {
-		t.Fatal(err)
-	}
+	p := Pending{Secret: secret}
+	distinctCodes(t, secret)
 	f := Open(t.TempDir())
 	key, err := f.Write(context.Background(), p.Secret, Step(now)-5)
 	if err != nil {
 		t.Fatal(err)
 	}
 	return f, p, key
+}
+
+// secret is the authenticator's secret of the tests: fixed, so that its codes
+// two steps either side of now's are each another, as distinctCodes checks.
+const secret = "JBSWY3DPEHPK3PXPJBSWY3DPEHPK3PXP"
+
+// distinctCodes fails unless secret's codes from two steps before now's to
+// two after are all different, which the tests take a wrong code to be.
+func distinctCodes(t *testing.T, secret string) {
+	t.Helper()
+	seen := map[string]int64{}
+	for off := int64(-2); off <= 2; off++ {
+		c := code(t, secret, Step(now)+off)
+		if at, ok := seen[c]; ok {
+			t.Fatalf("the secret's code %s is the same at steps %d and %d from now's: choose another secret", c, at, off)
+		}
+		seen[c] = off
+	}
 }
 
 func code(t *testing.T, secret string, step int64) string {
