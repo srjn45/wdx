@@ -970,6 +970,25 @@ func TestOpenCrossingCutOff(t *testing.T) {
 	}
 }
 
+// Cursor's C5: a session closed between Use's check and its touch is
+// refused, as the touch moves no row.
+func TestTouchClosedSession(t *testing.T) {
+	t.Parallel()
+	w := newWorld(t)
+	desktop := w.newNode(w.hub.User, "desktop")
+	laptop := w.newNode(w.hub.User, "laptop")
+	desktop.setUp()
+	s := laptop.mustOpen(desktop)
+	if _, err := desktop.remote.closeWhere(desktop.ctx, ReasonIdle, "id = ?", s.ID); err != nil {
+		t.Fatal(err)
+	}
+	err := desktop.remote.touch(desktop.ctx, s.ID, w.clock.Now())
+	wantCode(t, err, CodeSessionClosed)
+	if e, _ := asError(err); ReasonOf(e) != ReasonIdle {
+		t.Errorf("refused %v, want the reason idle", e.Details)
+	}
+}
+
 func TestClose(t *testing.T) {
 	t.Parallel()
 	w := newWorld(t)

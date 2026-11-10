@@ -133,7 +133,10 @@ func (r *Remote) Stream(ctx context.Context, nodeID string) (net.Conn, Session, 
 	// same pace, so that both show the same times.
 	log := logging.FromContext(ctx).With("session_id", s.ID)
 	used := &usedConn{Conn: conn, now: r.opts.Clock.Now, timeout: func() time.Duration { return s.idleTimeout }, used: func() {
-		if err := r.touch(context.WithoutCancel(ctx), s.ID, r.opts.Clock.Now()); err != nil {
+		err := r.touch(context.WithoutCancel(ctx), s.ID, r.opts.Clock.Now())
+		if _, closed := asError(err); closed {
+			log.Info("session idle time not moved on", "err", err) // the stream is cut with it
+		} else if err != nil {
 			log.Error("session idle time not moved on", "err", err)
 		}
 	}}

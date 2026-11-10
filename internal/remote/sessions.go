@@ -127,10 +127,25 @@ func insertSession(ctx context.Context, tx *sql.Tx, s Session) error {
 	return err
 }
 
-// touch moves the session's last use to now.
+// touch moves the session's last use to now. A session closed since it was
+// read is an *Error with CodeSessionClosed.
 func (r *Remote) touch(ctx context.Context, id string, now time.Time) error {
-	_, err := sqlite.Exec(ctx, r.opts.DB, "UPDATE hub_sessions SET last_used_at = ? WHERE id = ? AND closed_at IS NULL", now.UnixMilli(), id)
+	n, err := sqlite.Exec(ctx, r.opts.DB, "UPDATE hub_sessions SET last_used_at = ? WHERE id = ? AND closed_at IS NULL", now.UnixMilli(), id)
+	if err == nil && n == 0 {
+		closed := refusal(CodeSessionClosed, "session %s closed meanwhile", id)
+		if reason := r.reasonClosed(ctx, id); reason != "" {
+			closed.Details = map[string]any{"reason": string(reason)}
+		}
+		return closed
+	}
 	return err
+}
+
+// reasonClosed is why the session id closed, empty when it does not know.
+func (r *Remote) reasonClosed(ctx context.Context, id string) Reason {
+	var reason Reason
+	_ = r.opts.DB.QueryRowContext(ctx, "SELECT closed_reason FROM hub_sessions WHERE id = ? AND closed_reason IS NOT NULL", id).Scan(&reason)
+	return reason
 }
 
 // closeWhere closes the sessions open that where matches, for reason, with
