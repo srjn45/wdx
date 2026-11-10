@@ -43,3 +43,38 @@ func TestTail(t *testing.T) {
 		t.Fatalf("no logs: %v, %v", lines, err)
 	}
 }
+
+// fataler records what Scan failed with.
+type fataler struct{ failed string }
+
+func (f *fataler) Helper() {}
+
+func (f *fataler) Fatalf(format string, args ...any) { f.failed = fmt.Sprintf(format, args...) }
+
+func TestScan(t *testing.T) {
+	t.Parallel()
+	dir := t.TempDir()
+	path := filepath.Join(dir, "hub.log")
+	if err := os.WriteFile(path, []byte("one\ntwo\n"+strings.Repeat("x", 100)+"\nafter\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	var lines []string
+	var f fataler
+	Scan(&f, path, 200, func(line []byte) { lines = append(lines, string(line)) })
+	if f.failed != "" || len(lines) != 4 || lines[3] != "after" {
+		t.Fatalf("want the four lines, got %q, failed %q", lines, f.failed)
+	}
+
+	lines, f = nil, fataler{}
+	Scan(&f, path, 50, func(line []byte) { lines = append(lines, string(line)) })
+	if !strings.Contains(f.failed, path) || !strings.Contains(f.failed, "too long") || len(lines) != 2 {
+		t.Fatalf("want the line over the limit failing with the file named, got %q, failed %q", lines, f.failed)
+	}
+
+	// A directory opens, and fails at the first read.
+	f = fataler{}
+	Scan(&f, dir, 50, func([]byte) { t.Error("a line read from a directory") })
+	if !strings.Contains(f.failed, dir) {
+		t.Fatalf("want a failed read naming the file, got %q", f.failed)
+	}
+}

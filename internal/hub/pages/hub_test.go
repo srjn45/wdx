@@ -1,7 +1,6 @@
 package pages_test
 
 import (
-	"bufio"
 	"bytes"
 	"context"
 	"crypto/rand"
@@ -136,22 +135,16 @@ func (h *hub) wantLogged() {
 	}
 	received := map[string]int{}
 	for _, f := range files {
-		file, err := os.Open(f)
-		if err != nil {
-			t.Fatal(err)
-		}
-		s := bufio.NewScanner(file)
-		s.Buffer(make([]byte, 0, 64<<10), 4<<20)
-		for s.Scan() {
+		logtest.Scan(t, f, 4<<20, func(raw []byte) {
 			var line map[string]any
-			if err := json.Unmarshal(s.Bytes(), &line); err != nil {
+			if err := json.Unmarshal(raw, &line); err != nil {
 				t.Fatalf("%s: %v", f, err)
 			}
 			if leaked := h.leaked(line); leaked != "" {
-				t.Errorf("a secret, %q, logged: %s", leaked, s.Bytes())
+				t.Errorf("a secret, %q, logged: %s", leaked, raw)
 			}
 			if line["page"] != true {
-				continue
+				return
 			}
 			if line["query"] != nil || line["body"] != nil || line["response"] != nil {
 				t.Errorf("a page's line logs more than its path: %v", line)
@@ -163,8 +156,7 @@ func (h *hub) wantLogged() {
 			case "request returned":
 				received[id]--
 			}
-		}
-		file.Close()
+		})
 	}
 	for id, n := range received {
 		if n != 0 {

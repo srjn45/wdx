@@ -1,7 +1,6 @@
 package cli
 
 import (
-	"bufio"
 	"bytes"
 	"context"
 	"encoding/json"
@@ -27,6 +26,7 @@ import (
 	"github.com/srjn45/wdx/internal/hub/hubtest"
 	"github.com/srjn45/wdx/internal/identity"
 	"github.com/srjn45/wdx/internal/logging"
+	"github.com/srjn45/wdx/internal/logtest"
 	"github.com/srjn45/wdx/internal/waittest"
 )
 
@@ -211,20 +211,13 @@ func (hh *hubHome) wantNoSecrets() {
 		t.Fatal(err)
 	}
 	for _, f := range files {
-		file, err := os.Open(f)
-		if err != nil {
-			t.Fatal(err)
-		}
-		s := bufio.NewScanner(file)
-		s.Buffer(make([]byte, 0, 64<<10), 4<<20)
-		for s.Scan() {
+		logtest.Scan(t, f, 4<<20, func(raw []byte) {
 			for _, secret := range secrets {
-				if bytes.Contains(s.Bytes(), []byte(secret)) {
-					t.Errorf("a secret, %q, logged: %s", secret, s.Bytes())
+				if bytes.Contains(raw, []byte(secret)) {
+					t.Errorf("a secret, %q, logged: %s", secret, raw)
 				}
 			}
-		}
-		file.Close()
+		})
 	}
 }
 

@@ -1,7 +1,6 @@
 package cli
 
 import (
-	"bufio"
 	"context"
 	"encoding/json"
 	"io"
@@ -19,6 +18,7 @@ import (
 	"github.com/srjn45/wdx/internal/clikit/clikittest"
 	"github.com/srjn45/wdx/internal/db"
 	"github.com/srjn45/wdx/internal/identity"
+	"github.com/srjn45/wdx/internal/logtest"
 	"github.com/srjn45/wdx/internal/pty"
 )
 
@@ -430,19 +430,12 @@ func (hh *hubHome) wantNoCodes() {
 	hh.mu.Unlock()
 	files, _ := filepath.Glob(filepath.Join(identity.LogsDir(hh.home), "*.log"))
 	for _, f := range files {
-		file, err := os.Open(f)
-		if err != nil {
-			t.Fatal(err)
-		}
-		s := bufio.NewScanner(file)
-		s.Buffer(make([]byte, 0, 64<<10), 4<<20)
-		for s.Scan() {
+		logtest.Scan(t, f, 4<<20, func(raw []byte) {
 			for _, c := range codes {
-				if regexp.MustCompile(`(^|[^0-9])` + c + `([^0-9]|$)`).Match(s.Bytes()) {
-					t.Errorf("a code, %s, logged: %s", c, s.Bytes())
+				if regexp.MustCompile(`(^|[^0-9])` + c + `([^0-9]|$)`).Match(raw) {
+					t.Errorf("a code, %s, logged: %s", c, raw)
 				}
 			}
-		}
-		file.Close()
+		})
 	}
 }

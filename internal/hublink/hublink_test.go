@@ -1,7 +1,6 @@
 package hublink
 
 import (
-	"bufio"
 	"bytes"
 	"context"
 	"crypto/x509"
@@ -23,6 +22,7 @@ import (
 	"github.com/srjn45/wdx/internal/identity"
 	"github.com/srjn45/wdx/internal/limitstest"
 	"github.com/srjn45/wdx/internal/logging"
+	"github.com/srjn45/wdx/internal/logtest"
 	"github.com/srjn45/wdx/internal/runtest"
 	"github.com/srjn45/wdx/internal/waittest"
 )
@@ -209,19 +209,13 @@ func (n *node) wantNoSecrets() {
 	n.mu.Lock()
 	secrets := n.secrets
 	n.mu.Unlock()
-	b, err := os.ReadFile(n.log)
-	if err != nil {
-		t.Fatal(err)
-	}
-	s := bufio.NewScanner(bytes.NewReader(b))
-	s.Buffer(nil, 1<<20)
-	for s.Scan() {
+	logtest.Scan(t, n.log, 1<<20, func(raw []byte) {
 		for _, secret := range secrets {
-			if hubtest.Leaked(s.Bytes(), secret) {
-				t.Errorf("node: a secret, %q, logged: %s", secret, s.Bytes())
+			if hubtest.Leaked(raw, secret) {
+				t.Errorf("node: a secret, %q, logged: %s", secret, raw)
 			}
 		}
-	}
+	})
 }
 
 // logged returns the node's log lines whose msg is msg.

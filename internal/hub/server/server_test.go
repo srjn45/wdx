@@ -1,7 +1,6 @@
 package server
 
 import (
-	"bufio"
 	"context"
 	"crypto/ed25519"
 	"crypto/rand"
@@ -260,20 +259,13 @@ func logLines(t *testing.T, home string) []map[string]any {
 	}
 	var lines []map[string]any
 	for _, f := range files {
-		file, err := os.Open(f)
-		if err != nil {
-			t.Fatal(err)
-		}
-		s := bufio.NewScanner(file)
-		s.Buffer(make([]byte, 0, 64<<10), 4<<20)
-		for s.Scan() {
+		logtest.Scan(t, f, 4<<20, func(raw []byte) {
 			var line map[string]any
-			if err := json.Unmarshal(s.Bytes(), &line); err != nil {
+			if err := json.Unmarshal(raw, &line); err != nil {
 				t.Fatalf("%s: %v", f, err)
 			}
 			lines = append(lines, line)
-		}
-		file.Close()
+		})
 	}
 	return lines
 }

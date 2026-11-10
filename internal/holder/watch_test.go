@@ -1,7 +1,6 @@
 package holder
 
 import (
-	"bufio"
 	"encoding/json"
 	"fmt"
 	"log/slog"
@@ -16,6 +15,7 @@ import (
 
 	"github.com/srjn45/wdx/internal/aca"
 	"github.com/srjn45/wdx/internal/identity"
+	"github.com/srjn45/wdx/internal/logtest"
 	"github.com/srjn45/wdx/internal/screen"
 	"github.com/srjn45/wdx/internal/waittest"
 )
@@ -108,19 +108,12 @@ func (f fixture) logged(t *testing.T) []logLine {
 	slices.Sort(files)
 	var lines []logLine
 	for _, name := range files {
-		file, err := os.Open(name)
-		if err != nil {
-			t.Fatal(err)
-		}
-		scan := bufio.NewScanner(file)
-		scan.Buffer(nil, 1<<20)
-		for scan.Scan() {
+		logtest.Scan(t, name, 1<<20, func(raw []byte) {
 			var line logLine
-			if json.Unmarshal(scan.Bytes(), &line) == nil {
+			if json.Unmarshal(raw, &line) == nil {
 				lines = append(lines, line)
 			}
-		}
-		file.Close()
+		})
 	}
 	return lines
 }

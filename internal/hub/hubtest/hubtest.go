@@ -10,7 +10,6 @@
 package hubtest
 
 import (
-	"bufio"
 	"bytes"
 	"context"
 	"crypto/rand"
@@ -20,7 +19,6 @@ import (
 	"log/slog"
 	"net"
 	"net/http"
-	"os"
 	"path/filepath"
 	"regexp"
 	"strings"
@@ -283,20 +281,13 @@ func (h *Hub) eachLine(fn func(line map[string]any, raw []byte)) {
 		t.Fatal(err)
 	}
 	for _, f := range files {
-		file, err := os.Open(f)
-		if err != nil {
-			t.Fatal(err)
-		}
-		s := bufio.NewScanner(file)
-		s.Buffer(make([]byte, 0, 64<<10), 4<<20)
-		for s.Scan() {
+		logtest.Scan(t, f, 4<<20, func(raw []byte) {
 			var line map[string]any
-			if err := json.Unmarshal(s.Bytes(), &line); err != nil {
+			if err := json.Unmarshal(raw, &line); err != nil {
 				t.Fatalf("%s: %v", f, err)
 			}
-			fn(line, s.Bytes())
-		}
-		file.Close()
+			fn(line, raw)
+		})
 	}
 }
 

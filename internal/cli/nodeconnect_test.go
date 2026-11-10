@@ -11,7 +11,6 @@ import (
 	"net"
 	"net/http"
 	"net/url"
-	"os"
 	"path/filepath"
 	"strconv"
 	"strings"
@@ -24,6 +23,7 @@ import (
 	"github.com/srjn45/wdx/internal/gittest"
 	"github.com/srjn45/wdx/internal/identity"
 	"github.com/srjn45/wdx/internal/logging"
+	"github.com/srjn45/wdx/internal/logtest"
 	"github.com/srjn45/wdx/internal/waittest"
 )
 
@@ -188,22 +188,15 @@ func logLines(t *testing.T, home, debugID string) []map[string]any {
 	}
 	var lines []map[string]any
 	for _, f := range files {
-		file, err := os.Open(f)
-		if err != nil {
-			t.Fatal(err)
-		}
-		s := bufio.NewScanner(file)
-		s.Buffer(make([]byte, 0, 64<<10), 4<<20)
-		for s.Scan() {
-			if !bytes.Contains(s.Bytes(), []byte(debugID)) {
-				continue
+		logtest.Scan(t, f, 4<<20, func(raw []byte) {
+			if !bytes.Contains(raw, []byte(debugID)) {
+				return
 			}
 			var line map[string]any
-			if json.Unmarshal(s.Bytes(), &line) == nil && (debugID == "" || line["debug_id"] == debugID) {
+			if json.Unmarshal(raw, &line) == nil && (debugID == "" || line["debug_id"] == debugID) {
 				lines = append(lines, line)
 			}
-		}
-		file.Close()
+		})
 	}
 	return lines
 }
@@ -217,18 +210,11 @@ func rawLines(t *testing.T, home, text string) []string {
 	}
 	var lines []string
 	for _, f := range files {
-		file, err := os.Open(f)
-		if err != nil {
-			t.Fatal(err)
-		}
-		s := bufio.NewScanner(file)
-		s.Buffer(make([]byte, 0, 64<<10), 4<<20)
-		for s.Scan() {
-			if strings.Contains(s.Text(), text) {
-				lines = append(lines, s.Text())
+		logtest.Scan(t, f, 4<<20, func(raw []byte) {
+			if strings.Contains(string(raw), text) {
+				lines = append(lines, string(raw))
 			}
-		}
-		file.Close()
+		})
 	}
 	return lines
 }

@@ -70,6 +70,34 @@ func Tail(home string, n int) ([]string, error) {
 	return lines, nil
 }
 
+// Fataler is what Scan fails: a *testing.T.
+type Fataler interface {
+	Helper()
+	Fatalf(format string, args ...any)
+}
+
+// Scan calls fn with each line of the file at path, which fn must not keep,
+// and fails t naming the file when it cannot be read to its end: a read that
+// fails, or a line longer than limit bytes, which would otherwise end the
+// lines there as if the file did.
+func Scan(t Fataler, path string, limit int, fn func(line []byte)) {
+	t.Helper()
+	file, err := os.Open(path)
+	if err != nil {
+		t.Fatalf("%v", err)
+		return
+	}
+	defer file.Close()
+	s := bufio.NewScanner(file)
+	s.Buffer(make([]byte, 0, min(64<<10, limit)), limit)
+	for s.Scan() {
+		fn(s.Bytes())
+	}
+	if err := s.Err(); err != nil {
+		t.Fatalf("%s: not read to its end: %v", path, err)
+	}
+}
+
 // short is a JSON log line as "15:04:05.000 INFO msg key=value ...".
 func short(line string) string {
 	var fields map[string]any

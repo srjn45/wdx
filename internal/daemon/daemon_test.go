@@ -1,7 +1,6 @@
 package daemon
 
 import (
-	"bufio"
 	"context"
 	"encoding/json"
 	"errors"
@@ -197,19 +196,13 @@ func logLines(t *testing.T, home string) []map[string]any {
 	}
 	var lines []map[string]any
 	for _, f := range files {
-		b, err := os.ReadFile(f)
-		if err != nil {
-			t.Fatal(err)
-		}
-		s := bufio.NewScanner(strings.NewReader(string(b)))
-		s.Buffer(nil, 1<<20)
-		for s.Scan() {
+		logtest.Scan(t, f, 1<<20, func(raw []byte) {
 			var line map[string]any
-			if err := json.Unmarshal(s.Bytes(), &line); err != nil {
-				t.Fatalf("broken log line %q: %v", s.Text(), err)
+			if err := json.Unmarshal(raw, &line); err != nil {
+				t.Fatalf("broken log line %q: %v", string(raw), err)
 			}
 			lines = append(lines, line)
-		}
+		})
 	}
 	return lines
 }

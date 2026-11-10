@@ -1,7 +1,6 @@
 package logging
 
 import (
-	"bufio"
 	"bytes"
 	"context"
 	"encoding/json"
@@ -15,6 +14,8 @@ import (
 	"syscall"
 	"testing"
 	"time"
+
+	"github.com/srjn45/wdx/internal/logtest"
 )
 
 // clock is a settable time source.
@@ -208,15 +209,13 @@ func TestConcurrentWriters(t *testing.T) {
 
 	n := 0
 	for _, name := range files(t, dir) {
-		s := bufio.NewScanner(strings.NewReader(read(t, filepath.Join(dir, name))))
-		s.Buffer(nil, 1<<20)
-		for s.Scan() {
+		logtest.Scan(t, filepath.Join(dir, name), 1<<20, func(raw []byte) {
 			var v map[string]any
-			if err := json.Unmarshal(s.Bytes(), &v); err != nil {
-				t.Fatalf("broken line %q: %v", s.Text(), err)
+			if err := json.Unmarshal(raw, &v); err != nil {
+				t.Fatalf("broken line %q: %v", raw, err)
 			}
 			n++
-		}
+		})
 	}
 	if n != 2*writers*lines {
 		t.Fatalf("want %d lines, got %d", 2*writers*lines, n)
