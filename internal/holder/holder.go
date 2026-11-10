@@ -807,7 +807,7 @@ func (h *holder) handle(ctx context.Context, c *net.UnixConn) {
 
 // hello is what the holder says to whoever connects; h.mu is held.
 func (h *holder) hello() Hello {
-	return Hello{Version: Version, TerminalID: h.id, PID: h.cmd.Process.Pid, HolderPID: os.Getpid(), Exited: h.exit, HistoryLines: h.nextLine.Load(), Status: h.status(), Confirms: true, Delivered: h.inbox.typedIDs()}
+	return Hello{Version: Version, OldestClient: oldestClientVersion, TerminalID: h.id, PID: h.cmd.Process.Pid, HolderPID: os.Getpid(), Exited: h.exit, HistoryLines: h.nextLine.Load(), Status: h.status(), Confirms: true, Delivered: h.inbox.typedIDs()}
 }
 
 // stop hangs up on the shell and the program in the foreground, and kills

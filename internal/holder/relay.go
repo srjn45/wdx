@@ -14,6 +14,10 @@ import (
 // another node: its terminal was started by an older wdx.
 var ErrHolderVersionUnsupported = errors.New("the terminal's holder is too old to attach to from another node; restart the terminal")
 
+// ErrClientVersionUnsupported is a holder that no longer serves the relayed
+// client's version: the client's wdx is older than the holder's oldest.
+var ErrClientVersionUnsupported = errors.New("the terminal's holder no longer serves the client's version")
+
 // Relay is a connection to a holder made for a client the daemon relays,
 // greeted already: the client's own hello is answered with the holder's, and
 // the bytes after it are the protocol's, copied as they are.
@@ -27,8 +31,15 @@ type Relay struct {
 
 // DialRelay connects to the holder of terminal id listening on socket for a
 // client on node, another node of the account, or on this one when node is
-// "". A holder too old to know a relayed client is ErrHolderVersionUnsupported.
-func DialRelay(ctx context.Context, socket, id, node string) (*Relay, error) {
+// "", which speaks version. A holder too old to know a relayed client is
+// ErrHolderVersionUnsupported, one that no longer serves version
+// ErrClientVersionUnsupported.
+//
+// It greets the holder in the client's place, before the daemon switches the
+// client's connection, so that either is a problem the API answers rather
+// than a stream that ends; the client's own hello comes only after the
+// switch, so the client gives its version in the attach request.
+func DialRelay(ctx context.Context, socket, id, node string, version int) (*Relay, error) {
 	limits := limitsOf(ctx)
 	ctx, cancel := context.WithTimeout(ctx, limits.Dial)
 	defer cancel()
@@ -36,7 +47,7 @@ func DialRelay(ctx context.Context, socket, id, node string) (*Relay, error) {
 	if err != nil {
 		return nil, err
 	}
-	r, err := greetRelay(c, id, node)
+	r, err := greetRelay(c, id, node, version)
 	if err != nil {
 		c.Close()
 		return nil, err
@@ -45,8 +56,8 @@ func DialRelay(ctx context.Context, socket, id, node string) (*Relay, error) {
 	return r, nil
 }
 
-func greetRelay(c net.Conn, id, node string) (*Relay, error) {
-	if err := writeFrame(c, frameHello, Hello{Version: Version, Role: roleClient, Remote: node != "", Node: node}); err != nil {
+func greetRelay(c net.Conn, id, node string, version int) (*Relay, error) {
+	if err := writeFrame(c, frameHello, Hello{Version: version, Role: roleClient, Remote: node != "", Node: node}); err != nil {
 		return nil, err
 	}
 	t, body, err := readFrame(c)
@@ -61,6 +72,9 @@ func greetRelay(c net.Conn, id, node string) (*Relay, error) {
 		// One before version 2 took this connection for the daemon's, which
 		// dials it again; a later one waits for an attach, and logs none came.
 		return nil, ErrHolderVersionUnsupported
+	}
+	if hello.OldestClient > version {
+		return nil, fmt.Errorf("%w: it serves %d on, the client speaks %d", ErrClientVersionUnsupported, hello.OldestClient, version)
 	}
 	if hello.TerminalID != id {
 		return nil, fmt.Errorf("the holder runs terminal %s, not %s", hello.TerminalID, id)

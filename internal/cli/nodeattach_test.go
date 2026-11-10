@@ -4,13 +4,16 @@ import (
 	"encoding/json"
 	"io"
 	"net"
+	"net/http"
 	"os"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
 
 	"github.com/srjn45/wdx/internal/api"
 	"github.com/srjn45/wdx/internal/clikit"
+	"github.com/srjn45/wdx/internal/holder"
 	"github.com/srjn45/wdx/internal/identity"
 )
 
@@ -168,4 +171,68 @@ func TestNodeAttachOldHolder(t *testing.T) {
 	v, exit := a.wait()
 	wantError(t, v, exit, api.ErrorCodeHolderVersionUnsupported, clikit.ExitRejected)
 	wantHint(t, v, "restart its shell on desktop")
+}
+
+// attach asks for a stream to the holder of the terminal with id, with
+// query, and returns the status and the problem, when it is one.
+func (c *nodeClient) attach(id, query string) (int, *api.Problem) {
+	c.t.Helper()
+	req, err := http.NewRequest(http.MethodPost, "http://wdx/v1/terminals/id:"+id+"/attach"+query, nil)
+	if err != nil {
+		c.t.Fatal(err)
+	}
+	req.Header.Set("Connection", "Upgrade")
+	req.Header.Set("Upgrade", api.StreamUpgrade)
+	req.Header.Set(api.DebugIDHeader, c.debugID)
+	req.Header.Set(api.APIVersionHeader, c.version)
+	resp, err := (&http.Client{Transport: c.transport}).Do(req)
+	if err != nil {
+		c.t.Fatal(err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode == http.StatusSwitchingProtocols {
+		return resp.StatusCode, nil
+	}
+	var p api.Problem
+	if err := json.NewDecoder(resp.Body).Decode(&p); err != nil {
+		c.t.Fatalf("attach%s: %d, no problem: %v", query, resp.StatusCode, err)
+	}
+	return resp.StatusCode, &p
+}
+
+// TestNodeAttachHolderVersions asks for streams to a holder for clients of
+// other holder versions: the relay greets the holder with the client's, the
+// daemon's own when it gives none, and the holder decides.
+func TestNodeAttachHolderVersions(t *testing.T) {
+	t.Parallel()
+	p := openPair(t)
+	app := newProjectDir(t, p.desktop.home, "app")
+	term := newTerminal(t, p.desktop.home, app, "api")
+
+	for _, c := range []struct {
+		query   string
+		version int // what the relay tells the holder
+	}{{"", holder.Version}, {"?holder_version=" + strconv.Itoa(holder.Version+1), holder.Version + 1}} {
+		nc := p.laptop.nodeClient("desktop", currentVersion)
+		if status, problem := nc.attach(term.Id, c.query); status != http.StatusSwitchingProtocols {
+			t.Fatalf("attach%s: %d %+v, want switched", c.query, status, problem)
+		}
+		if lineOf(logLines(t, p.desktop.home, nc.debugID), "holder dialled for a relayed client", map[string]any{"client_version": c.version}) == nil {
+			t.Errorf("attach%s: the desktop did not tell the holder the client speaks %d", c.query, c.version)
+		}
+	}
+
+	// Below the oldest the holder serves: its problem, naming the client.
+	status, problem := p.laptop.nodeClient("desktop", currentVersion).attach(term.Id, "?holder_version=1")
+	if status != http.StatusConflict || problem.Code != api.ErrorCodeHolderVersionUnsupported || problem.Details == nil || (*problem.Details)["update"] != "client" {
+		t.Errorf("an older client: %d %+v, want holder_version_unsupported naming the client", status, problem)
+	}
+	// Not a version at all: refused before the handler dials the holder.
+	nc := p.laptop.nodeClient("desktop", currentVersion)
+	if status, problem := nc.attach(term.Id, "?holder_version=0"); status != http.StatusBadRequest || problem.Code != api.ErrorCodeUsage {
+		t.Errorf("version 0: %d %+v, want usage", status, problem)
+	}
+	if lineOf(logLines(t, p.desktop.home, nc.debugID), "holder dialled for a relayed client", nil) != nil {
+		t.Error("version 0 reached the holder")
+	}
 }

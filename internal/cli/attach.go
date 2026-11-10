@@ -328,8 +328,11 @@ func attachHolder(cmd *cobra.Command, t attachTarget, size holder.Size) (*holder
 		}
 		return session, nil
 	}
-	conn, err := clientOf(cmd).AttachStream(ctx, t.holderID)
+	conn, err := clientOf(cmd).AttachStream(ctx, t.holderID, holder.Version)
 	if problemCode(err) == api.ErrorCodeHolderVersionUnsupported {
+		if problemDetail(err, "update") == "client" {
+			return nil, &clikit.Hinted{Err: err, Hint: "update wdx here: " + identity.Name + " update"}
+		}
 		return nil, &clikit.Hinted{Err: err, Hint: "restart its shell on " + nodeOf(cmd) + ": close and open its project there, or remove the terminal and create it again"}
 	}
 	if err != nil {

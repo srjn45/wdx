@@ -17,6 +17,7 @@ import (
 	"github.com/srjn45/wdx/internal/api"
 	"github.com/srjn45/wdx/internal/client"
 	"github.com/srjn45/wdx/internal/clikit"
+	"github.com/srjn45/wdx/internal/holder"
 	"github.com/srjn45/wdx/internal/identity"
 	"github.com/srjn45/wdx/internal/logging"
 	"github.com/srjn45/wdx/internal/style"
@@ -212,7 +213,7 @@ func remoteTide(cmd *cobra.Command, node string, opts *tide.Options) (*client.Cl
 	if _, err := c.Version(ctx); err != nil {
 		return nil, err
 	}
-	opts.DialTerminal = func(ctx context.Context, id string) (net.Conn, error) { return c.AttachStream(ctx, id) }
+	opts.DialTerminal = func(ctx context.Context, id string) (net.Conn, error) { return c.AttachStream(ctx, id, holder.Version) }
 	logging.FromContext(ctx).Info("tide on another node", "node", node, "api_version", c.APIVersion())
 	return c, nil
 }

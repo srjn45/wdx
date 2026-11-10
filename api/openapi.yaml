@@ -1188,6 +1188,16 @@ paths:
           required: true
           description: What the connection is switched to.
           schema: { type: string, enum: [wdx-stream] }
+        - name: holder_version
+          in: query
+          required: false
+          description: |
+            The holder protocol version the client speaks, which the daemon
+            gives the holder in the client's place: it greets the holder
+            before the switch, before the client's own hello, so that a
+            holder that cannot serve the client is a problem, not a stream
+            that ends. Without it, the daemon's own.
+          schema: { type: integer, minimum: 1 }
       summary: A byte stream to a running terminal's holder, for a client that cannot dial its socket
       description: |
         An HTTP Upgrade, as connectHubNode is: once switched, the connection
@@ -1201,8 +1211,9 @@ paths:
 
         Errors: invalid_path, not_found, terminal_not_running,
         holder_version_unsupported (the holder predates relayed clients:
-        restart the terminal), connection_lost (its holder cannot be
-        reached).
+        restart the terminal; or, with details.update client, it no longer
+        serves the client's holder_version: update the client),
+        connection_lost (its holder cannot be reached).
       responses:
         "101":
           description: Switched, the connection is the holder's protocol.

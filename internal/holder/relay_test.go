@@ -19,7 +19,13 @@ import (
 // other end the relay greets and copies to the holder.
 func (f fixture) relayed(t *testing.T, id, node string) *Session {
 	t.Helper()
-	r, err := DialRelay(limited(t), identity.HolderSocket(f.home, id), id, node)
+	return f.relayedAt(t, id, node, Version)
+}
+
+// relayedAt is relayed for a client the relay says speaks version.
+func (f fixture) relayedAt(t *testing.T, id, node string, version int) *Session {
+	t.Helper()
+	r, err := DialRelay(limited(t), identity.HolderSocket(f.home, id), id, node, version)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -132,7 +138,7 @@ func TestDialRelayVersions(t *testing.T) {
 			_ = writeFrame(c, frameHello, Hello{Version: tc.version, TerminalID: "term-0000030a"})
 			_, _ = io.Copy(io.Discard, c) // until the relay closes
 		}()
-		r, err := DialRelay(limited(t), socket, "term-0000030a", "laptop")
+		r, err := DialRelay(limited(t), socket, "term-0000030a", "laptop", Version)
 		if tc.ok {
 			if err != nil {
 				t.Fatalf("version %d: %v", tc.version, err)
@@ -151,8 +157,59 @@ func TestDialRelayOtherTerminal(t *testing.T) {
 	t.Parallel()
 	f := newFixture(t)
 	f.startShell(t, "term-00000303", interactiveShell)
-	_, err := DialRelay(limited(t), identity.HolderSocket(f.home, "term-00000303"), "term-00000399", "laptop")
+	_, err := DialRelay(limited(t), identity.HolderSocket(f.home, "term-00000303"), "term-00000399", "laptop", Version)
 	if err == nil || !strings.Contains(err.Error(), "not term-00000399") {
 		t.Fatalf("got %v, want the other terminal refused", err)
+	}
+}
+
+// TestAttachRelayedNewerClient relays a client newer than the holder, which
+// is served: the holder is told the client's version, not the relay's.
+func TestAttachRelayedNewerClient(t *testing.T) {
+	t.Parallel()
+	f := newFixture(t)
+	f.startShell(t, "term-00000304", interactiveShell)
+	s := f.relayedAt(t, "term-00000304", "laptop", Version+1)
+	out := readSession(s)
+	if _, err := s.Write([]byte("echo ne''wer\n")); err != nil {
+		t.Fatal(err)
+	}
+	out.waitFor(t, "newer\r\n")
+	var attached logLine
+	if !waittest.Until(t, func() bool {
+		for _, l := range f.logged(t) {
+			if l.msg() == "client attached" {
+				attached = l
+				return true
+			}
+		}
+		return false
+	}) {
+		t.Fatal("no client attached logged")
+	}
+	if attached["client_version"] != float64(Version+1) {
+		t.Errorf("logged %v, want the client's version %d", attached, Version+1)
+	}
+}
+
+// TestDialRelayOlderClient relays a client older than the oldest the holder
+// serves: the holder refuses it, and the relay says so.
+func TestDialRelayOlderClient(t *testing.T) {
+	t.Parallel()
+	f := newFixture(t)
+	f.startShell(t, "term-00000305", interactiveShell)
+	_, err := DialRelay(limited(t), identity.HolderSocket(f.home, "term-00000305"), "term-00000305", "laptop", oldestClientVersion-1)
+	if !errors.Is(err, ErrClientVersionUnsupported) {
+		t.Fatalf("got %v, want ErrClientVersionUnsupported", err)
+	}
+	if !waittest.Until(t, func() bool {
+		for _, l := range f.logged(t) {
+			if l.msg() == "client refused" && l["client_version"] == float64(oldestClientVersion-1) {
+				return true
+			}
+		}
+		return false
+	}) {
+		t.Fatal("the holder logged no client refused")
 	}
 }

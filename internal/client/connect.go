@@ -27,11 +27,12 @@ func (c *Client) Connect(ctx context.Context, node string) (net.Conn, error) {
 
 // AttachStream asks the daemon, through whatever the client dials, for a
 // stream to the holder of the terminal with terminalID, an agent's or an
-// editor's too: the connection, switched to it, speaks the holder's protocol
-// from the client's hello on, as its socket does. It is for a client that
-// cannot dial the socket, through a session into another node.
-func (c *Client) AttachStream(ctx context.Context, terminalID string) (net.Conn, error) {
-	return c.switched(ctx, "/v1/terminals/"+url.PathEscape("id:"+terminalID)+"/attach")
+// editor's too, for a client of holderVersion: the connection, switched to
+// it, speaks the holder's protocol from the client's hello on, as its socket
+// does. It is for a client that cannot dial the socket, through a session
+// into another node.
+func (c *Client) AttachStream(ctx context.Context, terminalID string, holderVersion int) (net.Conn, error) {
+	return c.switched(ctx, "/v1/terminals/"+url.PathEscape("id:"+terminalID)+"/attach?holder_version="+strconv.Itoa(holderVersion))
 }
 
 // switched sends POST path as an Upgrade on a connection of its own and

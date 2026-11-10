@@ -63,7 +63,8 @@ func (e *NotRunningError) Error() string {
 }
 
 // RelayError is a holder a relayed client could not be connected to: gone,
-// or too old to know a relayed client (holder.ErrHolderVersionUnsupported).
+// too old to know a relayed client (holder.ErrHolderVersionUnsupported), or
+// no longer serving the client's version (holder.ErrClientVersionUnsupported).
 type RelayError struct {
 	Terminal Terminal
 	Err      error
@@ -1188,8 +1189,9 @@ func (s *Supervisor) watching(id string) bool {
 
 // Relay connects to the holder of the terminal with id, of any kind, for a
 // client the daemon relays its bytes for: one on node, another node of the
-// account, or on this one when node is "". The terminal must be running.
-func (s *Supervisor) Relay(ctx context.Context, id, node string) (*holder.Relay, Terminal, error) {
+// account, or on this one when node is "", which speaks holder protocol
+// version. The terminal must be running.
+func (s *Supervisor) Relay(ctx context.Context, id, node string, version int) (*holder.Relay, Terminal, error) {
 	t, err := s.store.row(ctx, id)
 	if err != nil {
 		return nil, Terminal{}, err
@@ -1197,11 +1199,11 @@ func (s *Supervisor) Relay(ctx context.Context, id, node string) (*holder.Relay,
 	if t.State != StateRunning {
 		return nil, t, &NotRunningError{Terminal: t}
 	}
-	r, err := holder.DialRelay(holder.WithLimits(ctx, s.opts.Limits), s.socket(id), id, node)
+	r, err := holder.DialRelay(holder.WithLimits(ctx, s.opts.Limits), s.socket(id), id, node, version)
 	if err != nil {
 		return nil, t, &RelayError{Terminal: t, Err: err}
 	}
-	logging.FromContext(ctx).Info("holder dialled for a relayed client", "terminal_id", id, "from_node", node, "holder_version", r.Hello.Version)
+	logging.FromContext(ctx).Info("holder dialled for a relayed client", "terminal_id", id, "from_node", node, "holder_version", r.Hello.Version, "client_version", version)
 	return r, t, nil
 }
 

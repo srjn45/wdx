@@ -94,7 +94,7 @@ func (c *client) next() []queued {
 // the output, while its input and size go to the shell.
 func (h *holder) serveClient(conn *net.UnixConn, hello Hello) {
 	c := &client{conn: conn, pid: peerPID(conn), wake: make(chan struct{}, 1)}
-	log := h.log.With("client_pid", c.pid)
+	log := h.log.With("client_pid", c.pid, "client_version", hello.Version)
 	if hello.Remote {
 		// The pid is the daemon's, which relays the client's bytes.
 		log = log.With("remote", true, "from_node", hello.Node)
@@ -104,6 +104,11 @@ func (h *holder) serveClient(conn *net.UnixConn, hello Hello) {
 	h.mu.Unlock()
 	if err != nil {
 		log.Info("hello not sent to client", "err", err)
+		return
+	}
+	if hello.Version < oldestClientVersion {
+		// Its hello says why; the client, or the relay, reports it.
+		log.Info("client refused", "reason", "its version is older than the oldest served", "oldest_client", oldestClientVersion)
 		return
 	}
 	// The hello's deadline would fail every write after it: a client may

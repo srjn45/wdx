@@ -211,6 +211,9 @@ func classify(err error) (api.ErrorCode, map[string]any) {
 		if errors.Is(e.Err, holder.ErrHolderVersionUnsupported) {
 			return api.ErrorCodeHolderVersionUnsupported, map[string]any{"terminal": terminalView(e.Terminal)}
 		}
+		if errors.Is(e.Err, holder.ErrClientVersionUnsupported) {
+			return api.ErrorCodeHolderVersionUnsupported, map[string]any{"terminal": terminalView(e.Terminal), "update": "client"}
+		}
 		return api.ErrorCodeConnectionLost, map[string]any{"terminal": terminalView(e.Terminal)}
 	}
 	if e, ok := errors.AsType[*terminal.SendError](err); ok {

@@ -31,7 +31,11 @@ func (s *server) AttachTerminal(ctx context.Context, req api.AttachTerminalReque
 	if throughSession {
 		node = session.Node.Name
 	}
-	relay, _, err := s.terminals.Relay(ctx, id, node)
+	version := holder.Version
+	if req.Params.HolderVersion != nil {
+		version = *req.Params.HolderVersion
+	}
+	relay, _, err := s.terminals.Relay(ctx, id, node, version)
 	if err != nil {
 		return nil, err
 	}

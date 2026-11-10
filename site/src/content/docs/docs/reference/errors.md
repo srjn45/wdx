@@ -192,7 +192,7 @@ Exit 1 · HTTP 409 · returned by [`wdx worktree land`](/wdx/docs/reference/cli/
 
 ## holder_version_unsupported
 
-The terminal was started by a wdx too old to attach to from another node.
+The terminal's holder and a client on another node speak no version in common: the terminal was started by a wdx too old for relayed clients, or the client's is too old for the holder.
 
 Exit 1 · HTTP 409 · returned by [`wdx agent attach`](/wdx/docs/reference/cli/agent/#wdx-agent-attach), [`wdx terminal attach`](/wdx/docs/reference/cli/terminal/#wdx-terminal-attach)
 

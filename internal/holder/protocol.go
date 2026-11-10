@@ -29,6 +29,15 @@ const agentInboxVersion = 4
 // for a client on this machine, so the relay refuses it.
 const remoteVersion = 5
 
+// oldestClientVersion is the oldest client a holder serves: the first that
+// attaches. Through the attach relay a client may be of another release than
+// the holder, older or newer, so the holder serves clients from this version
+// on, holding back from an older one what it does not know, as the hello's
+// Version says; it says the oldest in OldestClient, and closes the
+// connection of a client older still. A newer client decides for itself
+// what of an older holder it can use. docs/ATTACH.md.
+const oldestClientVersion = 2
+
 // drives reports whether this daemon can drive a holder speaking version v.
 // A version up to 2 leaves the daemon's frames as they are, and later ones
 // only add to them, so a daemon rolled back from the release that brings one
@@ -87,9 +96,12 @@ type Hello struct {
 	Remote     bool   `json:"remote,omitempty"`
 	Node       string `json:"node,omitempty"`
 	TerminalID string `json:"terminal_id,omitempty"`
-	PID        int    `json:"pid,omitempty"` // the shell's
-	HolderPID  int    `json:"holder_pid,omitempty"`
-	Exited     *Exit  `json:"exited,omitempty"`
+	// OldestClient is the oldest client version the holder serves; 0 from a
+	// holder too old to say, which serves version 2 on.
+	OldestClient int   `json:"oldest_client,omitempty"`
+	PID          int   `json:"pid,omitempty"` // the shell's
+	HolderPID    int   `json:"holder_pid,omitempty"`
+	Exited       *Exit `json:"exited,omitempty"`
 	// HistoryLines is the number the next history line will take.
 	HistoryLines int64 `json:"history_lines,omitempty"`
 	// Status is nil on a holder that does not read its screen, or is too old to

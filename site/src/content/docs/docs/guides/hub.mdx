@@ -176,7 +176,7 @@ detached from terminal server in app
 - **The other node's daemon relays it:** a terminal's own program, its holder, is reached only through its socket on that machine, so the daemon there passes the bytes between the session and the socket. The holder logs that the client is remote, and from which node. Neither daemon logs what passes, only how many bytes.
 - **Typing keeps the session open:** the bytes either way count as use, so a session you are typing in does not close for `hub.session_idle_timeout`.
 - **Attaching here** still goes straight to the holder's socket, without the daemon: a session outlives a daemon restart, as before.
-- **A terminal started by an older wdx** cannot be attached to from another node: `holder_version_unsupported`. Restart its shell there, by closing and opening its project, or removing the terminal and creating it again.
+- **A terminal started by an older wdx** cannot be attached to from another node: `holder_version_unsupported`. Restart its shell there, by closing and opening its project, or removing the terminal and creating it again. A terminal's holder serves attaches from wdx of older and newer releases; one from a wdx older than the holder still serves is `holder_version_unsupported` too, with `details.update` set to `client`: update wdx on the node you attach from.
 - **A session that ends** while attached ends the attach with `connection_lost`; run it again, which asks for the code. So does a network gone, within about 30 seconds.
 
 ## TIDE on another node

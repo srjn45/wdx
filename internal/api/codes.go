@@ -113,7 +113,7 @@ var Codes = map[ErrorCode]clikit.CodeInfo{
 	ErrorCodeRouteNotAllowed:          codeInfo(http.StatusForbidden, clikit.ExitRejected, "the node does not serve this through a session, or does not have it"),
 	ErrorCodeSessionRequired:          codeInfo(http.StatusConflict, clikit.ExitRejected, "no session into the node is open: open one with its code"),
 	ErrorCodeRemoteNotForAgents:       codeInfo(http.StatusForbidden, clikit.ExitRejected, "an agent cannot run commands on another node"),
-	ErrorCodeHolderVersionUnsupported: codeInfo(http.StatusConflict, clikit.ExitRejected, "the terminal was started by a wdx too old to attach to from another node"),
+	ErrorCodeHolderVersionUnsupported: codeInfo(http.StatusConflict, clikit.ExitRejected, "the terminal's holder and a client on another node speak no version in common: the terminal was started by a wdx too old for relayed clients, or the client's is too old for the holder"),
 }
 
 func codeInfo(status, exit int, description string) clikit.CodeInfo {

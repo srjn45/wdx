@@ -112,6 +112,16 @@ func problemCode(err error) api.ErrorCode {
 	return ""
 }
 
+// problemDetail is the string under key in the details of err's problem;
+// "" for none.
+func problemDetail(err error, key string) string {
+	if e, ok := errors.AsType[*client.ProblemError](err); ok && e.Problem.Details != nil {
+		v, _ := (*e.Problem.Details)[key].(string)
+		return v
+	}
+	return ""
+}
+
 // decodeDetail decodes the value under key in the details of p into v.
 func decodeDetail(p api.Problem, key string, v any) bool {
 	if p.Details == nil {

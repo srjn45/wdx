@@ -118,7 +118,7 @@ With `--json`, `result` is one of: `detached` or `exited`.
 | [`attach_unsupported`](/wdx/docs/reference/errors/#attach_unsupported) | 1 | the terminal was started by a wdx too old to attach to |
 | [`connection_lost`](/wdx/docs/reference/errors/#connection_lost) | 3 | the connection to the terminal or node ended before it answered |
 | [`daemon_unavailable`](/wdx/docs/reference/errors/#daemon_unavailable) | 3 | the daemon is not running or not answering |
-| [`holder_version_unsupported`](/wdx/docs/reference/errors/#holder_version_unsupported) | 1 | the terminal was started by a wdx too old to attach to from another node |
+| [`holder_version_unsupported`](/wdx/docs/reference/errors/#holder_version_unsupported) | 1 | the terminal's holder and a client on another node speak no version in common: the terminal was started by a wdx too old for relayed clients, or the client's is too old for the holder |
 | [`not_found`](/wdx/docs/reference/errors/#not_found) | 1 | nothing has this name or id |
 | [`usage`](/wdx/docs/reference/errors/#usage) | 2 | the request, command line or a setting is invalid |
 | [`internal`](/wdx/docs/reference/errors/#internal) | 3 | an unexpected failure: database, filesystem or git |
