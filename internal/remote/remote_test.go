@@ -204,7 +204,7 @@ func (w *world) newNode(u hubtest.User, name string, adjust ...func(*Options)) *
 	if err != nil {
 		t.Fatal(err)
 	}
-	linkOpts := hublink.Options{MinBackoff: time.Millisecond, MaxBackoff: 10 * time.Millisecond}
+	linkOpts := hublink.Options{MinBackoff: time.Millisecond, MaxBackoff: 10 * time.Millisecond, WrapNodes: w.hub.Wrap, WrapWeb: w.hub.Wrap}
 	limitstest.Lengthen(t, &linkOpts.Limits)
 	link, err := hublink.Open(ctx, home, linkOpts)
 	if err != nil {

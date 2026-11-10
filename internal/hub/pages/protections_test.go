@@ -47,8 +47,10 @@ func TestCrossSiteRefused(t *testing.T) {
 	}
 }
 
-// noRedirects is a client that shows a redirect rather than follow it.
-var noRedirects = &http.Client{CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }}
+// noRedirects is a client of h that shows a redirect rather than follow it.
+func (h *hub) noRedirects() *http.Client {
+	return h.requests.Client(&http.Client{CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }})
+}
 
 func TestHeaders(t *testing.T) {
 	t.Parallel()
@@ -82,7 +84,7 @@ func TestHeaders(t *testing.T) {
 				t.Fatal(err)
 			}
 			req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
-			resp, err := noRedirects.Do(req)
+			resp, err := h.noRedirects().Do(req)
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -118,7 +120,7 @@ func TestSessionCookie(t *testing.T) {
 		t.Fatal(err)
 	}
 	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
-	resp, err := noRedirects.Do(req)
+	resp, err := h.noRedirects().Do(req)
 	if err != nil {
 		t.Fatal(err)
 	}

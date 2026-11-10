@@ -29,6 +29,7 @@ import (
 	"github.com/srjn45/wdx/internal/hub/hubconfig"
 	"github.com/srjn45/wdx/internal/hub/hubdb"
 	"github.com/srjn45/wdx/internal/hub/server"
+	"github.com/srjn45/wdx/internal/hubapi"
 	"github.com/srjn45/wdx/internal/logging"
 	"github.com/srjn45/wdx/internal/logtest"
 	"github.com/srjn45/wdx/internal/runtest"
@@ -69,6 +70,9 @@ type hub struct {
 
 	mu      sync.Mutex
 	secrets []string
+	// requests are those the test's clients sent, each of which must be
+	// logged from received to returned, and no other.
+	requests *logtest.Requests
 }
 
 // startHub serves a hub until the test ends, with the Options adjust changes
@@ -102,7 +106,7 @@ func startHub(t *testing.T, adjust func(*server.Options)) *hub {
 	}
 	served := make(chan error, 1)
 	go func() { served <- s.Serve(ctx) }()
-	h := &hub{t: t, home: cfg.Home, base: "http://" + s.Addresses().Web, server: s, clock: c, ctx: context.Background()}
+	h := &hub{t: t, home: cfg.Home, base: "http://" + s.Addresses().Web, server: s, clock: c, ctx: context.Background(), requests: logtest.NewRequests(hubapi.DebugIDHeader)}
 	t.Cleanup(func() {
 		cancel()
 		if err := <-served; err != nil {
@@ -125,8 +129,9 @@ func (h *hub) secret(values ...string) {
 	}
 }
 
-// wantLogged checks every page request was logged as received and returned,
-// its line holding no query nor form, and no line holds a secret.
+// wantLogged checks every request the test's clients sent was logged once as
+// received and once as returned under its debug id, and no other, a page's
+// lines holding no query nor form, and that no line holds a secret.
 func (h *hub) wantLogged() {
 	t := h.t
 	t.Helper()
@@ -134,36 +139,23 @@ func (h *hub) wantLogged() {
 	if err != nil {
 		t.Fatal(err)
 	}
-	received := map[string]int{}
+	var lines []map[string]any
 	for _, f := range files {
 		logtest.Scan(t, f, 4<<20, func(raw []byte) {
 			var line map[string]any
 			if err := json.Unmarshal(raw, &line); err != nil {
 				t.Fatalf("%s: %v", f, err)
 			}
+			lines = append(lines, map[string]any{"msg": line["msg"], "debug_id": line["debug_id"]})
 			if leaked := h.leaked(line); leaked != "" {
 				t.Errorf("a secret, %q, logged: %s", leaked, raw)
 			}
-			if line["page"] != true {
-				return
-			}
-			if line["query"] != nil || line["body"] != nil || line["response"] != nil {
+			if line["page"] == true && (line["query"] != nil || line["body"] != nil || line["response"] != nil) {
 				t.Errorf("a page's line logs more than its path: %v", line)
-			}
-			id, _ := line["debug_id"].(string)
-			switch line["msg"] {
-			case "request received":
-				received[id]++
-			case "request returned":
-				received[id]--
 			}
 		})
 	}
-	for id, n := range received {
-		if n != 0 {
-			t.Errorf("%s: received and returned do not pair up", id)
-		}
-	}
+	h.requests.Want(t, lines)
 }
 
 var digits = regexp.MustCompile(`^[0-9]+$`)
@@ -298,7 +290,7 @@ func (h *hub) browser() *browser {
 	if err != nil {
 		h.t.Fatal(err)
 	}
-	return &browser{t: h.t, hub: h, client: &http.Client{Jar: jar}, header: http.Header{}}
+	return &browser{t: h.t, hub: h, client: h.requests.Client(&http.Client{Jar: jar}), header: http.Header{}}
 }
 
 // session is the browser's session cookie, empty when it has none.
@@ -553,11 +545,11 @@ func (b *browser) setSession(token string) {
 // reload has the hub read its settings again, as setting set does.
 func (h *hub) reload() {
 	h.t.Helper()
-	admin := &http.Client{Transport: &http.Transport{
+	admin := h.requests.Client(&http.Client{Transport: &http.Transport{
 		DialContext: func(ctx context.Context, _, _ string) (net.Conn, error) {
 			return (&net.Dialer{}).DialContext(ctx, "unix", h.server.Addresses().Admin)
 		},
-	}}
+	}})
 	resp, err := admin.Post("http://wdx-hub/v1/reload", "application/json", nil)
 	if err != nil {
 		h.t.Fatal(err)

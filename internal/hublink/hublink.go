@@ -92,8 +92,9 @@ type Options struct {
 	NodeRemoved  func(ctx context.Context, n NodeRef)
 	AccountNodes func(ctx context.Context) func(nodes []NodeRef)
 	// WrapNodes, when not nil, wraps the transport to the node endpoint:
-	// tests lose the hub's answers with it.
-	WrapNodes func(http.RoundTripper) http.RoundTripper
+	// tests lose the hub's answers with it. WrapWeb wraps HTTPClient's,
+	// to the web endpoint: tests record the requests with both.
+	WrapNodes, WrapWeb func(http.RoundTripper) http.RoundTripper
 }
 
 func (o Options) withDefaults() Options {
@@ -103,6 +104,11 @@ func (o Options) withDefaults() Options {
 	o.Limits = o.Limits.orDefaults()
 	if o.HTTPClient == nil {
 		o.HTTPClient = &http.Client{Timeout: o.Limits.Request}
+	}
+	if o.WrapWeb != nil {
+		wrapped := *o.HTTPClient
+		wrapped.Transport = o.WrapWeb(wrapped.Transport)
+		o.HTTPClient = &wrapped
 	}
 	o.MinBackoff = cmp.Or(o.MinBackoff, DefaultMinBackoff)
 	o.MaxBackoff = max(cmp.Or(o.MaxBackoff, DefaultMaxBackoff), o.MinBackoff)

@@ -1,6 +1,8 @@
-// Package logtest shows a test's logs when it fails: the lines the daemon,
-// the CLI and the holders wrote to a home's log files, so a failure says
-// what they did without running the test again.
+// Package logtest reads a test's logs: it shows them when the test fails,
+// the lines the daemon, the CLI and the holders wrote to a home's log files,
+// so a failure says what they did without running the test again; it scans
+// them whole or fails; and it checks a server logged each request the
+// test's clients sent it, and no other.
 package logtest
 
 import (

@@ -132,7 +132,7 @@ func TestNoProxyTrustedWarned(t *testing.T) {
 	if n := warnings(t, th.home, "no proxy trusted"); n != 1 {
 		t.Fatalf("warned %d times at the start, want once", n)
 	}
-	web := th.server.handler(endpointWeb)
+	web := th.requests.Handler(th.server.handler(endpointWeb))
 	for _, peer := range []string{"127.0.0.1:4000", "[::1]:4000", "203.0.113.5:4000", "198.51.100.7:4000"} {
 		r := httptest.NewRequest(http.MethodGet, "/v1/version", nil)
 		r.RemoteAddr = peer
@@ -149,7 +149,7 @@ func TestNoProxyTrustedWarned(t *testing.T) {
 	trusted := start(t, func(o *Options) { o.Config.TrustedProxies = []netip.Prefix{netip.MustParsePrefix("172.16.0.0/12")} })
 	r := httptest.NewRequest(http.MethodGet, "/v1/version", nil)
 	r.RemoteAddr = "203.0.113.5:4000"
-	trusted.server.handler(endpointWeb).ServeHTTP(httptest.NewRecorder(), r)
+	trusted.requests.Handler(trusted.server.handler(endpointWeb)).ServeHTTP(httptest.NewRecorder(), r)
 	if n := warnings(t, trusted.home, "no proxy trusted") + warnings(t, trusted.home, "request from a peer not on this machine"); n != 0 {
 		t.Errorf("warned %d times with a proxy trusted", n)
 	}

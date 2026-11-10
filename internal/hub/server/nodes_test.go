@@ -511,7 +511,7 @@ func TestRequestAPIVersion(t *testing.T) {
 	}
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set(hubapi.APIVersionHeader, "0")
-	resp, err := http.DefaultClient.Do(req)
+	resp, err := h.Client(nil).Do(req)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -604,9 +604,9 @@ func TestNodeRemovedToldToTheOthers(t *testing.T) {
 // admin calls the hub's admin socket.
 func admin(t *testing.T, h *hubtest.Hub) *hubapi.ClientWithResponses {
 	t.Helper()
-	hc := &http.Client{Transport: &http.Transport{DialContext: func(ctx context.Context, _, _ string) (net.Conn, error) {
+	hc := h.Client(&http.Client{Transport: &http.Transport{DialContext: func(ctx context.Context, _, _ string) (net.Conn, error) {
 		return (&net.Dialer{}).DialContext(ctx, "unix", h.Server.Addresses().Admin)
-	}}}
+	}}})
 	c, err := hubapi.NewClientWithResponses("http://wdx-hub", hubapi.WithHTTPClient(hc))
 	if err != nil {
 		t.Fatal(err)
@@ -769,9 +769,9 @@ func TestNodesURLPrevious(t *testing.T) {
 	// A node logged in before dials the old name, where the hub listens.
 	ctx, cancel := context.WithDeadline(context.Background(), waittest.Deadline(t))
 	defer cancel()
-	client := &http.Client{Transport: &http.Transport{TLSClientConfig: &tls.Config{
+	client := h.Client(&http.Client{Transport: &http.Transport{TLSClientConfig: &tls.Config{
 		MinVersion: tls.VersionTLS13, ServerName: "old.example.com", RootCAs: h.CA(), Certificates: []tls.Certificate{n.Certificate},
-	}}}
+	}}})
 	conn, _, err := websocket.Dial(ctx, "https://"+h.Server.Addresses().Nodes+"/v1/control", &websocket.DialOptions{HTTPClient: client})
 	if err != nil {
 		t.Fatal(err)

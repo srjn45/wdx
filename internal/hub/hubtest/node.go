@@ -37,7 +37,7 @@ type Node struct {
 // WebClient is the hub's API on the web endpoint.
 func (h *Hub) WebClient() *hubapi.ClientWithResponses {
 	h.t.Helper()
-	c, err := hubapi.NewClientWithResponses(h.URL)
+	c, err := hubapi.NewClientWithResponses(h.URL, hubapi.WithHTTPClient(h.Client(nil)))
 	if err != nil {
 		h.t.Fatal(err)
 	}
@@ -100,9 +100,9 @@ func Certificate(t *testing.T, certPEM string, key ed25519.PrivateKey) tls.Certi
 func (h *Hub) Admin() *hubapi.ClientWithResponses {
 	h.t.Helper()
 	socket := h.Server.Addresses().Admin
-	hc := &http.Client{Transport: &http.Transport{DialContext: func(ctx context.Context, _, _ string) (net.Conn, error) {
+	hc := h.Client(&http.Client{Transport: &http.Transport{DialContext: func(ctx context.Context, _, _ string) (net.Conn, error) {
 		return (&net.Dialer{}).DialContext(ctx, "unix", socket)
-	}}}
+	}}})
 	c, err := hubapi.NewClientWithResponses("http://wdx-hub", hubapi.WithHTTPClient(hc))
 	if err != nil {
 		h.t.Fatal(err)

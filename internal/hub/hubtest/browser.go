@@ -28,14 +28,14 @@ func (h *Hub) Browser(u User) *Browser {
 		h.t.Fatal(err)
 	}
 	b := &Browser{hub: h, user: u}
-	b.client = &http.Client{Jar: jar, CheckRedirect: func(req *http.Request, _ []*http.Request) error {
+	b.client = h.Client(&http.Client{Jar: jar, CheckRedirect: func(req *http.Request, _ []*http.Request) error {
 		// The browser leaves the hub only for a node's callback, which the
 		// caller follows if it wants to.
 		if req.URL.Host != b.hubHost() {
 			return http.ErrUseLastResponse
 		}
 		return nil
-	}}
+	}})
 	return b
 }
 

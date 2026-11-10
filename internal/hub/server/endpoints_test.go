@@ -77,7 +77,7 @@ func TestWebTLSFiles(t *testing.T) {
 	})
 	roots := x509.NewCertPool()
 	roots.AddCert(cert)
-	hc := &http.Client{Transport: &http.Transport{TLSClientConfig: &tls.Config{RootCAs: roots}}}
+	hc := th.requests.Client(&http.Client{Transport: &http.Transport{TLSClientConfig: &tls.Config{RootCAs: roots}}})
 	resp, b := do(t, hc, http.MethodGet, "https://"+th.addrs.Web+"/v1/version", "", nil)
 	if resp.StatusCode != http.StatusOK {
 		t.Fatalf("version: %d %s", resp.StatusCode, b)

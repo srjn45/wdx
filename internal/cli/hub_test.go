@@ -159,6 +159,7 @@ func newHubHomeShell(t *testing.T, h *hubtest.Hub, clock *hubClock, script strin
 		t.Cleanup(hh.wantNoSecrets)
 		t.Cleanup(hh.wantNoCodes)
 		o.Hub.Clock = clock
+		o.Hub.WrapHub = h.Wrap
 		// The hub's settings are read again from the file, the others kept
 		// as the test gave them.
 		kept := daemon.Settings{Metrics: o.Metrics, TerminalShell: o.TerminalShell, TerminalHistoryLines: o.TerminalHistoryLines, Editor: o.Editor,

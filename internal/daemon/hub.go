@@ -33,6 +33,9 @@ type HubOptions struct {
 	// how long a session waits on the other node.
 	Link   hublink.Limits
 	Remote remote.Limits
+	// WrapHub, when not nil, wraps the transports to the hub's two
+	// endpoints: tests record the requests the daemon sends with it.
+	WrapHub func(http.RoundTripper) http.RoundTripper
 }
 
 // realClock is the time when the daemon's options give none.
@@ -42,7 +45,7 @@ func (realClock) Now() time.Time                         { return time.Now() }
 func (realClock) After(d time.Duration) <-chan time.Time { return time.After(d) }
 
 func (o HubOptions) link() hublink.Options {
-	opts := hublink.Options{MinBackoff: o.MinBackoff, MaxBackoff: o.MaxBackoff, Limits: o.Link}
+	opts := hublink.Options{MinBackoff: o.MinBackoff, MaxBackoff: o.MaxBackoff, Limits: o.Link, WrapNodes: o.WrapHub, WrapWeb: o.WrapHub}
 	if o.Clock != nil {
 		opts.Clock = o.Clock
 	}

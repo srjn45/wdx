@@ -49,6 +49,9 @@ type testHub struct {
 	web    *http.Client
 	admin  *http.Client
 	stop   func() error // stops the hub once it has served
+	// requests are those the test's clients sent, each of which must be
+	// logged from received to returned, and no other.
+	requests *logtest.Requests
 }
 
 // testConfig is the settings of a hub on a new home, listening on ports the
@@ -87,7 +90,7 @@ func start(t *testing.T, adjust func(*Options)) *testHub {
 		logs.Close()
 		t.Fatal(err)
 	}
-	th := &testHub{home: home, server: s, addrs: s.Addresses()}
+	th := &testHub{home: home, server: s, addrs: s.Addresses(), requests: logtest.NewRequests(hubapi.DebugIDHeader)}
 	served := make(chan error, 1)
 	go func() { served <- s.Serve(ctx) }()
 	th.stop = sync.OnceValue(func() error {
@@ -99,14 +102,14 @@ func start(t *testing.T, adjust func(*Options)) *testHub {
 			t.Errorf("serve: %v", err)
 		}
 		logs.Close()
-		wantRequestsLogged(t, home)
+		th.wantRequestsLogged(t)
 	})
-	th.web = &http.Client{}
-	th.admin = &http.Client{Transport: &http.Transport{
+	th.web = th.requests.Client(nil)
+	th.admin = th.requests.Client(&http.Client{Transport: &http.Transport{
 		DialContext: func(ctx context.Context, _, _ string) (net.Conn, error) {
 			return (&net.Dialer{}).DialContext(ctx, "unix", th.addrs.Admin)
 		},
-	}}
+	}})
 	return th
 }
 
@@ -137,7 +140,7 @@ func (th *testHub) nodes(cert *tls.Certificate) *http.Client {
 	if cert != nil {
 		cfg.Certificates = []tls.Certificate{*cert}
 	}
-	return &http.Client{Transport: &http.Transport{TLSClientConfig: cfg}}
+	return th.requests.Client(&http.Client{Transport: &http.Transport{TLSClientConfig: cfg}})
 }
 
 // nodeCert returns a client certificate of a node, which c issued.
@@ -221,16 +224,15 @@ func problemCode(t *testing.T, b []byte) hubapi.ErrorCode {
 	return p.Code
 }
 
-// wantRequestsLogged checks every request was logged as received and
-// returned under one debug id.
-func wantRequestsLogged(t *testing.T, home string) {
+// wantRequestsLogged checks every request the test's clients sent was
+// logged once as received and once as returned under its debug id, and no
+// other request was, each returned line whole.
+func (th *testHub) wantRequestsLogged(t *testing.T) {
 	t.Helper()
-	received := map[string]int{}
-	for _, line := range logLines(t, home) {
-		switch line["msg"] {
-		case "request received":
-			received[line["debug_id"].(string)]++
-		case "request returned":
+	lines := logLines(t, th.home)
+	th.requests.Want(t, lines)
+	for _, line := range lines {
+		if line["msg"] == "request returned" {
 			if line["page"] == true {
 				// A page's line has its status alone.
 				if line["status"] == nil || line["query"] != nil || line["body"] != nil || line["response"] != nil {
@@ -241,12 +243,6 @@ func wantRequestsLogged(t *testing.T, home string) {
 			} else if failed, _ := line["status"].(float64); (failed >= 400) != (line["code"] != nil) {
 				t.Errorf("want a code exactly when the request failed: %v", line)
 			}
-			received[line["debug_id"].(string)]--
-		}
-	}
-	for id, n := range received {
-		if n != 0 {
-			t.Errorf("%s: received and returned do not pair up", id)
 		}
 	}
 }

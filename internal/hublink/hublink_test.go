@@ -159,6 +159,20 @@ func testOptions(t *testing.T, clock Clock) Options {
 	return o
 }
 
+// recorded is opts with every request to h sent through h.Wrap, under what
+// the test wraps the node endpoint's transport with.
+func recorded(h *hubtest.Hub, opts Options) Options {
+	inner := opts.WrapNodes
+	opts.WrapNodes = func(rt http.RoundTripper) http.RoundTripper {
+		if rt = h.Wrap(rt); inner != nil {
+			rt = inner(rt)
+		}
+		return rt
+	}
+	opts.WrapWeb = h.Wrap
+	return opts
+}
+
 // open opens the node's link, closed when the test ends.
 func (n *node) open() {
 	t := n.t
@@ -169,7 +183,7 @@ func (n *node) open() {
 	}
 	ctx := logging.NewContext(context.Background(), logging.New(f, slog.LevelDebug))
 	n.ctx = ctx
-	l, err := Open(ctx, n.home, n.opts)
+	l, err := Open(ctx, n.home, recorded(n.h, n.opts))
 	if err != nil {
 		t.Fatal(err)
 	}

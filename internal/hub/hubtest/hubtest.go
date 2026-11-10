@@ -34,6 +34,7 @@ import (
 	"github.com/srjn45/wdx/internal/hub/hubconfig"
 	"github.com/srjn45/wdx/internal/hub/hubdb"
 	"github.com/srjn45/wdx/internal/hub/server"
+	"github.com/srjn45/wdx/internal/hubapi"
 	"github.com/srjn45/wdx/internal/limitstest"
 	"github.com/srjn45/wdx/internal/logging"
 	"github.com/srjn45/wdx/internal/logtest"
@@ -96,6 +97,9 @@ type Hub struct {
 	stop    func()
 	mu      sync.Mutex
 	secrets []string
+	// requests are those sent through Wrap, each of which must be logged
+	// from received to returned, and no other.
+	requests *logtest.Requests
 }
 
 // Stop stops the hub, as its operator does, before the test ends.
@@ -182,7 +186,7 @@ func Start(t *testing.T, opts ...Option) *Hub {
 	logtest.OnFailure(t, home) // registered first, so it runs once the hub stopped
 	logs := logging.NewDailyFile(hubconfig.LogsDir(home), hubconfig.Name, 7, time.Now)
 	o.Log = logging.New(logs, slog.LevelDebug)
-	h := &Hub{t: t, Home: home, Clock: clock, opts: o, stop: func() {}}
+	h := &Hub{t: t, Home: home, Clock: clock, opts: o, stop: func() {}, requests: logtest.NewRequests(hubapi.DebugIDHeader)}
 	t.Cleanup(func() {
 		h.stop()
 		logs.Close()
@@ -258,10 +262,18 @@ func (h *Hub) CA() *x509.CertPool { return h.Server.CA().Pool() }
 
 // NodeClient is an HTTP client of the node endpoint showing cert.
 func (h *Hub) NodeClient(cert tls.Certificate) *http.Client {
-	return &http.Client{Transport: &http.Transport{TLSClientConfig: &tls.Config{
+	return h.requests.Client(&http.Client{Transport: &http.Transport{TLSClientConfig: &tls.Config{
 		MinVersion: tls.VersionTLS13, RootCAs: h.CA(), Certificates: []tls.Certificate{cert},
-	}}}
+	}}})
 }
+
+// Wrap returns rt, nil for the default transport, recording each request
+// sent through it: every request to the hub goes through it, or the end of
+// the test finds it logged by no client of the test.
+func (h *Hub) Wrap(rt http.RoundTripper) http.RoundTripper { return h.requests.Wrap(rt) }
+
+// Client is c, nil for a client of its own, its transport wrapped.
+func (h *Hub) Client(c *http.Client) *http.Client { return h.requests.Client(c) }
 
 // Logged returns the lines of the hub's log whose msg is msg.
 func (h *Hub) Logged(msg string) []map[string]any {
@@ -294,16 +306,20 @@ func (h *Hub) eachLine(fn func(line map[string]any, raw []byte)) {
 
 var digits = regexp.MustCompile(`^[0-9]+$`)
 
-// wantLogged checks every request was logged as received and returned under
-// one debug id, and that no line holds a secret.
+// wantLogged checks every request sent through Wrap was logged once as
+// received and once as returned under its debug id, and no other, and that
+// no line holds a secret.
 func (h *Hub) wantLogged() {
 	t := h.t
 	t.Helper()
 	h.mu.Lock()
 	secrets := h.secrets
 	h.mu.Unlock()
-	received := map[string]int{}
+	var requests []map[string]any
 	h.eachLine(func(line map[string]any, _ []byte) {
+		if line["msg"] == "request received" || line["msg"] == "request returned" {
+			requests = append(requests, map[string]any{"msg": line["msg"], "debug_id": line["debug_id"]})
+		}
 		delete(line, "time") // its digits are no code's
 		b, _ := json.Marshal(line)
 		for _, secret := range secrets {
@@ -311,19 +327,8 @@ func (h *Hub) wantLogged() {
 				t.Errorf("hub: a secret, %q, logged: %s", secret, b)
 			}
 		}
-		id, _ := line["debug_id"].(string)
-		switch line["msg"] {
-		case "request received":
-			received[id]++
-		case "request returned":
-			received[id]--
-		}
 	})
-	for id, n := range received {
-		if n != 0 {
-			t.Errorf("hub: %s: received and returned do not pair up", id)
-		}
-	}
+	h.requests.Want(t, requests)
 }
 
 // leaked reports whether the line b holds secret; a code of digits must
