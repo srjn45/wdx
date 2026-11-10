@@ -39,6 +39,7 @@ func changeOf(c hubapi.DocChange) docsync.Change {
 	if c.Content != nil {
 		d.Content = *c.Content
 	}
+	d.ContentSHA256 = deref(c.ContentSha256)
 	m := &d.Metadata
 	m.RepoKey, m.Name, m.Folder, m.Format, m.Status = deref(c.RepoKey), deref(c.Name), deref(c.Folder), deref(c.Format), deref(c.Status)
 	m.Kind = string(deref(c.Kind))
@@ -49,10 +50,11 @@ func changeOf(c hubapi.DocChange) docsync.Change {
 
 // docCodes are the codes of the doc store's refusals.
 var docCodes = map[error]hubapi.ErrorCode{
-	docsync.ErrNotFound:    hubapi.ErrorCodeNotFound,
-	docsync.ErrRevisionGap: hubapi.ErrorCodeRevisionGap,
-	docsync.ErrTooLarge:    hubapi.ErrorCodeDocTooLarge,
-	docsync.ErrNameTaken:   hubapi.ErrorCodeDocNameTaken,
+	docsync.ErrNotFound:         hubapi.ErrorCodeNotFound,
+	docsync.ErrRevisionGap:      hubapi.ErrorCodeRevisionGap,
+	docsync.ErrTooLarge:         hubapi.ErrorCodeDocTooLarge,
+	docsync.ErrNameTaken:        hubapi.ErrorCodeDocNameTaken,
+	docsync.ErrRevisionConflict: hubapi.ErrorCodeRevisionConflict,
 }
 
 // docCode is the code of the doc store's refusal err, and the values it

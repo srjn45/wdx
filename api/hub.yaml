@@ -507,11 +507,13 @@ paths:
         8 MiB is refused whole with usage.
 
         Each change is answered applied or refused with its code:
-        revision_gap, a revision that is not the doc's next; doc_too_large,
-        content that unpacks to more than 2 MiB; doc_name_taken, a name
-        another of the user's docs in that repository has; not_found, a doc
-        the hub does not have, or another user's; invalid_argument, a change
-        that lacks what its kind needs.
+        revision_gap, a revision that is not the doc's next;
+        revision_conflict, a revision the hub has with another text;
+        doc_too_large, content that unpacks to more than 2 MiB;
+        doc_name_taken, a name another of the user's docs of its kind in
+        that repository has; not_found, a doc the hub does not have, or
+        another user's; invalid_argument, a change that lacks what its kind
+        needs.
       requestBody:
         required: true
         content:
@@ -922,6 +924,14 @@ components:
         created_at: { type: string, format: date-time }
         updated_at: { type: string, format: date-time }
         content: { type: string, format: byte, description: "revision only: the revision's text gzipped, in base64; at most 2 MiB once unpacked." }
+        content_sha256:
+          type: string
+          pattern: "^[0-9a-f]{64}$"
+          description: |
+            revision only: the sha256 of the revision's text, unpacked, in
+            lowercase hex. The hub stores it with the revision, and refuses
+            with revision_conflict another text under a revision it has. One
+            that is not the content's hash is invalid_argument.
 
     DocChangeType:
       type: string
@@ -1054,6 +1064,7 @@ components:
         - access_denied
         - expired_token
         - revision_gap
+        - revision_conflict
         - doc_too_large
         - doc_name_taken
         - node_not_found

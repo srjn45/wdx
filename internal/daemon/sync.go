@@ -107,8 +107,8 @@ func docChange(c doc.Outgoing) hubapi.DocChange {
 	h.RepoKey, h.Kind, h.Name, h.Folder, h.Format = &c.RepoKey, &kind, &d.Name, &d.Folder, &d.Format
 	h.Labels, h.Status, h.CreatedAt, h.UpdatedAt = &labels, &status, &created, &updated
 	if c.Change == doc.ChangeRevision {
-		rev, content := c.Revision, c.Content
-		h.Revision, h.Content = &rev, &content
+		rev, content, sum := c.Revision, c.Content, c.ContentSHA256
+		h.Revision, h.Content, h.ContentSha256 = &rev, &content, &sum
 	}
 	return h
 }

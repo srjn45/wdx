@@ -12,7 +12,9 @@ import (
 	"compress/gzip"
 	"context"
 	"crypto/rand"
+	"crypto/sha256"
 	"database/sql"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -38,9 +40,12 @@ var (
 	// node, which sends every revision in order.
 	ErrRevisionGap = errors.New("the revision is not the doc's next")
 	ErrTooLarge    = errors.New("the content unpacks to more than a doc can hold")
-	// ErrNameTaken is a name another of the user's docs in the repository
-	// has.
-	ErrNameTaken = errors.New("another doc in the repository has that name")
+	// ErrNameTaken is a name another of the user's docs of its kind in the
+	// repository has.
+	ErrNameTaken = errors.New("another doc of its kind in the repository has that name")
+	// ErrRevisionConflict is a revision stored already with another text:
+	// another node wrote it.
+	ErrRevisionConflict = errors.New("the revision is stored with another text")
 )
 
 // InvalidError is a change that lacks what its kind needs, or holds what
@@ -92,6 +97,9 @@ type Change struct {
 	// Revision and Content are a revision's number and its text gzipped.
 	Revision int
 	Content  []byte
+	// ContentSHA256 is the sha256 of the text, in lowercase hex, as the node
+	// has it; empty from a node older than it.
+	ContentSHA256 string
 }
 
 // Result is how a change was answered: applied when Err is nil, refused with
@@ -171,7 +179,7 @@ func refusal(err error) bool {
 	if _, ok := errors.AsType[*InvalidError](err); ok {
 		return true
 	}
-	return errors.Is(err, ErrNotFound) || errors.Is(err, ErrRevisionGap) || errors.Is(err, ErrTooLarge) || errors.Is(err, ErrNameTaken)
+	return errors.Is(err, ErrNotFound) || errors.Is(err, ErrRevisionGap) || errors.Is(err, ErrTooLarge) || errors.Is(err, ErrNameTaken) || errors.Is(err, ErrRevisionConflict)
 }
 
 func (s *Store) apply(ctx context.Context, by By, c Change) error {
@@ -253,17 +261,18 @@ func othersDoc(ctx context.Context, tx *sql.Tx, userID, id string) (bool, error)
 	return n > 0, err
 }
 
-// nameTaken reports whether another of the user's docs in repoKey is named
-// name, whatever its case.
+// nameTaken reports whether another of the user's docs of m's kind in m's
+// repository is named m's name, whatever its case.
 func nameTaken(ctx context.Context, tx *sql.Tx, userID, id string, m Metadata) (bool, error) {
 	var n int
-	err := tx.QueryRowContext(ctx, "SELECT COUNT(*) FROM docs WHERE owner_id = ? AND repo_key = ? AND name = ? AND id != ?", userID, m.RepoKey, m.Name, id).Scan(&n)
+	err := tx.QueryRowContext(ctx, "SELECT COUNT(*) FROM docs WHERE owner_id = ? AND repo_key = ? AND kind = ? AND name = ? AND id != ?", userID, m.RepoKey, m.Kind, m.Name, id).Scan(&n)
 	return n > 0, err
 }
 
 // revise stores revision c.Revision of the doc when it is the next, making
 // the doc at its first, and updates its metadata; a revision stored already
-// is acknowledged and nothing is written.
+// with the same text, or with no hash, is acknowledged and nothing is
+// written, and one stored with another text is refused.
 func (s *Store) revise(ctx context.Context, tx *sql.Tx, by By, c Change) error {
 	log := logging.FromContext(ctx)
 	d, found, err := s.doc(ctx, tx, by.UserID, c.DocID)
@@ -275,16 +284,26 @@ func (s *Store) revise(ctx context.Context, tx *sql.Tx, by By, c Change) error {
 			return orRefuse(err, ErrNotFound)
 		}
 	}
+	size, sum, err := unpacked(c.Content)
+	if err != nil {
+		return err
+	}
+	if c.ContentSHA256 != "" && c.ContentSHA256 != sum {
+		return &InvalidError{Field: "content_sha256", Reason: "is not the sha256 of the content"}
+	}
 	if found && c.Revision <= d.Revision {
-		log.Info("doc change acknowledged", "doc_id", c.DocID, "revision", c.Revision, "reason", "stored already")
+		var stored sql.NullString
+		if err := tx.QueryRowContext(ctx, "SELECT content_sha256 FROM doc_revisions WHERE doc_id = ? AND revision = ?", c.DocID, c.Revision).Scan(&stored); err != nil && !errors.Is(err, sql.ErrNoRows) {
+			return err
+		}
+		if stored.Valid && stored.String != sum {
+			return fmt.Errorf("%w: revision %d", ErrRevisionConflict, c.Revision)
+		}
+		log.Info("doc change acknowledged", "doc_id", c.DocID, "revision", c.Revision, "reason", "stored already", "hashed", stored.Valid)
 		return nil
 	}
 	if c.Revision != d.Revision+1 {
 		return fmt.Errorf("%w: revision %d after %d", ErrRevisionGap, c.Revision, d.Revision)
-	}
-	size, err := unpackedSize(c.Content)
-	if err != nil {
-		return err
 	}
 	if taken, err := nameTaken(ctx, tx, by.UserID, c.DocID, c.Metadata); err != nil || taken {
 		return orRefuse(err, ErrNameTaken)
@@ -317,8 +336,8 @@ func (s *Store) revise(ctx context.Context, tx *sql.Tx, by By, c Change) error {
 	if err != nil {
 		return err
 	}
-	if _, err := sqlite.Exec(ctx, tx, "INSERT INTO doc_revisions (doc_id, revision, content, size, created_at) VALUES (?, ?, ?, ?, ?)",
-		c.DocID, c.Revision, secret(sealed), size, ms(now)); err != nil {
+	if _, err := sqlite.Exec(ctx, tx, "INSERT INTO doc_revisions (doc_id, revision, content, size, content_sha256, created_at) VALUES (?, ?, ?, ?, ?, ?)",
+		c.DocID, c.Revision, secret(sealed), size, sum, ms(now)); err != nil {
 		return err
 	}
 	log.Info("doc revision stored", "doc_id", c.DocID, "revision", c.Revision, "size", size, "created", !found)
@@ -383,21 +402,22 @@ func sameMetadata(a, b Metadata) bool {
 		slices.Equal(a.Labels, b.Labels) && a.Status == b.Status && a.CreatedAt.Equal(b.CreatedAt) && a.UpdatedAt.Equal(b.UpdatedAt)
 }
 
-// unpackedSize is the length of the text gzipped holds, refused with
-// ErrTooLarge past MaxContent; it reads no further than that.
-func unpackedSize(gzipped []byte) (int, error) {
+// unpacked is the length of the text gzipped holds and its sha256 in hex,
+// refused with ErrTooLarge past MaxContent; it reads no further than that.
+func unpacked(gzipped []byte) (int, string, error) {
 	r, err := gzip.NewReader(bytes.NewReader(gzipped))
 	if err != nil {
-		return 0, &InvalidError{Field: "content", Reason: "is not gzip"}
+		return 0, "", &InvalidError{Field: "content", Reason: "is not gzip"}
 	}
-	n, err := io.Copy(io.Discard, io.LimitReader(r, MaxContent+1))
+	h := sha256.New()
+	n, err := io.Copy(h, io.LimitReader(r, MaxContent+1))
 	if err != nil {
-		return 0, &InvalidError{Field: "content", Reason: "is not gzip"}
+		return 0, "", &InvalidError{Field: "content", Reason: "is not gzip"}
 	}
 	if n > MaxContent {
-		return 0, ErrTooLarge
+		return 0, "", ErrTooLarge
 	}
-	return int(n), nil
+	return int(n), hex.EncodeToString(h.Sum(nil)), nil
 }
 
 func unpack(gzipped []byte) ([]byte, error) {

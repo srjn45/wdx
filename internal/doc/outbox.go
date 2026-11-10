@@ -2,7 +2,9 @@ package doc
 
 import (
 	"context"
+	"crypto/sha256"
 	"database/sql"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -70,7 +72,9 @@ type Outgoing struct {
 	Kind      Kind
 	Revision  int    // the revision a ChangeRevision sends
 	Content   []byte // that revision's content, gzipped as stored
-	Doc       Doc    // the doc's metadata as it is now; empty for ChangeRemoved
+	// ContentSHA256 is the sha256 of that revision's text, in lowercase hex.
+	ContentSHA256 string
+	Doc           Doc // the doc's metadata as it is now; empty for ChangeRemoved
 }
 
 // SyncStatus is how far a project's docs are on the hub.
@@ -274,6 +278,15 @@ func (o *Outbox) Next(ctx context.Context, limit int) ([]Outgoing, error) {
 			}
 			c.Doc.ID, c.Doc.ProjectID, c.Doc.ProjectName = c.DocID, c.ProjectID, project
 			c.Doc.CreatedAt, c.Doc.UpdatedAt = time.UnixMilli(created).UTC(), time.UnixMilli(updated).UTC()
+		}
+		if c.Content != nil {
+			text, err := unpack(c.Content)
+			if err != nil {
+				rows.Close()
+				return nil, fmt.Errorf("revision %d of doc %s: %w", c.Revision, c.DocID, err)
+			}
+			sum := sha256.Sum256(text)
+			c.ContentSHA256 = hex.EncodeToString(sum[:])
 		}
 		list = append(list, c)
 	}

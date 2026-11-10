@@ -3429,7 +3429,7 @@ components:
       properties:
         doc_id: { type: string }
         name: { type: string, description: "The doc's name; empty once it is removed." }
-        code: { type: string, description: "The hub's code: doc_name_taken, doc_too_large, revision_gap, or not_found for a doc whose id another user's doc has on the hub." }
+        code: { type: string, description: "The hub's code: doc_name_taken, doc_too_large, revision_gap, revision_conflict, usage for a change the hub's API does not allow, or not_found for a doc whose id another user's doc has on the hub." }
 
     ProjectSyncEnvelope:
       type: object

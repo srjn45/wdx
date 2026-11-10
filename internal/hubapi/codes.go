@@ -32,9 +32,10 @@ var Codes = map[ErrorCode]clikit.CodeInfo{
 	ErrorCodeAccessDenied:           codeInfo(http.StatusForbidden, clikit.ExitRejected, "the person denied the login"),
 	ErrorCodeExpiredToken:           codeInfo(http.StatusGone, clikit.ExitRejected, "the login expired before it was approved and finished"),
 
-	ErrorCodeRevisionGap:  codeInfo(http.StatusConflict, clikit.ExitRejected, "the revision is not the doc's next on the hub: a bug in the node"),
-	ErrorCodeDocTooLarge:  codeInfo(http.StatusUnprocessableEntity, clikit.ExitRejected, "the doc's content is more than a doc can hold"),
-	ErrorCodeDocNameTaken: codeInfo(http.StatusConflict, clikit.ExitRejected, "another of the user's docs in the repository has that name on the hub"),
+	ErrorCodeRevisionGap:      codeInfo(http.StatusConflict, clikit.ExitRejected, "the revision is not the doc's next on the hub: a bug in the node"),
+	ErrorCodeRevisionConflict: codeInfo(http.StatusConflict, clikit.ExitRejected, "the hub has the revision with another text: another node wrote it"),
+	ErrorCodeDocTooLarge:      codeInfo(http.StatusUnprocessableEntity, clikit.ExitRejected, "the doc's content is more than a doc can hold"),
+	ErrorCodeDocNameTaken:     codeInfo(http.StatusConflict, clikit.ExitRejected, "another of the user's docs of its kind in the repository has that name on the hub"),
 
 	ErrorCodeNodeNotFound:   codeInfo(http.StatusNotFound, clikit.ExitRejected, "the account has no such other node"),
 	ErrorCodeNodeOffline:    codeInfo(http.StatusConflict, clikit.ExitRejected, "the node is not connected to the hub"),

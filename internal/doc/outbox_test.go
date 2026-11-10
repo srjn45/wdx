@@ -287,6 +287,13 @@ func TestOutboxNext(t *testing.T) {
 	if content, err := unpack(rev.Content); err != nil || string(content) != "# Auth\n" {
 		t.Errorf("content, gzipped: %q, %v", content, err)
 	}
+	// The sha256 of "# Auth\n", which the hub stores with the revision.
+	if rev.ContentSHA256 != "a86abf6b98cfe6014875f1e4f0d435f0cde72673653a991e292660d7d779e269" {
+		t.Errorf("content_sha256 %q", rev.ContentSHA256)
+	}
+	if meta.ContentSHA256 != "" {
+		t.Errorf("a metadata change has content_sha256 %q", meta.ContentSHA256)
+	}
 	if rev.Doc.Name != "auth" || rev.Doc.Format != "md" || !slices.Equal(rev.Doc.Labels, []string{"rfc"}) || rev.Doc.Status != StatusReview || rev.Doc.Revision != 1 {
 		t.Errorf("a revision's metadata is the doc's now: %+v", rev.Doc)
 	}

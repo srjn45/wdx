@@ -93,6 +93,12 @@ func TestDocChangesPushed(t *testing.T) {
 
 	// Another node of the account makes a doc of the name in the repository.
 	wantResult(t, "the name taken", push(t, h, laptop, docRevision(t, h, 1, "doc-4", 1, "plan", "another node's"))[0], 1, hubapi.ErrorCodeDocNameTaken)
+	// Another node of the account wrote revision 2 of the doc.
+	conflict := docRevision(t, h, 1, "doc-1", 2, "PLAN", "another second text")
+	wantResult(t, "another revision 2", push(t, h, laptop, conflict)[0], 1, hubapi.ErrorCodeRevisionConflict)
+	wrongHash := docRevision(t, h, 1, "doc-1", 3, "PLAN", "the third text")
+	wrongHash.ContentSha256 = ptr(strings.Repeat("0", 64))
+	wantResult(t, "a hash not of the content", push(t, h, laptop, wrongHash)[0], 1, hubapi.ErrorCodeInvalidArgument)
 	// Another account's node changes nothing of alice's doc.
 	removed := hubapi.DocChange{Seq: 1, DocId: "doc-1", Change: hubapi.DocChangeTypeRemoved}
 	wantResult(t, "bob removes alice's doc", push(t, h, tower, removed)[0], 1, hubapi.ErrorCodeNotFound)
@@ -131,3 +137,5 @@ func jsonOf(t *testing.T, v any) string {
 	}
 	return string(b)
 }
+
+func ptr[T any](v T) *T { return &v }

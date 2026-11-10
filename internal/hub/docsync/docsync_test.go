@@ -5,8 +5,10 @@ import (
 	"compress/gzip"
 	"context"
 	"crypto/rand"
+	"crypto/sha256"
 	"database/sql"
 	"encoding/base64"
+	"encoding/hex"
 	"errors"
 	"log/slog"
 	"path/filepath"
@@ -242,6 +244,84 @@ func TestDocNameTaken(t *testing.T) {
 	if d, err := f.Doc(f.ctx, alice, "doc-4"); err != nil || d.RepoKey != moved.RepoKey {
 		t.Fatalf("doc %+v, %v", d, err)
 	}
+}
+
+// A doc and a plan of one name are two docs, as on the node; two of one
+// kind are not.
+func TestDocNameTakenByKind(t *testing.T) {
+	t.Parallel()
+	f := newFixture(t)
+	plan := revision(t, 2, "doc-2", 1, "release", "the plan")
+	plan.Metadata.Kind = "plan"
+	twin := revision(t, 3, "doc-3", 1, "Release", "a second plan")
+	twin.Metadata.Kind = "plan"
+	errs := f.apply(t, alice, revision(t, 1, "doc-1", 1, "release", "the doc"), plan, twin)
+	wantApplied(t, "a doc and a plan of the name", errs[:2])
+	wantRefused(t, "a second plan of the name", errs[2], ErrNameTaken)
+	f.wantContent(t, alice, "doc-2", 1, "the plan")
+
+	renamed := meta("RELEASE")
+	renamed.Kind = "plan"
+	wantRefused(t, "a plan renamed to a plan's name", f.apply(t, alice,
+		revision(t, 4, "doc-4", 1, "other", "x"), Change{Seq: 5, DocID: "doc-4", Type: TypeMetadata, Metadata: renamed})[1], ErrNameTaken)
+}
+
+// The kinds are kept here, not in a CHECK of the table.
+func TestUnknownKind(t *testing.T) {
+	t.Parallel()
+	f := newFixture(t)
+	c := revision(t, 1, "doc-1", 1, "notes", "x")
+	c.Metadata.Kind = "sheet"
+	err := f.apply(t, alice, c)[0]
+	if e, ok := errors.AsType[*InvalidError](err); !ok || e.Field != "kind" {
+		t.Fatalf("a kind unknown: %v", err)
+	}
+	if n := f.count(t, "SELECT COUNT(*) FROM docs"); n != 0 {
+		t.Fatalf("%d docs stored", n)
+	}
+}
+
+func sha(text string) string {
+	sum := sha256.Sum256([]byte(text))
+	return hex.EncodeToString(sum[:])
+}
+
+// A revision stored is known by its text's hash too: the same text again is
+// acknowledged, another under its number refused, as another node wrote it.
+func TestRevisionConflict(t *testing.T) {
+	t.Parallel()
+	f := newFixture(t)
+	first := revision(t, 1, "doc-1", 1, "PLAN", "first")
+	first.ContentSHA256 = sha("first")
+	wantApplied(t, "revision 1", f.apply(t, alice, first, revision(t, 2, "doc-1", 2, "PLAN", "second")))
+	if n := f.count(t, "SELECT COUNT(*) FROM doc_revisions WHERE doc_id = 'doc-1' AND content_sha256 = ?", sha("first")); n != 1 {
+		t.Fatal("revision 1's hash not stored")
+	}
+	if n := f.count(t, "SELECT COUNT(*) FROM doc_revisions WHERE doc_id = 'doc-1' AND revision = 2 AND content_sha256 = ?", sha("second")); n != 1 {
+		t.Fatal("the hash of a revision sent without one not stored")
+	}
+
+	wantApplied(t, "revision 1 again", f.apply(t, alice, first))
+	other := revision(t, 3, "doc-1", 1, "PLAN", "another first")
+	other.ContentSHA256 = sha("another first")
+	wantRefused(t, "another revision 1", f.apply(t, alice, other)[0], ErrRevisionConflict)
+	wantRefused(t, "another revision 2, from an older node", f.apply(t, alice, revision(t, 4, "doc-1", 2, "PLAN", "another second"))[0], ErrRevisionConflict)
+	f.wantContent(t, alice, "doc-1", 1, "first")
+
+	lying := revision(t, 5, "doc-1", 3, "PLAN", "third")
+	lying.ContentSHA256 = sha("not the third")
+	err := f.apply(t, alice, lying)[0]
+	if e, ok := errors.AsType[*InvalidError](err); !ok || e.Field != "content_sha256" {
+		t.Fatalf("a hash not of the content: %v", err)
+	}
+
+	// A revision stored before the hub kept hashes is acknowledged whatever
+	// its text, as before.
+	if _, err := f.db.Exec("UPDATE doc_revisions SET content_sha256 = NULL WHERE doc_id = 'doc-1' AND revision = 1"); err != nil {
+		t.Fatal(err)
+	}
+	wantApplied(t, "another revision 1 stored without a hash", f.apply(t, alice, other))
+	f.wantContent(t, alice, "doc-1", 1, "first")
 }
 
 func TestDocTooLarge(t *testing.T) {
