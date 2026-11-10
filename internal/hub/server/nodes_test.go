@@ -431,6 +431,29 @@ func TestControlWelcome(t *testing.T) {
 	}
 }
 
+// A node's last seen time is written when its control connection closes,
+// at the hub's time then.
+func TestControlCloseSeen(t *testing.T) {
+	t.Parallel()
+	h := hubtest.Start(t)
+	n := h.NewNode(h.User, "desktop")
+	c := connect(t, h, n, "1")
+	c.want("welcome")
+	h.Clock.Advance(time.Hour)
+	at := h.Clock.Now().Truncate(time.Millisecond)
+	if err := c.conn.Close(websocket.StatusNormalClosure, "bye"); err != nil {
+		t.Fatal(err)
+	}
+	h.Restart() // the hub waits for the connection's end when it stops
+	if lines := h.Logged("last seen not written"); len(lines) != 0 {
+		t.Fatalf("logged %v", lines)
+	}
+	got, err := h.NodesClient(n).GetNodeWithResponse(context.Background(), "id:"+n.ID)
+	if err != nil || got.JSON200 == nil || got.JSON200.Node.LastSeenAt == nil || got.JSON200.Node.LastSeenAt.Before(at) {
+		t.Fatalf("want last seen at %v or later: %v %s", at, err, got.Body)
+	}
+}
+
 func TestControlVersionUnsupported(t *testing.T) {
 	t.Parallel()
 	h := hubtest.Start(t)

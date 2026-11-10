@@ -143,8 +143,9 @@ func (s *Server) control(parent context.Context, conn *websocket.Conn, n node.No
 	}
 	c := s.nodes.Registry().Add(n.ID, n.UserID, func(r node.Reason) { cancel(byeCause{r}) }, send)
 	defer s.nodes.Registry().Remove(c)
+	// Run after end() cancelled life, it writes with a context of its own.
 	defer func() {
-		if err := s.nodes.Seen(life, n.ID); err != nil {
+		if err := s.nodes.Seen(context.WithoutCancel(parent), n.ID); err != nil {
 			log.Error("last seen not written", "err", err)
 		}
 	}()
