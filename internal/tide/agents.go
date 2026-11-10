@@ -57,9 +57,12 @@ type agentList struct {
 	// missingTabs are the tabs whose file or worktree the last event said is gone,
 	// removed outside wdx: each stays, marked, until it is closed.
 	missingTabs map[string]bool
-	offset      int    // the rows scrolled past
-	opened      bool   // the project came once, and its first running agent became active
-	created     string // the tab of an agent created here, current once the stream brings it
+	// tombstones are the ids of the agents the last event had as tombstones: a
+	// remote TIDE closes an agent's tabs as it becomes one, and only then.
+	tombstones map[string]bool
+	offset     int    // the rows scrolled past
+	opened     bool   // the project came once, and its first running agent became active
+	created    string // the tab of an agent created here, current once the stream brings it
 	// createdKeepsCursor says created is the tab the project's view kept as current,
 	// whose cursor the view put elsewhere: the cursor stays there.
 	createdKeepsCursor bool
@@ -342,6 +345,9 @@ func (l *agentList) reveal(agents []api.Agent, id string) {
 // agent gets a tab.
 func (m *Model) agentsChanged() {
 	l, agents := m.list(), m.agents()
+	if m.node != "" {
+		m.closeRemovedAgentTabs()
+	}
 	if l.created == settingsTab || l.created == statsTab || isTextTab(l.created) {
 		l.openTab(l.created)
 		l.created, l.createdKeepsCursor = "", false
@@ -363,6 +369,35 @@ func (m *Model) agentsChanged() {
 		}
 	}
 	m.keepAgentCursor()
+}
+
+// closeRemovedAgentTabs closes the tabs of the agents gone or just made tombstones,
+// as the host's database does for its own TIDE's tabs, which a remote TIDE keeps in
+// memory. A project from a daemon that sends no agents says nothing of them, and
+// closes none.
+func (m *Model) closeRemovedAgentTabs() {
+	l, agents := m.list(), m.agents()
+	if m.following.project.Agents == nil {
+		return
+	}
+	for _, tab := range slices.Clone(l.tabs) {
+		if isTextTab(tab) || isPlanTab(tab) || tab == settingsTab || tab == statsTab {
+			continue
+		}
+		id := tabAgent(tab)
+		switch i := agentIndex(agents, id); {
+		case i < 0:
+			m.closeTab(tab, "agent removed")
+		case agents[i].State == api.AgentStateRemoved && !l.tombstones[id]:
+			m.closeTab(tab, "agent made a tombstone")
+		}
+	}
+	l.tombstones = map[string]bool{}
+	for _, a := range agents {
+		if a.State == api.AgentStateRemoved {
+			l.tombstones[a.Id] = true
+		}
+	}
 }
 
 // keepAgentCursor keeps the cursor on its agent, or its nearest parent shown, or

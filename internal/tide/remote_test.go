@@ -420,3 +420,59 @@ func TestDialTerminal(t *testing.T) {
 		t.Fatal("holder_version_unsupported is tried again")
 	}
 }
+
+// TestRemoteAgentRemoved: a remote TIDE, whose tabs the host's database does not
+// keep, closes the tabs of an agent removed, or made a tombstone, as a local
+// TIDE's are closed for it; the focus goes to the project pane with none left.
+// Antigravity's C1.
+func TestRemoteAgentRemoved(t *testing.T) {
+	t.Parallel()
+	m, _ := remoteModel(style.New(false), noSession)
+	sentAgents(m, running("a"), running("b"))
+	l := m.list()
+	l.openTab("agent-a")
+	l.openTab(infoTab("agent-b"))
+	l.openTab("agent-b")
+	l.active = "agent-a"
+	m.layout.setFocus(agent)
+
+	sentAgents(m, running("b"))
+	if want := []string{infoTab("agent-b"), "agent-b"}; !slices.Equal(l.tabs, want) {
+		t.Fatalf("tabs %v, want %v", l.tabs, want)
+	}
+	wantCurrent(t, m, "b")
+
+	sentAgents(m)
+	if len(l.tabs) != 0 || l.active != "" {
+		t.Fatalf("tabs %v, current %q", l.tabs, l.active)
+	}
+	if m.layout.focus != project {
+		t.Errorf("focus %v with no tab", m.layout.focus)
+	}
+}
+
+// TestRemoteAgentTombstone: a remote TIDE closes an agent's tab as it becomes a
+// tombstone, and only then: one opened on the tombstone stays.
+func TestRemoteAgentTombstone(t *testing.T) {
+	t.Parallel()
+	removedParent := func(state api.AgentState) api.Agent {
+		a := parentOf(running("parent"), running("child"))
+		a.State = state
+		return a
+	}
+	m, _ := remoteModel(style.New(false), noSession)
+	sentAgents(m, removedParent(api.AgentStateRunning))
+	l := m.list()
+	l.openTab("agent-parent")
+
+	sentAgents(m, removedParent(api.AgentStateRemoved))
+	if len(l.tabs) != 0 {
+		t.Fatalf("the tombstone keeps its tab: %v", l.tabs)
+	}
+
+	l.openTab("agent-parent")
+	sentAgents(m, removedParent(api.AgentStateRemoved))
+	if !slices.Equal(l.tabs, []string{"agent-parent"}) {
+		t.Fatalf("the tab opened on the tombstone closed: %v", l.tabs)
+	}
+}
