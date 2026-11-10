@@ -3,9 +3,11 @@ package daemon
 import (
 	"bytes"
 	"context"
+	"errors"
 	"io"
 	"log/slog"
 	"net"
+	"net/http"
 	"strings"
 	"sync"
 	"testing"
@@ -131,3 +133,47 @@ func (l *lineWatch) Write(p []byte) (int, error) {
 	}
 	return len(p), nil
 }
+
+// TestServersLogConnections checks what net/http reports of the daemon's
+// two servers' connections goes to the daemon's log, not to stderr: an
+// accept that fails for a while is told, and the server goes on.
+func TestServersLogConnections(t *testing.T) {
+	t.Parallel()
+	for name, server := range map[string]func(*slog.Logger) *http.Server{
+		"local":   func(log *slog.Logger) *http.Server { return newLocalServer(http.NotFoundHandler(), log) },
+		"session": func(log *slog.Logger) *http.Server { return newSessionServer(http.NotFoundHandler(), log) },
+	} {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+			var logged bytes.Buffer
+			srv := server(slog.New(slog.NewJSONHandler(&logged, nil)))
+			if err := srv.Serve(&failingListener{}); !errors.Is(err, net.ErrClosed) {
+				t.Fatalf("want the listener's end, got %v", err)
+			}
+			if !strings.Contains(logged.String(), `"msg":"connection failed","err":"http: Accept error: for a while; retrying in`) {
+				t.Fatalf("want the accept error logged, got %q", logged.String())
+			}
+		})
+	}
+}
+
+// failingListener fails its first Accept for a while, as a system out of
+// file descriptors does, and is closed at the second.
+type failingListener struct{ accepts int }
+
+func (l *failingListener) Accept() (net.Conn, error) {
+	l.accepts++
+	if l.accepts == 1 {
+		return nil, temporaryError{}
+	}
+	return nil, net.ErrClosed
+}
+
+func (l *failingListener) Close() error   { return nil }
+func (l *failingListener) Addr() net.Addr { return &net.UnixAddr{Name: "failing", Net: "unix"} }
+
+type temporaryError struct{}
+
+func (temporaryError) Error() string   { return "for a while" }
+func (temporaryError) Timeout() bool   { return false }
+func (temporaryError) Temporary() bool { return true }

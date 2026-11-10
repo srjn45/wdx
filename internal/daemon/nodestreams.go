@@ -493,11 +493,13 @@ var remoteOperations = map[string]remoteRule{
 }
 
 // newSessionServer is the HTTP server of the streams of sessions into this
-// node, serving handler.
-func newSessionServer(handler http.Handler) *http.Server {
+// node, serving handler. What it reports of a connection goes to log, as
+// these come from other nodes.
+func newSessionServer(handler http.Handler, log *slog.Logger) *http.Server {
 	return &http.Server{
 		Handler:           handler,
 		ReadHeaderTimeout: 10 * time.Second,
 		ConnContext:       withSession,
+		ErrorLog:          slog.NewLogLogger(connectionErrors{log.Handler()}, slog.LevelInfo),
 	}
 }

@@ -608,12 +608,12 @@ func lock(path string) (*os.File, error) {
 // finish, closes the database and gives up the socket and the lock.
 func (d *Daemon) Serve(ctx context.Context) error {
 	local, remote := d.handlers()
-	srv := &http.Server{Handler: local, ReadHeaderTimeout: 10 * time.Second}
+	srv := newLocalServer(local, d.log)
 	// Streams never end by themselves, and Shutdown waits for them.
 	srv.RegisterOnShutdown(func() { close(d.stopping) })
 	served := make(chan error, 1)
 	go func() { served <- srv.Serve(d.listener) }()
-	d.sessionServer = newSessionServer(remote)
+	d.sessionServer = newSessionServer(remote, d.log)
 	sessionsServed := make(chan error, 1)
 	go func() { sessionsServed <- d.sessionServer.Serve(d.sessionStreams) }()
 

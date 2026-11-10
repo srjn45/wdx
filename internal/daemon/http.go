@@ -48,6 +48,27 @@ func (d *Daemon) handlers() (local, remote http.Handler) {
 	return d.logRequests(router, served), d.logRequests(router, d.remoteRules(router, served))
 }
 
+// newLocalServer is the HTTP server of the daemon's socket, serving handler.
+// What it reports of a connection goes to log: net/http writes it to stderr
+// without an ErrorLog.
+func newLocalServer(handler http.Handler, log *slog.Logger) *http.Server {
+	return &http.Server{
+		Handler:           handler,
+		ReadHeaderTimeout: 10 * time.Second,
+		ErrorLog:          slog.NewLogLogger(connectionErrors{log.Handler()}, slog.LevelInfo),
+	}
+}
+
+// connectionErrors logs what an http.Server reports of a connection, its
+// line the error.
+type connectionErrors struct{ slog.Handler }
+
+func (h connectionErrors) Handle(ctx context.Context, r slog.Record) error {
+	line := slog.NewRecord(r.Time, r.Level, "connection failed", r.PC)
+	line.AddAttrs(slog.String("err", strings.TrimSpace(r.Message)))
+	return h.Handler.Handle(ctx, line)
+}
+
 // validation is what the embedded spec gives: parsed once, as it costs a test
 // process with many daemons much of its time, and only read after that.
 var validation = sync.OnceValues(func() (func(http.Handler) http.Handler, routers.Router) {
