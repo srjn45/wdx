@@ -59,6 +59,9 @@ func newUserInviteCmd() *cobra.Command {
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			var seconds *int64
 			if cmd.Flags().Changed("expires") {
+				if expires <= 0 {
+					return &clikit.UsageError{Err: fmt.Errorf("--expires %s is not more than 0", expires)}
+				}
 				if expires%time.Second != 0 {
 					return &clikit.UsageError{Err: fmt.Errorf("--expires %s is not a whole number of seconds", expires)}
 				}

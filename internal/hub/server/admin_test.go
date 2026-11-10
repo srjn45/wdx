@@ -2,6 +2,9 @@ package server
 
 import (
 	"context"
+	"errors"
+	"math"
+	"net/http"
 	"net/url"
 	"os"
 	"path/filepath"
@@ -25,6 +28,27 @@ func tokenOf(t *testing.T, link, key string) string {
 		t.Fatalf("no %s in %q: %v", key, link, err)
 	}
 	return u.Query().Get(key)
+}
+
+// An invite's life is at least a second: the spec refuses less, and the
+// handler refuses one that would overflow into a life the store accepts.
+func TestInviteLifeBounds(t *testing.T) {
+	t.Parallel()
+	th := start(t, nil)
+	ctx := context.Background()
+	for _, seconds := range []int64{0, -18446744073} {
+		r, err := th.adminClient(t).CreateInviteWithResponse(ctx, hubapi.CreateInvite{ExpiresSeconds: &seconds})
+		if err != nil || r.StatusCode() != http.StatusBadRequest || problemCode(t, r.Body) != hubapi.ErrorCodeUsage {
+			t.Errorf("%d seconds: want usage, got %v %d %s", seconds, err, r.StatusCode(), r.Body)
+		}
+	}
+	a := &api{server: th.server}
+	for _, seconds := range []int64{-18446744073, math.MinInt64, math.MaxInt64} {
+		_, err := a.CreateInvite(ctx, hubapi.CreateInviteRequestObject{Body: &hubapi.CreateInvite{ExpiresSeconds: &seconds}})
+		if _, ok := errors.AsType[*account.InvalidError](err); !ok {
+			t.Errorf("%d seconds handled: want *account.InvalidError, got %v", seconds, err)
+		}
+	}
 }
 
 // The hub deletes what has expired and logs the head of its audit chain at

@@ -633,6 +633,7 @@ components:
         expires_seconds:
           type: integer
           format: int64
+          minimum: 1
           description: How long the invite works, in seconds, at most 30 days; 24 hours when left out.
 
     Invite:

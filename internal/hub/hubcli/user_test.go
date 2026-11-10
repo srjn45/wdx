@@ -122,15 +122,18 @@ func TestUserInvite(t *testing.T) {
 func TestUserInviteRefused(t *testing.T) {
 	t.Parallel()
 	home := newHub(t)
-	for _, expires := range []string{"0s", "721h", "-1h"} {
+	v, exit := hubJSON(t, home, "user", "invite", "--expires", "721h")
+	want(t, v, exit, clikit.ExitRejected, "code", string(hubapi.ErrorCodeInvalidArgument))
+	if d, _ := v["details"].(map[string]any); d["argument"] != "expires" {
+		t.Fatalf("want expires named, got %v", v)
+	}
+	for _, expires := range []string{"0s", "-1h", "1500ms"} {
 		v, exit := hubJSON(t, home, "user", "invite", "--expires", expires)
-		want(t, v, exit, clikit.ExitRejected, "code", string(hubapi.ErrorCodeInvalidArgument))
-		if d, _ := v["details"].(map[string]any); d["argument"] != "expires" {
-			t.Fatalf("want expires named, got %v", v)
+		want(t, v, exit, clikit.ExitUsage, "code", clikit.CodeUsage)
+		if d, _ := v["detail"].(string); !strings.HasPrefix(d, "--expires") {
+			t.Fatalf("want the cli's own message, got %v", v)
 		}
 	}
-	v, exit := hubJSON(t, home, "user", "invite", "--expires", "1500ms")
-	want(t, v, exit, clikit.ExitUsage, "code", clikit.CodeUsage)
 }
 
 func TestUserList(t *testing.T) {

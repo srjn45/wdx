@@ -18,9 +18,9 @@ const DefaultInviteLife = 24 * time.Hour
 func (a *api) CreateInvite(ctx context.Context, req hubapi.CreateInviteRequestObject) (hubapi.CreateInviteResponseObject, error) {
 	life := DefaultInviteLife
 	if s := req.Body.ExpiresSeconds; s != nil {
-		// Capped past the longest life, which the store refuses, so that a
-		// Duration does not overflow.
-		life = time.Duration(min(*s, int64(account.MaxInviteLife/time.Second)+1)) * time.Second
+		// Kept within 0 and past the longest life, both of which the store
+		// refuses, so that a Duration does not overflow either way.
+		life = time.Duration(max(min(*s, int64(account.MaxInviteLife/time.Second)+1), 0)) * time.Second
 	}
 	inv, err := a.server.accounts.CreateInvite(ctx, account.Admin, life)
 	if err != nil {
