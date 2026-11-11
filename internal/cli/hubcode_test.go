@@ -314,6 +314,9 @@ func TestHubCodeRecover(t *testing.T) {
 		r.typeLine(t, typed)
 		return r
 	}
+	// The clock stands still from the wrong key to the next try, which a
+	// loaded machine would otherwise bring after the wait.
+	release := hh.clock.hold()
 	out := hh.wait(recoverWith("ABCD-EFGH-JKMN-PQRS-TVWX").running)
 	if out.Exit != clikit.ExitRejected || !strings.Contains(out.Stderr, "[recovery_key_wrong]") || !strings.Contains(out.Stderr, "the next try waits 1s") {
 		t.Fatalf("%+v", out)
@@ -323,6 +326,7 @@ func TestHubCodeRecover(t *testing.T) {
 	if out.Exit != clikit.ExitRejected || !strings.Contains(out.Stderr, "too soon after a wrong recovery key") {
 		t.Fatalf("%+v", out)
 	}
+	release()
 	hh.clock.Advance(time.Second)
 	out = hh.wait(recoverWith("ABCD-EFGH-JKMN-PQRS-TVWX").running)
 	if !strings.Contains(out.Stderr, "the next try waits 2s") {

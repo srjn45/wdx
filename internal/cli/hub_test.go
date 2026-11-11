@@ -13,6 +13,7 @@ import (
 	"regexp"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -34,7 +35,9 @@ import (
 // end only when a test moves it on, so that a test says when the link polls
 // a login, expires it or connects again.
 type hubClock struct {
-	hub     *hubtest.Clock
+	hub *hubtest.Clock
+	// held is the time the clock stands still at, nil while it runs.
+	held    atomic.Pointer[time.Time]
 	mu      sync.Mutex
 	waits   []*hubWait
 	changed chan struct{}
@@ -50,7 +53,21 @@ func newHubClock(h *hubtest.Hub) *hubClock {
 	return &hubClock{hub: h.Clock, changed: make(chan struct{})}
 }
 
-func (c *hubClock) Now() time.Time { return c.hub.Now() }
+func (c *hubClock) Now() time.Time {
+	if held := c.held.Load(); held != nil {
+		return *held
+	}
+	return c.hub.Now()
+}
+
+// hold stops the clock until the function returned is called: the hub's time
+// also moves as real time does, which a check of what comes too soon after
+// something must not depend on.
+func (c *hubClock) hold() (release func()) {
+	now := c.hub.Now()
+	c.held.Store(&now)
+	return func() { c.held.Store(nil) }
+}
 
 func (c *hubClock) After(d time.Duration) <-chan time.Time {
 	ch := make(chan time.Time, 1)
