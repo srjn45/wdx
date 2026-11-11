@@ -105,7 +105,7 @@ export default defineConfig({
         },
         {
           label: 'Project',
-          items: ['docs/project/roadmap', 'docs/project/faq', 'docs/project/contributing', 'docs/project/license'],
+          items: ['docs/project/roadmap', 'docs/project/faq', 'docs/project/contributing', 'docs/project/security', 'docs/project/privacy', 'docs/project/license'],
         },
       ],
       components: {

@@ -15,6 +15,26 @@ Design comes before code, for everyone, people and AIs alike:
 
 [`AGENTS.md`](https://github.com/srjn45/wdx/blob/main/AGENTS.md) holds the rules the code follows: the package layout, the API and CLI conventions, logging, the database, and how tests are written. It is written for the AI agents working on wdx, and every person working on it follows it too.
 
+## Contribution licensing and rights
+
+Contributions intentionally submitted for inclusion in wdx are provided under the Apache License 2.0, unless explicitly stated otherwise. You retain ownership of your contribution. The project does not require copyright assignment, a contributor license agreement, or DCO sign-off.
+
+Submit only material you have the right to contribute. Obtain any employer or other third-party permission that is needed. If you propose material under different terms, identify those terms before submitting it for inclusion; acceptance requires review and agreement.
+
+Preserve third-party copyright and license notices and identify the source and license of copied or adapted material. Dependencies must follow the repository's license rules and notices process in [AGENTS.md](https://github.com/srjn45/wdx/blob/main/AGENTS.md).
+
+## AI-assisted contributions
+
+AI-assisted contributions are welcome. You are responsible for understanding, reviewing, and validating the submitted work, checking its provenance and licensing, and following the same agreed design, testing, and documentation rules as any other contribution.
+
+Do not submit confidential information, credentials, or material you are not entitled to share, whether you wrote it yourself or obtained it through an AI tool.
+
+## Bugs and security reports
+
+For ordinary bugs, include the wdx version, operating system, command or steps, and expected and observed behaviour. Share only the smallest relevant, redacted logs or transcript excerpts. Issues, pull requests, and commits are public; their history may remain accessible after editing or deletion.
+
+Report security vulnerabilities privately using [SECURITY.md](https://github.com/srjn45/wdx/blob/main/SECURITY.md).
+
 ## Building and testing
 
 You need Go (the version in `go.mod`), git, and make, on Linux or macOS.

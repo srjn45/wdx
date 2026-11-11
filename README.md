@@ -121,15 +121,25 @@ make site           # installs, tests and builds it, as CI does
 
 Issues and ideas are welcome. Design comes before code here: open an issue describing the problem first, agree on a design, then send a pull request for one agreed step, with its tests and docs. Run `make check && make test` before you push.
 
-- [Contributing](https://srjn45.github.io/wdx/docs/project/contributing/) explains how a change is made.
+- [CONTRIBUTING.md](CONTRIBUTING.md) is the starting point; the [contribution guide](https://srjn45.github.io/wdx/docs/project/contributing/) explains the workflow, licensing, and AI-assisted contributions.
 - [`AGENTS.md`](AGENTS.md) has the rules the code follows, for people and AI agents alike.
 - [`docs/`](docs/) has a design file for each part of wdx.
 - Commit messages follow [Conventional Commits](https://www.conventionalcommits.org/) (`feat:`, `fix:`, `docs:`, …); releases and the changelog are made from them.
 
+## Security and privacy
+
+Read the [security policy](SECURITY.md) for reporting vulnerabilities and the [Privacy and data](https://srjn45.github.io/wdx/docs/project/privacy/) page for local storage, telemetry, AI services, and optional hub uploads.
+
 ## Status
+
+wdx is a personal side project, built for the maintainer's own use and shared publicly because it may be useful to others. Maintenance and support are provided on a volunteer basis. There are no guaranteed response times, support commitments, or promises of continued development.
+
+You are responsible for deciding whether wdx suits your needs, reviewing the actions of agents you run, and protecting your credentials and data. The optional hub is self-hosted: its operator manages its deployment and data.
 
 wdx has had stable releases since 0.4.0, with dev releases in between for those who want new features early. The [changelog](https://srjn45.github.io/wdx/docs/reference/changelog/) lists what each release brought. wdx replaces [warden](https://github.com/srjn45/warden), which is now deprecated.
 
 ## License
 
 Apache License 2.0. See [LICENSE](LICENSE) and [NOTICE](NOTICE). The licenses of the Go modules wdx is built with are in [THIRD-PARTY-NOTICES.md](THIRD-PARTY-NOTICES.md).
+
+wdx is provided without warranties, subject to the warranty disclaimer and limitations of liability in sections 7 and 8 of the Apache License 2.0. These provisions apply subject to applicable law.

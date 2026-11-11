@@ -7,6 +7,14 @@ description: "wdx's license, the notices of the code it includes, and the tradem
 
 wdx is open source under the [Apache License 2.0](https://github.com/srjn45/wdx/blob/main/LICENSE): you may use, change and share it, commercially or not, keeping its notices. [`NOTICE`](https://github.com/srjn45/wdx/blob/main/NOTICE) is its own notice.
 
+## Project status and responsibility
+
+wdx is a personal side project, built for the maintainer's own use and shared publicly because it may be useful to others. Maintenance and support are provided on a volunteer basis. There are no guaranteed response times, support commitments, or promises of continued development.
+
+You are responsible for deciding whether wdx suits your needs, reviewing the actions of agents you run, and protecting your credentials and data. The optional hub is self-hosted: its operator manages its deployment and data.
+
+wdx is provided without warranties, subject to the warranty disclaimer and limitations of liability in [sections 7 and 8 of the Apache License 2.0](https://github.com/srjn45/wdx/blob/main/LICENSE). These provisions apply subject to applicable law.
+
 ## The code it includes
 
 wdx is built with libraries under permissive licenses only: Apache-2.0, MIT, BSD and ISC. [`THIRD-PARTY-NOTICES.md`](https://github.com/srjn45/wdx/blob/main/THIRD-PARTY-NOTICES.md) lists each with its license, and every release archive carries it with `LICENSE` and `NOTICE`.

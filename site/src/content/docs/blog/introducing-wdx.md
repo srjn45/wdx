@@ -57,4 +57,4 @@ wdx tide
 
 Or try TIDE right now in your browser on [the home page](/wdx/). It is a replica that runs nothing, but it has the same layout, keys and screens.
 
-Next is the hub, to reach your agents from another machine and keep docs and plans in sync across machines. It is still in design, so it has no dates yet. Follow along here or through the [RSS feed](/wdx/blog/rss.xml).
+Update — 11 November 2026: the optional self-hosted hub is now available for remote access and document uploads. See [Using a hub](/wdx/docs/guides/hub/) and [Running a hub](/wdx/docs/guides/running-a-hub/). The hub is operated by you or your organisation; the project does not offer a public hosted hub. The explicit `--url` requirement is planned for v0.6.0; v0.5.0 users should also supply their self-hosted hub's URL.

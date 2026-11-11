@@ -22,6 +22,8 @@ From inside the repository, commands pick the project by itself; elsewhere, add 
 
 ## 2. Start an agent
 
+Agents default to full permissions and can run commands without approval, with access to your files and network. Add `--permissions ask` to leave permissions to the AI CLI's settings. A separate worktree keeps changes apart but is not a sandbox. See [Security](/wdx/docs/project/security/).
+
 ```sh
 cd ~/code/api
 wdx agent create --name reviewer --prompt "review the open changes"
