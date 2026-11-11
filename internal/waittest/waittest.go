@@ -43,6 +43,10 @@ func Limit(t deadliner) time.Duration { return time.Until(Deadline(t)) }
 // After returns a channel that gets a value at t's deadline, for a select.
 func After(t deadliner) <-chan time.Time { return time.After(Limit(t)) }
 
+// Poll returns a channel that gets a value at a wait's next check, for a
+// select that also checks something outside it.
+func Poll() <-chan time.Time { return time.After(poll) }
+
 // For checks done until it holds, failing t with what it waited for when
 // the deadline comes first.
 func For(t *testing.T, what string, done func() bool) {

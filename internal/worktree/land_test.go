@@ -9,7 +9,6 @@ import (
 	"slices"
 	"strings"
 	"testing"
-	"time"
 
 	"github.com/srjn45/wdx/internal/git"
 	"github.com/srjn45/wdx/internal/gittest"
@@ -44,15 +43,14 @@ func newLanderWith(t *testing.T, opts LanderOptions) *landerUnderTest {
 // finish waits for the landing of path to end, and returns how.
 func (l *landerUnderTest) finish(t *testing.T, path string) Landing {
 	t.Helper()
-	timer := time.NewTimer(time.Until(waittest.Deadline(t)))
-	defer timer.Stop()
+	deadline := waittest.After(t)
 	for {
 		if v, ok := l.Of("p", path); ok && v.Finished() {
 			return v
 		}
 		select {
 		case <-l.changed:
-		case <-timer.C:
+		case <-deadline:
 			v, _ := l.Of("p", path)
 			t.Fatalf("the landing did not end: %+v", v)
 		}

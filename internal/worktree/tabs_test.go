@@ -4,7 +4,6 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
-	"time"
 
 	"github.com/srjn45/wdx/internal/waittest"
 )
@@ -12,11 +11,10 @@ import (
 // waitChanged waits for Changed to be called.
 func (h *trackerHarness) waitChanged(what string) {
 	h.t.Helper()
-	deadline := time.NewTimer(waittest.Limit(h.t))
-	defer deadline.Stop()
+	deadline := waittest.After(h.t)
 	select {
 	case <-h.changed:
-	case <-deadline.C:
+	case <-deadline:
 		h.t.Fatalf("waiting for %s: Changed not called", what)
 	}
 }

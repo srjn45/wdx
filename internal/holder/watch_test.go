@@ -50,7 +50,7 @@ func testParser(dir string) ParseScreen {
 				if _, err := os.Stat(filepath.Join(dir, "release")); err == nil {
 					break
 				}
-				<-time.After(10 * time.Millisecond)
+				<-waittest.Poll()
 			}
 		}
 		state := aca.ClaudeCodeScreenParser{}.Parse(lines, undimmed)

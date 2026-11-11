@@ -235,7 +235,7 @@ func nextAsked(t *testing.T, asked <-chan string) string {
 	select {
 	case got := <-asked:
 		return got
-	case <-time.After(time.Until(waittest.Deadline(t))):
+	case <-waittest.After(t):
 		t.Fatal("nothing asked")
 		return ""
 	}

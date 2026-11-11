@@ -351,6 +351,10 @@ linters:
           msg: tests wait on what they need with waittest, never a fixed time
         - pattern: ^time\.Since$
           msg: a test's outcome never depends on how long something took
+        - pattern: ^time\.(Until|After|NewTimer|Tick|NewTicker)$
+          msg: wait until waittest.Deadline(t)
+        - pattern: ^context\.WithTimeout$
+          msg: wait until waittest.Deadline(t)
     gosec:
       excludes:
         # errcheck checks unhandled errors, with its own exclusions.
@@ -380,7 +384,7 @@ linters:
       # Only tests are held to these: code waits and measures as it must.
       - path-except: _test\.go$
         linters: [forbidigo]
-        text: (never a fixed time|how long something took)
+        text: (never a fixed time|how long something took|wait until waittest\.Deadline)
       # The tests' request helpers read and close the body themselves.
       - path: _test\.go$
         linters: [bodyclose]

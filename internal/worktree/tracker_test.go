@@ -120,8 +120,7 @@ func testWatcher(t *testing.T) *fswatch.Watcher {
 // waitFor waits until what is kept satisfies ok. Each change wakes it.
 func (h *trackerHarness) waitFor(what string, ok func([]Status) bool) {
 	h.t.Helper()
-	deadline := time.NewTimer(waittest.Limit(h.t))
-	defer deadline.Stop()
+	deadline := waittest.After(h.t)
 	for {
 		list := h.tracker.Statuses("p")
 		if list != nil && ok(list) {
@@ -129,7 +128,7 @@ func (h *trackerHarness) waitFor(what string, ok func([]Status) bool) {
 		}
 		select {
 		case <-h.changed:
-		case <-deadline.C:
+		case <-deadline:
 			h.t.Fatalf("waiting for %s, last saw %+v", what, list)
 		}
 	}
@@ -302,8 +301,7 @@ func TestTrackerLeavingKeepsAnothersWatches(t *testing.T) {
 	})
 	waitAhead := func(project string, want int, what string) {
 		t.Helper()
-		deadline := time.NewTimer(waittest.Limit(t))
-		defer deadline.Stop()
+		deadline := waittest.After(t)
 		for {
 			list := tracker.Statuses(project)
 			if s, ok := named2(list, "work"); ok && s.Ahead != nil && intOf(s.Ahead) == want {
@@ -311,7 +309,7 @@ func TestTrackerLeavingKeepsAnothersWatches(t *testing.T) {
 			}
 			select {
 			case <-changed:
-			case <-deadline.C:
+			case <-deadline:
 				t.Fatalf("waiting for %s of %s, last saw %+v", what, project, list)
 			}
 		}

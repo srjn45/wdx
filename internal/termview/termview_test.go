@@ -10,7 +10,6 @@ import (
 	"sync/atomic"
 	"syscall"
 	"testing"
-	"time"
 
 	tea "charm.land/bubbletea/v2"
 
@@ -125,7 +124,7 @@ func (d *driver) send(msg tea.Msg) {
 }
 
 // waitFor handles messages until ok holds, checking it after each and
-// every 20 ms, for conditions outside the pane.
+// at each poll of waittest, for conditions outside the pane.
 func (d *driver) waitFor(what string, ok func() bool) {
 	d.t.Helper()
 	deadline := waittest.After(d.t)
@@ -137,7 +136,7 @@ func (d *driver) waitFor(what string, ok func() bool) {
 				continue
 			}
 			d.send(msg)
-		case <-time.After(20 * time.Millisecond):
+		case <-waittest.Poll():
 		case <-deadline:
 			d.t.Fatalf("no %s on the pane:\n%s", what, d.m.Text())
 		}
