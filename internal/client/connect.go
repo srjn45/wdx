@@ -59,7 +59,13 @@ func (c *Client) switched(ctx context.Context, path string) (net.Conn, error) {
 	stop := context.AfterFunc(ctx, func() { conn.Close() })
 	resp, in, err := d.upgrade(ctx, conn, path)
 	if !stop() {
+		// Given up on, and logged as any request is: the daemon may have served it.
 		conn.Close()
+		if d.opts.Dial != nil {
+			log.Info("node unreachable", "method", http.MethodPost, "path", path, "node", d.opts.Node, "err", ctx.Err())
+		} else {
+			log.Info("daemon unreachable", "method", http.MethodPost, "path", path, "socket", d.opts.Socket, "err", ctx.Err())
+		}
 		return nil, ctx.Err()
 	}
 	if err != nil {

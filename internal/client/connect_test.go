@@ -4,9 +4,11 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"log/slog"
 	"net"
 	"net/http"
 	"strconv"
+	"strings"
 	"testing"
 
 	"github.com/srjn45/wdx/internal/api"
@@ -236,5 +238,33 @@ func TestConnect(t *testing.T) {
 	_, err = New(Options{Socket: socket, DebugID: "none"}).Connect(context.Background(), "desktop")
 	if p, ok := errors.AsType[*ProblemError](err); !ok || p.Problem.Code != api.ErrorCodeSessionRequired {
 		t.Fatalf("%v, want session_required", err)
+	}
+}
+
+// TestConnectGivenUpLogged: a connect whose context is cancelled while the
+// daemon has it is logged as given up, as any request is, so that its run's
+// log accounts for every request the daemon served.
+func TestConnectGivenUpLogged(t *testing.T) {
+	t.Parallel()
+	entered := make(chan struct{})
+	socket := serve(t, func(w http.ResponseWriter, r *http.Request) {
+		close(entered)
+		<-r.Context().Done()
+	})
+	var log lockedBuffer
+	ctx, cancel := context.WithCancel(logging.NewContext(context.Background(), logging.New(&log, slog.LevelInfo)))
+	c := New(Options{Socket: socket, DebugID: "dbg-0123456789ab"})
+	done := make(chan error)
+	go func() {
+		_, err := c.Connect(ctx, "desktop")
+		done <- err
+	}()
+	<-entered
+	cancel()
+	if err := <-done; !errors.Is(err, context.Canceled) {
+		t.Fatalf("%v, want the context's error", err)
+	}
+	if !strings.Contains(log.String(), `"msg":"daemon unreachable"`) {
+		t.Fatalf("the connect given up on was not logged: %s", log.String())
 	}
 }
