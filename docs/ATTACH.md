@@ -59,6 +59,7 @@ A client on another node has no socket to dial, so the host's daemon relays, as 
 - Through a session, the bytes count as activity: a person typing makes no request, so the relay moves the session's idle time on, at most once a minute while bytes flow either way.
 - `holder.AttachConn(ctx, conn, id, size, history)` attaches over the connection it is handed; `holder.Attach(ctx, socket, ...)` dials the socket and calls it. `client.AttachStream(ctx, terminal)` asks for the Upgrade through whatever the client dials. Without `--node`, attach and TIDE dial the holder's socket, as before.
 - A session that ends while attached closes the stream, which the client sees as `connection_lost`, as when a holder drops it.
+- **Versions through the relay:** a client may be of another release than the holder, and the rule of every such pair holds: the older side says what it speaks, the newer decides, nothing is refused only for being newer. The client gives its holder protocol version in `attachTerminal`'s `holder_version`, which the relay puts in the hello it greets the holder with, before the switch; without it, the daemon's own. The holder serves clients from `oldestClientVersion` (2) on, says it in its hello's `oldest_client`, and closes the connection of an older one, which the relay reports as `holder_version_unsupported` with `details.update` `client`; a newer client decides what of an older holder it uses (ARCH_STD_FIXES A7).
 
 ## The holder
 

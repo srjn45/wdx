@@ -183,10 +183,12 @@ Each is an operation of `api/hub.yaml` tagged `admin`, built in step 4 (the wdx 
 |---|---|---|---|
 | `invite [--expires <duration>]` | a one-time sign-up link, `<public_url>/signup?invite=<token>`, 24 hours by default and at most 30 days, that works while registration is closed: `{"result": "invited", "invite": {"link", "expires_at"}}` | `invited` | `invalid_argument` |
 | `list` | `users`; removed users are left out; `nodes`, a count of their nodes not revoked | | |
-| `get --username <name>` | one user, with `sessions`, the count of their browser sessions that have not ended, `nodes`, and `node_list`, each node's `id`, `name`, `os`, `version`, `created_at`, `last_seen_at` and `online` | | `not_found` |
-| `disable --username`, `enable --username` | the user as they now are; disabling ends their browser sessions, refuses their logins, and cuts off their nodes at once | `disabled`, `enabled`, `unchanged` | `not_found` |
-| `reset --username [--second-factor]` | a one-time link to set a new password, since there is no email, `<public_url>/reset?token=<token>`, 24 hours; a new reset voids an earlier one; `--second-factor` also removes their TOTP and recovery codes, and from the passkeys step their passkeys: `{"result": "reset", "reset": {"link", "expires_at", "second_factor"}}` | `reset` | `not_found` |
-| `remove --username [--yes]` | the user as they were; asks first, and `--json` needs `--yes`. Keeps the row, so the username is never given again and `<user>/<doc>` keeps meaning one person, and deletes their password hash, factor, recovery codes, sessions, resets, node logins and nodes, cutting the nodes off at once; step 6 adds their private docs. Docs shared with a team stay with the team, marked as a removed user's, and its admins manage them | `removed` | `not_found`, `cancelled` (answered no) |
+| `get (--id <id> \| --name <name>)` | one user, with `sessions`, the count of their browser sessions that have not ended, `nodes`, and `node_list`, each node's `id`, `name`, `os`, `version`, `created_at`, `last_seen_at` and `online` | | `not_found` |
+| `disable (--id \| --name)`, `enable (--id \| --name)` | the user as they now are; disabling ends their browser sessions, refuses their logins, and cuts off their nodes at once | `disabled`, `enabled`, `unchanged` | `not_found` |
+| `reset (--id \| --name) [--second-factor]` | a one-time link to set a new password, since there is no email, `<public_url>/reset?token=<token>`, 24 hours; a new reset voids an earlier one; `--second-factor` also removes their TOTP and recovery codes, and from the passkeys step their passkeys: `{"result": "reset", "reset": {"link", "expires_at", "second_factor"}}` | `reset` | `not_found` |
+| `remove (--id \| --name) [--yes]` | the user as they were; asks first, and `--json` needs `--yes`. Keeps the row, so the username is never given again and `<user>/<doc>` keeps meaning one person, and deletes their password hash, factor, recovery codes, sessions, resets, node logins and nodes, cutting the nodes off at once; step 6 adds their private docs. Docs shared with a team stay with the team, marked as a removed user's, and its admins manage them | `removed` | `not_found`, `cancelled` (answered no) |
+
+A user is named by `--name` (their username, whatever its case) or `--id` (`usr-...`); `--username` is a hidden alias of `--name`, kept from the dev releases.
 
 An invite or reset link is a secret: printed on a line of its own, since the admin must hand it on, but never logged; the server's `request returned` and the command's `command returned` measure it as `link_bytes`.
 
@@ -217,7 +219,8 @@ Each also from `WDX_HUB_<KEY>`. Without `public_url` every command fails at star
 | `public_url` | required | the address nodes and browsers use, put in login links |
 | `listen.web` | `:8080` | sign-in pages and API |
 | `listen.nodes` | `:8443` | the node endpoint |
-| `nodes_url` | empty | where nodes reach the node endpoint, `https://<host>[:<port>]`, when a proxy or a port mapping makes it differ from `listen.nodes`; empty is `public_url`'s host with `listen.nodes`' port. Sent at login and kept in the node's `login.json`; the node endpoint's certificate names its host |
+| `nodes_url` | empty | where nodes reach the node endpoint, `https://<host>[:<port>]`, when a proxy or a port mapping makes it differ from `listen.nodes`; empty is `public_url`'s host with `listen.nodes`' port. Sent at login and kept in the node's `login.json`; the node endpoint's certificate names its host. The welcome carries `nodes_url`, which the node writes to `login.json` when it differs |
+| `nodes_url_previous` | empty | earlier node endpoint addresses, comma-separated, whose hosts the endpoint's certificate names too while nodes move to `nodes_url` |
 | `web.tls` | `off` | `off` behind a TLS proxy, as on Fly; `acme` (Let's Encrypt); `files`, with `web.tls_cert` and `web.tls_key` |
 | `registration` | `closed` | `closed` or `open`; invites work either way |
 | `trusted_proxies` | empty | addresses or CIDR ranges, comma-separated, whose `X-Forwarded-For` gives the client's address, as Fly's proxy |
