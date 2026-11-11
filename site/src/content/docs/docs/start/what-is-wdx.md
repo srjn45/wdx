@@ -21,7 +21,7 @@ wdx runs them as a team instead of a pile of terminals.
 ## What it is not
 
 - **Not an AI CLI.** wdx runs the ones you install and pay for; it adds no model of its own.
-- **Not a cloud service.** Everything runs on your machine, in `~/.wdx`. A hub to reach agents from another machine is being designed.
+- **Not a cloud service.** Everything still runs on your machine, in `~/.wdx`. A [hub](/wdx/docs/guides/hub/) is optional: it connects your own machines to each other, and it can be [your own](/wdx/docs/guides/running-a-hub/).
 - **Not tied to an editor.** TIDE is a terminal program; any terminal and any editor work with it.
 
 ## Where it runs

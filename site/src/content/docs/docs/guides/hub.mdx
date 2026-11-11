@@ -14,6 +14,14 @@ A hub is a server, `wdx-hub`, that keeps accounts. Logging in makes this machine
 
 The daemon never waits on the hub: with no hub, or with the hub down, everything else works exactly as before.
 
+The central hub, wdx-hub.fly.dev, is invite-only for now; it opens to everyone in a later release, once the first version is complete. Until then, run your own.
+
+:::tip[Run your own hub]
+On a Linux server with systemd, as root: `curl -fsSL https://raw.githubusercontent.com/srjn45/wdx/main/scripts/install-hub.sh | sudo sh`. [Running a hub](/wdx/docs/guides/running-a-hub/) has the rest, and Fly.io.
+:::
+
+How the nodes and the hub work together inside: [The hub](/wdx/docs/architecture/hub/), in Architecture.
+
 ## Try it
 
 ```console

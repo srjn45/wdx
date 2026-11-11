@@ -24,6 +24,7 @@ One per feature, each with a session to try, how it shows in TIDE, how it behave
 - [Worktrees and landing](/wdx/docs/guides/worktrees/): a branch per agent, a diff, and landing with no merge commit.
 - [Docs](/wdx/docs/guides/docs/): designs kept in wdx with a revision per change.
 - [Plans](/wdx/docs/guides/plans/) and [Running plans](/wdx/docs/guides/running-plans/): a feature as tasks for agents, run and landed by wdx.
+- [Hub](/wdx/docs/guides/hub/) and [Running a hub](/wdx/docs/guides/running-a-hub/): reach your machines from each other, and host your own.
 
 ## TIDE
 
@@ -44,7 +45,7 @@ The Terminal IDE, page by page, with its screens live: [Layout and keys](/wdx/do
 
 ## Architecture
 
-How wdx works inside, each page around a diagram: [the overview](/wdx/docs/architecture/), [Daemon and service](/wdx/docs/architecture/daemon/), [Holders and PTYs](/wdx/docs/architecture/holders/), [State in one SQLite file](/wdx/docs/architecture/state/), [The API](/wdx/docs/architecture/api/), [Reading an agent's state](/wdx/docs/architecture/agent-state/) and [Worktrees and watchers](/wdx/docs/architecture/worktrees/).
+How wdx works inside, each page around a diagram: [the overview](/wdx/docs/architecture/), [Daemon and service](/wdx/docs/architecture/daemon/), [Holders and PTYs](/wdx/docs/architecture/holders/), [State in one SQLite file](/wdx/docs/architecture/state/), [The API](/wdx/docs/architecture/api/), [Reading an agent's state](/wdx/docs/architecture/agent-state/), [Worktrees and watchers](/wdx/docs/architecture/worktrees/) and [The hub](/wdx/docs/architecture/hub/).
 
 ## Reference
 

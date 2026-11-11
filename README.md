@@ -74,7 +74,7 @@ The [Quickstart](https://srjn45.github.io/wdx/docs/start/quickstart/) goes furth
 Everything else is on the website, **<https://srjn45.github.io/wdx/>**, built from [`site/`](site/) and published with GitHub Pages whenever it changes on `main` and after each release:
 
 - [What is wdx](https://srjn45.github.io/wdx/docs/start/what-is-wdx/) and [its concepts](https://srjn45.github.io/wdx/docs/start/concepts/)
-- [Guides](https://srjn45.github.io/wdx/docs/guides/projects/), one per feature: projects, agents, worktrees, docs and plans
+- [Guides](https://srjn45.github.io/wdx/docs/guides/projects/), one per feature: projects, agents, worktrees, docs, plans and the hub
 - [TIDE](https://srjn45.github.io/wdx/docs/tide/layout/), the terminal IDE
 - [The AI CLIs](https://srjn45.github.io/wdx/docs/acas/): Claude Code, Codex, Cursor and Antigravity compared
 - [Scripting with --json](https://srjn45.github.io/wdx/docs/guides/scripting/) and [Working with AI agents](https://srjn45.github.io/wdx/docs/guides/ai-agents/)
