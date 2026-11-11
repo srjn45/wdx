@@ -557,7 +557,7 @@ func (s hubService) backup(ctx context.Context, a hubconfig.Account, current str
 	}
 	path := filepath.Join(dir, "hub-"+current+".db")
 	// An update from this version again, after a rollback, backs it up anew.
-	if err := os.Remove(path); err != nil && !errors.Is(err, fs.ErrNotExist) {
+	if err := removeBackup(path); err != nil {
 		return err
 	}
 	if !clikit.JSONMode(s.cmd) {
@@ -582,6 +582,17 @@ func (s hubService) backup(ctx context.Context, a hubconfig.Account, current str
 	return pruneBackups(ctx, dir)
 }
 
+// removeBackup deletes the database backup at path and the copy of the
+// certificate authority beside it, <path>.ca, which holds its private key.
+// homeSafe has checked backups/ is no symlink, and RemoveAll removes a symlink
+// in it, never what it points to.
+func removeBackup(path string) error {
+	if err := os.Remove(path); err != nil && !errors.Is(err, fs.ErrNotExist) {
+		return err
+	}
+	return os.RemoveAll(path + ".ca")
+}
+
 // pruneBackups deletes all but the newest backupsKept backups in dir.
 func pruneBackups(ctx context.Context, dir string) error {
 	log := logging.FromContext(ctx)
@@ -603,7 +614,7 @@ func pruneBackups(ctx context.Context, dir string) error {
 	}
 	slices.SortFunc(backups, func(a, b backup) int { return b.modTime.Compare(a.modTime) })
 	for _, b := range backups[min(len(backups), backupsKept):] {
-		if err := os.Remove(b.path); err != nil {
+		if err := removeBackup(b.path); err != nil {
 			return err
 		}
 		log.Info("old backup deleted", "path", b.path)

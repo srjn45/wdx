@@ -448,8 +448,11 @@ func TestUpdateApplyAndRollback(t *testing.T) {
 	if got := strings.Join(in.service.called(), ","); got != "start wdx-hub.service,stop wdx-hub.service,daemon-reload,reset-failed wdx-hub.service,start wdx-hub.service" {
 		t.Fatalf("want the service stopped, reloaded, reset and started, got %s", got)
 	}
-	if _, err := os.Stat(filepath.Join(hubconfig.BackupsDir(in.home), "hub-"+identity.Version+".db")); err != nil {
-		t.Fatalf("want the database backed up, got %v", err)
+	backup := filepath.Join(hubconfig.BackupsDir(in.home), "hub-"+identity.Version+".db")
+	for _, p := range []string{backup, filepath.Join(backup+".ca", "ca.key")} {
+		if _, err := os.Stat(p); err != nil {
+			t.Fatalf("want the database and the certificate authority backed up, got %v", err)
+		}
 	}
 	for _, kept := range []string{name, "hub.db", "config.yaml", "previous.json"} {
 		if _, err := os.Stat(filepath.Join(in.layout.Previous(), kept)); err != nil {
@@ -481,6 +484,13 @@ func TestUpdateApplyAndRollback(t *testing.T) {
 
 	v, exit = in.json(t, identity.Version, "--rollback", "--cancel")
 	wantCode(t, v, exit, hubapi.ErrorCodeNoPreviousVersion, clikit.ExitRejected)
+
+	// Updating from this version again backs it up anew, over the first
+	// update's backup and its certificate authority's.
+	if v, exit := in.json(t, identity.Version, "--apply"); exit != clikit.ExitOK || v["result"] != resultUpdated {
+		t.Fatalf("want updated again after the rollback, got exit %d: %v", exit, v)
+	}
+	in.want(t, newVersion)
 }
 
 // updatedAcrossBreaking updates the running hub to a release whose migration
@@ -663,6 +673,7 @@ func TestUpdateBackupsKept(t *testing.T) {
 		if err := os.Chtimes(path, at, at); err != nil {
 			t.Fatal(err)
 		}
+		writeTestFile(t, filepath.Join(path+".ca", "ca.key"), "")
 	}
 
 	if v, exit := in.json(t, identity.Version, "--apply"); exit != clikit.ExitOK || v["result"] != resultUpdated {
@@ -680,6 +691,18 @@ func TestUpdateBackupsKept(t *testing.T) {
 	slices.Sort(kept)
 	if want := []string{"hub-0.0.2.db", "hub-0.0.3.db", "hub-" + identity.Version + ".db"}; !slices.Equal(kept, want) {
 		t.Fatalf("want backups %v, got %v", want, kept)
+	}
+	cas, err := filepath.Glob(filepath.Join(dir, "hub-*.db.ca"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var casKept []string
+	for _, m := range cas {
+		casKept = append(casKept, filepath.Base(m))
+	}
+	slices.Sort(casKept)
+	if want := []string{"hub-0.0.2.db.ca", "hub-0.0.3.db.ca"}; !slices.Equal(casKept, want) {
+		t.Fatalf("want the certificate authority's backups %v, the oldest deleted with its database's, got %v", want, casKept)
 	}
 }
 
