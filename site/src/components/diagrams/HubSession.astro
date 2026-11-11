@@ -1,0 +1,36 @@
+---
+// Opening a session: three lanes, the client node, the hub and the host node,
+// and the steps between them in order.
+import Diagram from './Diagram.astro';
+---
+<Diagram id="hs" width={720} height={436}
+  label="Opening a session, in eight steps. One: each node logs in once, with a key made on the node and a certificate from the hub's CA. Two: the client, laptop, asks the hub for a stream to the host, desk. Three: the hub tells desk on its control connection. Four: desk dials its own stream. Five: the relay joins the two. Six: TLS 1.3 runs between laptop and desk, each pinning the other's key. Seven: CPace with desk's authenticator code, checked on desk, so the code never reaches the hub. Eight: the session's requests, until it is idle for an hour or closed."
+  caption="Steps 6 to 8 run inside the joined stream, between the two nodes: the hub passes them on and reads none of them.">
+  <rect class="bx" x="40" y="10" width="160" height="36" rx="8" /><text x="54" y="33">laptop · client</text>
+  <rect class="bx" x="280" y="10" width="160" height="36" rx="8" /><text x="294" y="33">the hub</text>
+  <rect class="bx" x="520" y="10" width="160" height="36" rx="8" /><text x="534" y="33">desk · host</text>
+  <path class="grp" d="M120 46 L120 426" /><path class="grp" d="M360 46 L360 426" /><path class="grp" d="M600 46 L600 426" />
+
+  <rect class="lbl" x="128" y="68" width="464" height="18" rx="3" /><text class="sm" x="132" y="81">1  each logs in once: its own key, a certificate from the CA</text>
+  <path class="ar" d="M120 96 L354 96" marker-end="url(#hs-a)" /><path class="ar" d="M600 96 L366 96" marker-end="url(#hs-a)" />
+
+  <rect class="lbl" x="128" y="118" width="210" height="18" rx="3" /><text class="sm" x="132" y="131">2  asks for a stream to desk</text>
+  <path class="ar" d="M120 142 L356 142" marker-end="url(#hs-a)" />
+
+  <rect class="lbl" x="368" y="162" width="226" height="18" rx="3" /><text class="sm" x="372" y="175">3  tells desk, over control</text>
+  <path class="ar dash" d="M360 186 L596 186" marker-end="url(#hs-a)" />
+
+  <rect class="lbl" x="368" y="206" width="210" height="18" rx="3" /><text class="sm" x="372" y="219">4  desk dials its own stream</text>
+  <path class="ar" d="M600 230 L364 230" marker-end="url(#hs-a)" />
+
+  <rect class="bx hot" x="290" y="248" width="140" height="32" rx="8" /><text class="hot" x="304" y="269">5  relay joins them</text>
+
+  <rect class="lbl" x="128" y="298" width="464" height="18" rx="3" /><text class="sm" x="132" y="311">6  TLS 1.3 from laptop to desk, each pinning the other's key</text>
+  <path class="ar hot" d="M124 322 L596 322" marker-start="url(#hs-h)" marker-end="url(#hs-h)" />
+
+  <rect class="lbl" x="128" y="342" width="464" height="18" rx="3" /><text class="sm" x="132" y="355">7  CPace with desk's code, checked on desk; never at the hub</text>
+  <path class="ar hot" d="M124 366 L596 366" marker-start="url(#hs-h)" marker-end="url(#hs-h)" />
+
+  <rect class="lbl" x="128" y="386" width="464" height="18" rx="3" /><text class="sm" x="132" y="399">8  the session's requests, until 1h idle or session close</text>
+  <path class="ar hot" d="M120 410 L596 410" marker-end="url(#hs-h)" />
+</Diagram>

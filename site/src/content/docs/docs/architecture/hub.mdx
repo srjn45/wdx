@@ -1,0 +1,67 @@
+---
+title: The hub
+description: "How your machines become nodes of an account on a hub, how a session from one node into another is opened through it, and what the hub keeps and never sees."
+since: 0.5.0
+---
+import HubNodes from '../../../../components/diagrams/HubNodes.astro';
+import HubSession from '../../../../components/diagrams/HubSession.astro';
+
+A hub, `wdx-hub`, is a server of its own that keeps accounts. Each machine you log in to it becomes a **node** of your account, and its daemon keeps a connection to the hub. When one node opens a session into another, the hub passes the bytes between them but cannot read them: TLS runs between the two nodes, and the node you reach checks its own authenticator code. The [Hub](/wdx/docs/guides/hub/) guide says how to use it, and [Running a hub](/wdx/docs/guides/running-a-hub/) how to host your own.
+
+## The picture
+
+<HubNodes />
+
+- **The web endpoint** serves the sign-in pages under an ordinary public certificate: logging in, the second factor, approving a node. A browser is all that talks to it, besides a node logging in, which has no key the hub knows yet.
+- **The node endpoint** is TLS 1.3 under the hub's own certificate authority, and asks every node for its client certificate. A node trusts the CA it was given at login for this endpoint, never the system's store, so a public CA cannot stand in for the hub.
+- **The control connection** is a WebSocket each daemon dials out to the node endpoint and holds open, trying again while the hub cannot be reached, waiting longer each time up to a minute. It carries small messages: the versions, a new certificate, a stream waiting, docs to push, the node's state. The hub knows which nodes are online from it.
+- **The relay** joins two streams, one dialled by each node, and copies bytes both ways until either closes. Neither node opens a port, and neither needs to reach the other.
+
+## Logging in
+
+`wdx hub login` makes an Ed25519 key on the node; it never leaves the node. The hub's CA then gives the node a certificate naming it, which lasts a year. The hub sends a new one over the control connection once two thirds of its life have passed, checking at each connect and daily, so a node that keeps connecting never sees its certificate end.
+
+A login is approved in a browser, by one of two flows:
+
+- **With a browser here**, the CLI listens on `127.0.0.1`, for the minutes of the login only, and opens the hub's page. You log in, pass your second factor and approve the node, and the browser comes back to that address. Only the machine that started the login can finish it, so a login link sent elsewhere is of no use.
+- **Without one** (`--no-browser`, or over SSH), the hub's device page takes a code the terminal shows, from any device, and the daemon asks the hub until the login is approved, denied or 10 minutes have passed.
+
+Removing a node, or disabling its user, is the hub's own check, not the certificate's end: the hub looks at every connection, closes the node's open ones at once and renews nothing for it.
+
+## A session
+
+<HubSession />
+
+- **Remote access is off** on a node until you turn it on there: `wdx hub code setup` enrols an authenticator entry for that node (six digits, every 30 seconds), and `hub.remote_access` lets your other nodes open sessions into it. The secret stays in the node's home; the hub never has it.
+- **The stream** is asked for by the client, which the hub tells the host about on its control connection; the host dials a stream of its own, and the relay joins the two.
+- **TLS 1.3 between the nodes:** each presents a certificate of its own node key. The first session pins the other's key, and a key that changes later is refused with `node_key_mismatch` and recorded on both nodes. The hub's word for a key is never taken, and it cannot make a node forget one: pins are forgotten at `wdx hub logout` only.
+- **CPace with the host's code**, a key exchange keyed by the code and bound to that TLS channel, proves the client holds the code now without sending it. The host checks it; the hub in the middle sees only messages that would let it make one guess. One code opens one session.
+- **Wrong codes slow down at the host:** the next try from that node waits 1 second, doubling to 5 minutes, and after its tenth wrong code in a row on up to an hour; every client's tries together wait up to 5 minutes. Each one is in the node's audit chain, which `wdx hub audit verify` checks, and `wdx hub status` counts them. Wrong codes never turn remote access off.
+- **The session ends** when it goes unused for `hub.session_idle_timeout`, 1 hour by default, counted on the host from the bytes either way; with `wdx hub session close`; when the host's daemon restarts or remote access is turned off there; and when either node leaves the account.
+- **What it may do** is decided per operation of the API, in one table on the host: a session runs commands, attaches to terminals and agents and shows TIDE, but changes no setting, stops or reloads no daemon, reads or writes none of the host's TIDE state, and opens no session onward to a third node. Anything else is refused with `route_not_allowed`. Attaching goes through the host's daemon, which passes the bytes to the terminal's holder and logs only how many.
+
+## What the hub keeps, and what it never sees
+
+The hub keeps its own database, `hub.db`:
+
+- **accounts:** usernames, passwords hashed with argon2id, and each user's second-factor secret sealed under the hub's master key;
+- **nodes:** their names, public keys, systems, versions and when each was last seen, and whether remote access is on, as each node says;
+- **pushed docs:** each doc's name, folder, labels and status, and every revision's text, gzipped and sealed with AES-256-GCM under a key of that doc's own, itself sealed under the master key. That protects the database and its backups; whoever runs the hub holds the master key;
+- **an audit chain** of every act, each row's hash over the one before, so a changed row shows.
+
+It never sees what passes in a session: the commands, their answers and a terminal's bytes are inside TLS between the nodes. The relay logs which two nodes, when, and how many bytes went each way when the stream closed; never the bytes. Nor does it ever have a node's private key, the authenticator's secret or a code.
+
+## Versions
+
+A node and the hub, or two nodes, need not run the same release, only an API version both speak. The older side says what it speaks; the newer side decides whether it can go on, and nothing is refused only for being newer. A refusal names the side to update: `node_version_unsupported` or `hub_version_unsupported`, and `wdx hub status` says which.
+
+## Without a hub
+
+The daemon never waits on the hub. With no hub, before logging in, or with the hub down, everything else works as it did: projects, agents, terminals and TIDE on this machine. A node offline is only `offline` in `wdx hub status` until it connects again, and `wdx hub logout` deletes the key, the certificate and the login from the home.
+
+## In the repository
+
+- [`docs/HUB_ARCH.md`](https://github.com/srjn45/wdx/blob/main/docs/HUB_ARCH.md): the hub's architecture: its endpoints, the login, the session, the relay, its tables and the node's files.
+- [`docs/HUB.md`](https://github.com/srjn45/wdx/blob/main/docs/HUB.md): what the hub is for, and the security it was designed to.
+- [`api/hub.yaml`](https://github.com/srjn45/wdx/blob/main/api/hub.yaml): the hub's API, with each operation's endpoint.
+- [`internal/hub`](https://github.com/srjn45/wdx/tree/main/internal/hub): the hub's packages; [`internal/hublink`](https://github.com/srjn45/wdx/tree/main/internal/hublink): the node's link to it; [`internal/remote`](https://github.com/srjn45/wdx/tree/main/internal/remote): TLS between nodes, CPace and the sessions.

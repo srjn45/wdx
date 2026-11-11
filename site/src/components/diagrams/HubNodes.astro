@@ -1,0 +1,37 @@
+---
+// Nodes and the hub: each daemon's control connection, the browser's sign-in,
+// and the two streams the relay joins.
+import Diagram from './Diagram.astro';
+---
+<Diagram id="hn" width={720} height={410}
+  label="Two nodes of one account and the hub between them. A browser signs in on the hub's web endpoint, under a public certificate. Each node's daemon dials out a control connection to the hub's node endpoint, under the hub's own certificate authority. To reach the host node, the client node asks for a stream; the host dials its own, and the hub's relay joins the two. TLS 1.3 runs between the two nodes inside it, so the hub copies bytes it cannot read. The hub keeps its accounts, nodes and docs in hub.db."
+  caption="Both nodes dial out to the hub, and neither opens a port. The relay joins their two streams and copies bytes; TLS 1.3 runs between the nodes, inside.">
+  <rect class="bx" x="275" y="10" width="170" height="40" rx="8" /><text x="289" y="28">a browser</text><text class="sm" x="289" y="43">sign in · approve</text>
+  <path class="ar" d="M360 50 L360 96" marker-end="url(#hn-a)" />
+
+  <rect class="grp" x="10" y="64" width="180" height="290" rx="12" /><text class="ttl" x="22" y="86">client · laptop</text>
+  <rect class="bx" x="22" y="100" width="156" height="44" rx="8" /><text x="34" y="119">TIDE, a command</text><text class="sm" x="34" y="136">with --node desk</text>
+  <rect class="bx" x="22" y="164" width="156" height="44" rx="8" /><text x="34" y="183">daemon</text><text class="sm" x="34" y="200">hublink, remote</text>
+  <rect class="bx hot" x="22" y="228" width="156" height="44" rx="8" /><text x="34" y="247">a stream</text><text class="sm" x="34" y="264">asked for, to desk</text>
+  <path class="ar" d="M100 144 L100 160" marker-end="url(#hn-a)" /><path class="ar" d="M100 208 L100 224" marker-end="url(#hn-a)" />
+
+  <rect class="grp" x="230" y="64" width="260" height="290" rx="12" /><text class="ttl" x="242" y="86">the hub</text>
+  <rect class="bx" x="250" y="100" width="220" height="44" rx="8" /><text x="262" y="119">web endpoint</text><text class="sm" x="262" y="136">sign-in pages, public cert</text>
+  <rect class="bx" x="250" y="164" width="220" height="44" rx="8" /><text x="262" y="183">node endpoint</text><text class="sm" x="262" y="200">TLS from the hub's own CA</text>
+  <rect class="bx hot" x="250" y="228" width="220" height="44" rx="8" /><text class="hot" x="262" y="247">relay</text><text class="sm" x="262" y="264">joins two streams</text>
+  <rect class="bx" x="250" y="292" width="220" height="44" rx="8" /><text x="262" y="311">hub.db</text><text class="sm" x="262" y="328">accounts · nodes · docs</text>
+
+  <rect class="grp" x="530" y="64" width="180" height="290" rx="12" /><text class="ttl" x="542" y="86">host · desk</text>
+  <rect class="bx" x="542" y="100" width="156" height="44" rx="8" /><text x="554" y="119">holders</text><text class="sm" x="554" y="136">a PTY each</text>
+  <rect class="bx" x="542" y="164" width="156" height="44" rx="8" /><text x="554" y="183">daemon</text><text class="sm" x="554" y="200">checks the code</text>
+  <rect class="bx hot" x="542" y="228" width="156" height="44" rx="8" /><text x="554" y="247">a stream</text><text class="sm" x="554" y="264">dialled when told</text>
+  <path class="ar" d="M620 164 L620 148" marker-end="url(#hn-a)" /><path class="ar" d="M620 228 L620 212" marker-end="url(#hn-a)" />
+
+  <path class="ar dash" d="M178 186 L246 186" marker-end="url(#hn-a)" /><text class="sm" x="186" y="179">control</text>
+  <path class="ar dash" d="M542 186 L474 186" marker-end="url(#hn-a)" /><text class="sm" x="482" y="179">control</text>
+  <path class="ar hot" d="M178 250 L246 250" marker-end="url(#hn-h)" />
+  <path class="ar hot" d="M542 250 L474 250" marker-end="url(#hn-h)" />
+
+  <path class="ar hot" d="M100 362 L100 372 L620 372 L620 362" />
+  <text class="sm hot" x="136" y="396">TLS 1.3 between the two nodes; the hub copies bytes it cannot read</text>
+</Diagram>

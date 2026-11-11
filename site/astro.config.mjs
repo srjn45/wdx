@@ -89,6 +89,7 @@ export default defineConfig({
             'docs/architecture/api',
             'docs/architecture/agent-state',
             'docs/architecture/worktrees',
+            'docs/architecture/hub',
           ],
         },
         {
