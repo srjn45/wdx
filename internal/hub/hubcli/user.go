@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/spf13/cobra"
+	"github.com/spf13/pflag"
 
 	"github.com/srjn45/wdx/internal/clikit"
 	"github.com/srjn45/wdx/internal/hubapi"
@@ -101,7 +102,7 @@ func newUserListCmd() *cobra.Command {
 		Args: cobra.NoArgs,
 		Annotations: map[string]string{
 			clikit.OutputNote: "A row per user: username, second factor, whether disabled, nodes, created and last login.\n" +
-				`With --json: {"users": [{"username": ..., "created_at": ..., "last_login_at": ..., "disabled": ..., "second_factor": ..., "nodes": ...}, ...]}`,
+				`With --json: {"users": [{"id": ..., "username": ..., "created_at": ..., "last_login_at": ..., "disabled": ..., "second_factor": ..., "nodes": ...}, ...]}`,
 			clikit.Errors: clikit.CodeList(hubapi.ErrorCodeHubUnavailable),
 		},
 		RunE: func(cmd *cobra.Command, _ []string) error {
@@ -122,7 +123,7 @@ func (l userList) Text(w io.Writer, st style.Style) {
 		return
 	}
 	var t style.Table
-	t.Row(st.Muted("USERNAME"), st.Muted("FACTOR"), st.Muted("STATE"), st.Muted("NODES"), st.Muted("CREATED"), st.Muted("LAST LOGIN"))
+	t.Row(st.Heading("USERNAME"), st.Heading("FACTOR"), st.Heading("STATE"), st.Heading("NODES"), st.Heading("CREATED"), st.Heading("LAST LOGIN"))
 	for _, u := range l.Users {
 		t.Row(st.Name(u.Username), factorText(u.SecondFactor), stateText(st, u.Disabled), strconv.Itoa(u.Nodes), timeText(u.CreatedAt), lastLoginText(u.LastLoginAt))
 	}
@@ -130,29 +131,30 @@ func (l userList) Text(w io.Writer, st style.Style) {
 }
 
 func newUserGetCmd() *cobra.Command {
-	var username string
+	var ref userRef
 	cmd := &cobra.Command{
-		Use:   "get --username <name>",
+		Use:   "get (--id <id> | --name <name>)",
 		Short: "Show one user",
 		Example: clikit.Examples(
-			"Show a user", name+" user get --username alice",
+			"Show a user", name+" user get --name alice",
+			"By id, as JSON", name+" user get --id usr-1a2b3c4d --json",
 		),
 		Args: cobra.NoArgs,
 		Annotations: map[string]string{
 			clikit.OutputNote: "The user, with their browser sessions counted, and their nodes.\n" +
-				`With --json: {"user": {"username": ..., "created_at": ..., "last_login_at": ..., "disabled": ..., "second_factor": ..., "sessions": ..., ` +
+				`With --json: {"user": {"id": ..., "username": ..., "created_at": ..., "last_login_at": ..., "disabled": ..., "second_factor": ..., "sessions": ..., ` +
 				`"nodes": ..., "node_list": [{"id": ..., "name": ..., "os": ..., "version": ..., "created_at": ..., "last_seen_at": ..., "online": ...}, ...]}}`,
 			clikit.Errors: clikit.CodeList(hubapi.ErrorCodeHubUnavailable, hubapi.ErrorCodeNotFound),
 		},
 		RunE: func(cmd *cobra.Command, _ []string) error {
-			r, err := clientOf(cmd).user(cmd.Context(), username)
+			r, err := clientOf(cmd).user(cmd.Context(), ref.path())
 			if err != nil {
 				return err
 			}
 			return clikit.PrintResult(cmd, userDetail(r))
 		},
 	}
-	usernameFlag(cmd, &username)
+	ref.addFlags(cmd)
 	return cmd
 }
 
@@ -162,6 +164,7 @@ func (d userDetail) Text(w io.Writer, st style.Style) {
 	u := d.User
 	fmt.Fprintf(w, "user %s\n", st.Name(u.Username))
 	field := clikit.FieldPrinter(w, st, 10)
+	field("id", u.Id)
 	field("factor", factorText(u.SecondFactor))
 	field("state", stateText(st, u.Disabled))
 	field("created", timeText(u.CreatedAt))
@@ -172,7 +175,7 @@ func (d userDetail) Text(w io.Writer, st style.Style) {
 		return
 	}
 	var t style.Table
-	t.Row(st.Muted("NODE"), st.Muted("ID"), st.Muted("STATE"), st.Muted("OS"), st.Muted("WDX"), st.Muted("LAST SEEN"))
+	t.Row(st.Heading("NODE"), st.Heading("ID"), st.Heading("STATE"), st.Heading("OS"), st.Heading("WDX"), st.Heading("LAST SEEN"))
 	for _, n := range u.NodeList {
 		state := st.Muted("offline")
 		if n.Online {
@@ -190,18 +193,18 @@ func (d userDetail) Text(w io.Writer, st style.Style) {
 
 // newUserDisableCmd is user disable, or user enable when disable is false.
 func newUserDisableCmd(disable bool) *cobra.Command {
-	var username string
+	var ref userRef
 	verb, short, long, failure := "enable", "Let a disabled user log in again", "", "not enabled"
 	if disable {
 		verb, short, failure = "disable", "Keep a user from logging in", "not disabled"
 		long = "Their browser sessions end and their nodes are cut off, and their logins and\nnodes are refused until " + name + " user enable."
 	}
 	cmd := &cobra.Command{
-		Use:   verb + " --username <name>",
+		Use:   verb + " (--id <id> | --name <name>)",
 		Short: short,
 		Long:  long,
 		Example: clikit.Examples(
-			short, name+" user "+verb+" --username alice",
+			short, name+" user "+verb+" --name alice",
 		),
 		Args: cobra.NoArgs,
 		Annotations: map[string]string{
@@ -212,14 +215,14 @@ func newUserDisableCmd(disable bool) *cobra.Command {
 			clikit.Errors:  clikit.CodeList(hubapi.ErrorCodeHubUnavailable, hubapi.ErrorCodeNotFound),
 		},
 		RunE: func(cmd *cobra.Command, _ []string) error {
-			r, err := clientOf(cmd).updateUser(cmd.Context(), username, disable)
+			r, err := clientOf(cmd).updateUser(cmd.Context(), ref.path(), disable)
 			if err != nil {
 				return err
 			}
 			return clikit.PrintResult(cmd, userResult(r))
 		},
 	}
-	usernameFlag(cmd, &username)
+	ref.addFlags(cmd)
 	return cmd
 }
 
@@ -240,10 +243,10 @@ func (r userResult) Text(w io.Writer, st style.Style) {
 }
 
 func newUserResetCmd() *cobra.Command {
-	var username string
+	var ref userRef
 	var secondFactor bool
 	cmd := &cobra.Command{
-		Use:   "reset --username <name> [--second-factor]",
+		Use:   "reset (--id <id> | --name <name>) [--second-factor]",
 		Short: "Make a link that sets a new password for a user",
 		Long: "The link works once, for 24 hours, and voids an earlier one; using it ends the\n" +
 			"user's browser sessions. With --second-factor it also removes their\n" +
@@ -251,8 +254,8 @@ func newUserResetCmd() *cobra.Command {
 			"log in. Whoever has the link can take the account over: hand it only to the\n" +
 			"user. It is printed, never logged.",
 		Example: clikit.Examples(
-			"Let a user who forgot their password set a new one", name+" user reset --username alice",
-			"Let a user who lost their authenticator too in again", name+" user reset --username alice --second-factor",
+			"Let a user who forgot their password set a new one", name+" user reset --name alice",
+			"Let a user who lost their authenticator too in again", name+" user reset --name alice --second-factor",
 		),
 		Args: cobra.NoArgs,
 		Annotations: map[string]string{
@@ -263,21 +266,21 @@ func newUserResetCmd() *cobra.Command {
 			clikit.Errors:  clikit.CodeList(hubapi.ErrorCodeHubUnavailable, hubapi.ErrorCodeNotFound),
 		},
 		RunE: func(cmd *cobra.Command, _ []string) error {
-			r, err := clientOf(cmd).createReset(cmd.Context(), username, secondFactor)
+			r, err := clientOf(cmd).createReset(cmd.Context(), ref.path(), secondFactor)
 			if err != nil {
 				return err
 			}
-			return clikit.PrintResult(cmd, resetResult{ResetResult: r, username: username})
+			return clikit.PrintResult(cmd, resetResult{ResetResult: r, user: ref.text()})
 		},
 	}
-	usernameFlag(cmd, &username)
+	ref.addFlags(cmd)
 	cmd.Flags().BoolVar(&secondFactor, "second-factor", false, "also remove their authenticator and recovery codes")
 	return cmd
 }
 
 type resetResult struct {
 	hubapi.ResetResult
-	username string
+	user string // as the command line named them
 }
 
 func (r resetResult) Text(w io.Writer, st style.Style) {
@@ -285,7 +288,7 @@ func (r resetResult) Text(w io.Writer, st style.Style) {
 	if r.Reset.SecondFactor {
 		what = "password and second factor"
 	}
-	fmt.Fprintf(w, "%s the %s of %s: the link works once, until %s\n", st.Success("reset"), what, st.Name(r.username), st.Name(timeText(r.Reset.ExpiresAt)))
+	fmt.Fprintf(w, "%s the %s of %s: the link works once, until %s\n", st.Success("reset"), what, st.Name(r.user), st.Name(timeText(r.Reset.ExpiresAt)))
 	fmt.Fprintln(w, r.Reset.Link)
 }
 
@@ -295,10 +298,10 @@ func (r resetResult) LogValue() slog.Value { return linkLogged(r.ResetResult) }
 const removeUserQuestion = "remove user"
 
 func newUserRemoveCmd() *cobra.Command {
-	var username string
+	var ref userRef
 	var yes bool
 	cmd := &cobra.Command{
-		Use:   "remove --username <name> [--yes]",
+		Use:   "remove (--id <id> | --name <name>) [--yes]",
 		Short: "Remove a user, keeping their username taken",
 		Long: "Their password, authenticator, recovery codes, browser sessions, resets,\n" +
 			"nodes and docs are deleted, their nodes cut off, and the username is never\n" +
@@ -306,8 +309,8 @@ func newUserRemoveCmd() *cobra.Command {
 			"You are asked first, as nothing brings it back; --yes answers in advance, and\n" +
 			"with --json, or without a terminal, it is required.",
 		Example: clikit.Examples(
-			"Remove a user", name+" user remove --username alice",
-			"From a script", name+" user remove --username alice --yes --json",
+			"Remove a user", name+" user remove --name alice",
+			"From a script", name+" user remove --name alice --yes --json",
 		),
 		Args: cobra.NoArgs,
 		Annotations: map[string]string{
@@ -320,28 +323,28 @@ func newUserRemoveCmd() *cobra.Command {
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			if yes {
 				clikit.LogAnswer(cmd, removeUserQuestion, "yes", "--yes")
-			} else if err := confirmUserRemove(cmd, username); err != nil {
+			} else if err := confirmUserRemove(cmd, ref.path()); err != nil {
 				return err
 			}
-			r, err := clientOf(cmd).removeUser(cmd.Context(), username)
+			r, err := clientOf(cmd).removeUser(cmd.Context(), ref.path())
 			if err != nil {
 				return err
 			}
 			return clikit.PrintResult(cmd, userResult(r))
 		},
 	}
-	usernameFlag(cmd, &username)
+	ref.addFlags(cmd)
 	cmd.Flags().BoolVar(&yes, "yes", false, "remove them without asking")
 	return cmd
 }
 
 // confirmUserRemove asks whether to remove the user; nil means yes.
-func confirmUserRemove(cmd *cobra.Command, username string) error {
+func confirmUserRemove(cmd *cobra.Command, path string) error {
 	if !clikit.CanPrompt(cmd) {
 		clikit.LogUnanswered(cmd, removeUserQuestion)
 		return &clikit.UsageError{Err: fmt.Errorf("removing a user needs an answer, and none can be asked (%s): pass --yes", clikit.NoPromptReason(cmd))}
 	}
-	d, err := clientOf(cmd).user(cmd.Context(), username)
+	d, err := clientOf(cmd).user(cmd.Context(), path)
 	if err != nil {
 		return err
 	}
@@ -359,27 +362,62 @@ func confirmUserRemove(cmd *cobra.Command, username string) error {
 	return nil
 }
 
-// usernameFlag adds the required --username, completed with the users.
-func usernameFlag(cmd *cobra.Command, username *string) {
-	cmd.Flags().StringVar(username, "username", "", "the user's `name`, whatever its case")
-	cmd.MarkFlagRequired("username")
-	clikit.CompleteFlag(cmd, "username", completeUsers)
+// userRef is a user named on the command line by --id, or by --name.
+type userRef struct{ id, name string }
+
+// addFlags adds --id and --name, exactly one of them required, completed
+// with the users. --username, --name's name in the dev releases before
+// 0.5.0, still works, hidden from help.
+func (r *userRef) addFlags(cmd *cobra.Command) {
+	cmd.Flags().StringVar(&r.id, "id", "", "`id` of the user")
+	cmd.Flags().StringVar(&r.name, "name", "", "the user's `name`, whatever its case")
+	cmd.MarkFlagsOneRequired("id", "name")
+	cmd.MarkFlagsMutuallyExclusive("id", "name")
+	cmd.Flags().SetNormalizeFunc(func(_ *pflag.FlagSet, flag string) pflag.NormalizedName {
+		if flag == "username" {
+			flag = "name"
+		}
+		return pflag.NormalizedName(flag)
+	})
+	clikit.CompleteFlag(cmd, "id", completeUsers(func(u hubapi.User) (string, string) { return u.Id, u.Username }))
+	clikit.CompleteFlag(cmd, "name", completeUsers(func(u hubapi.User) (string, string) {
+		return u.Username, factorText(u.SecondFactor) + ", " + stateText(style.Style{}, u.Disabled)
+	}))
 }
 
-// completeUsers offers the usernames, or nothing when the hub does not
-// answer within completionTimeout.
-func completeUsers(cmd *cobra.Command, _ []string, _ string) ([]cobra.Completion, cobra.ShellCompDirective) {
-	ctx, cancel := context.WithTimeout(cmd.Context(), completionTimeout)
-	defer cancel()
-	l, err := clientOf(cmd).users(ctx)
-	if err != nil {
-		return nil, cobra.ShellCompDirectiveNoFileComp
+// path is how the hub's API names the user.
+func (r userRef) path() string {
+	if r.id != "" {
+		return "id:" + r.id
 	}
-	var completions []cobra.Completion
-	for _, u := range l.Users {
-		completions = append(completions, cobra.CompletionWithDesc(u.Username, factorText(u.SecondFactor)+", "+stateText(style.Style{}, u.Disabled)))
+	return r.name
+}
+
+// text is how the command line named the user.
+func (r userRef) text() string {
+	if r.id != "" {
+		return r.id
 	}
-	return completions, cobra.ShellCompDirectiveNoFileComp
+	return r.name
+}
+
+// completeUsers offers each user as offer has it, a value and its
+// description, or nothing when the hub does not answer within
+// completionTimeout.
+func completeUsers(offer func(hubapi.User) (value, description string)) cobra.CompletionFunc {
+	return func(cmd *cobra.Command, _ []string, _ string) ([]cobra.Completion, cobra.ShellCompDirective) {
+		ctx, cancel := context.WithTimeout(cmd.Context(), completionTimeout)
+		defer cancel()
+		l, err := clientOf(cmd).users(ctx)
+		if err != nil {
+			return nil, cobra.ShellCompDirectiveNoFileComp
+		}
+		var completions []cobra.Completion
+		for _, u := range l.Users {
+			completions = append(completions, cobra.CompletionWithDesc(offer(u)))
+		}
+		return completions, cobra.ShellCompDirectiveNoFileComp
+	}
 }
 
 // linkLogged is r, holding an invite or a reset, as logged: its link

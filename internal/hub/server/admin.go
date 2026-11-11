@@ -3,6 +3,7 @@ package server
 import (
 	"context"
 	"net/url"
+	"strings"
 	"time"
 
 	"github.com/srjn45/wdx/internal/hub/account"
@@ -52,7 +53,7 @@ func (a *api) ListUsers(ctx context.Context, _ hubapi.ListUsersRequestObject) (h
 }
 
 func (a *api) GetUser(ctx context.Context, req hubapi.GetUserRequestObject) (hubapi.GetUserResponseObject, error) {
-	u, err := a.user(ctx, req.Username)
+	u, err := a.user(ctx, req.User)
 	if err != nil {
 		return nil, err
 	}
@@ -64,7 +65,7 @@ func (a *api) GetUser(ctx context.Context, req hubapi.GetUserRequestObject) (hub
 }
 
 func (a *api) UpdateUser(ctx context.Context, req hubapi.UpdateUserRequestObject) (hubapi.UpdateUserResponseObject, error) {
-	u, err := a.user(ctx, req.Username)
+	u, err := a.user(ctx, req.User)
 	if err != nil {
 		return nil, err
 	}
@@ -75,7 +76,7 @@ func (a *api) UpdateUser(ctx context.Context, req hubapi.UpdateUserRequestObject
 	}
 	changed, err := change(ctx, account.Admin, u.ID)
 	if err != nil {
-		return nil, &userError{username: req.Username, err: err}
+		return nil, &userError{username: u.Username, err: err}
 	}
 	if !changed {
 		logging.FromContext(ctx).Info("user unchanged", "user_id", u.ID, "disabled", req.Body.Disabled)
@@ -86,7 +87,7 @@ func (a *api) UpdateUser(ctx context.Context, req hubapi.UpdateUserRequestObject
 		a.server.nodes.CutOffUser(ctx, u.ID, node.ReasonDisabled)
 		a.server.relay.CutUser(ctx, u.ID)
 	}
-	if u, err = a.user(ctx, req.Username); err != nil {
+	if u, err = a.user(ctx, idRef+u.ID); err != nil {
 		return nil, err
 	}
 	d, err := a.userDetail(ctx, u)
@@ -97,14 +98,14 @@ func (a *api) UpdateUser(ctx context.Context, req hubapi.UpdateUserRequestObject
 }
 
 func (a *api) CreateUserReset(ctx context.Context, req hubapi.CreateUserResetRequestObject) (hubapi.CreateUserResetResponseObject, error) {
-	u, err := a.user(ctx, req.Username)
+	u, err := a.user(ctx, req.User)
 	if err != nil {
 		return nil, err
 	}
 	secondFactor := req.Body.SecondFactor != nil && *req.Body.SecondFactor
 	r, err := a.server.accounts.CreateReset(ctx, account.Admin, u.ID, secondFactor)
 	if err != nil {
-		return nil, &userError{username: req.Username, err: err}
+		return nil, &userError{username: u.Username, err: err}
 	}
 	return hubapi.CreateUserReset201JSONResponse{
 		Result: hubapi.ResultReset,
@@ -113,7 +114,7 @@ func (a *api) CreateUserReset(ctx context.Context, req hubapi.CreateUserResetReq
 }
 
 func (a *api) RemoveUser(ctx context.Context, req hubapi.RemoveUserRequestObject) (hubapi.RemoveUserResponseObject, error) {
-	u, err := a.user(ctx, req.Username)
+	u, err := a.user(ctx, req.User)
 	if err != nil {
 		return nil, err
 	}
@@ -122,7 +123,7 @@ func (a *api) RemoveUser(ctx context.Context, req hubapi.RemoveUserRequestObject
 		return nil, err
 	}
 	if err := a.server.accounts.Remove(ctx, account.Admin, u.ID); err != nil {
-		return nil, &userError{username: req.Username, err: err}
+		return nil, &userError{username: u.Username, err: err}
 	}
 	a.server.nodes.CutOffUser(ctx, u.ID, node.ReasonRevoked)
 	a.server.relay.CutUser(ctx, u.ID)
@@ -144,20 +145,33 @@ func (a *api) VerifyAudit(ctx context.Context, _ hubapi.VerifyAuditRequestObject
 	return hubapi.VerifyAudit200JSONResponse{Audit: r}, nil
 }
 
-// user finds the user named username, whatever its case.
-func (a *api) user(ctx context.Context, username string) (account.User, error) {
+// idRef starts a path's user that is an id; usernames hold no ':'.
+const idRef = "id:"
+
+// user finds the user ref names: idRef and their id, or their username
+// whatever its case.
+func (a *api) user(ctx context.Context, ref string) (account.User, error) {
 	log := logging.FromContext(ctx)
-	u, err := a.server.accounts.UserByUsername(ctx, username)
-	if err != nil {
-		log.Info("user not found", "username", username)
-		return account.User{}, &userError{username: username, err: err}
+	if id, ok := strings.CutPrefix(ref, idRef); ok {
+		u, err := a.server.accounts.User(ctx, id)
+		if err != nil {
+			log.Info("user not found", "user_id", id)
+			return account.User{}, &userError{id: id, err: err}
+		}
+		log.Info("user found", "user_id", id, "username", u.Username)
+		return u, nil
 	}
-	log.Info("user found", "username", username, "user_id", u.ID)
+	u, err := a.server.accounts.UserByUsername(ctx, ref)
+	if err != nil {
+		log.Info("user not found", "username", ref)
+		return account.User{}, &userError{username: ref, err: err}
+	}
+	log.Info("user found", "username", ref, "user_id", u.ID)
 	return u, nil
 }
 
 func userOf(u account.User) hubapi.User {
-	r := hubapi.User{Username: u.Username, CreatedAt: u.CreatedAt, Disabled: u.Disabled(), Nodes: u.Nodes}
+	r := hubapi.User{Id: u.ID, Username: u.Username, CreatedAt: u.CreatedAt, Disabled: u.Disabled(), Nodes: u.Nodes}
 	if !u.LastLoginAt.IsZero() {
 		r.LastLoginAt = &u.LastLoginAt
 	}
@@ -179,7 +193,7 @@ func (a *api) userDetail(ctx context.Context, u account.User) (hubapi.UserDetail
 	}
 	r := userOf(u)
 	return hubapi.UserDetail{
-		Username: r.Username, CreatedAt: r.CreatedAt, LastLoginAt: r.LastLoginAt,
+		Id: r.Id, Username: r.Username, CreatedAt: r.CreatedAt, LastLoginAt: r.LastLoginAt,
 		Disabled: r.Disabled, SecondFactor: r.SecondFactor, Sessions: u.Sessions,
 		Nodes: r.Nodes, NodeList: list,
 	}, nil

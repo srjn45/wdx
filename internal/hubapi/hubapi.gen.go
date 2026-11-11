@@ -948,6 +948,9 @@ type User struct {
 	CreatedAt time.Time `json:"created_at"`
 	Disabled  bool      `json:"disabled"`
 
+	// Id usr- and random characters; id: and it names the user in a path.
+	Id string `json:"id"`
+
 	// LastLoginAt Null when they never logged in.
 	LastLoginAt *time.Time `json:"last_login_at"`
 
@@ -963,6 +966,9 @@ type User struct {
 type UserDetail struct {
 	CreatedAt time.Time `json:"created_at"`
 	Disabled  bool      `json:"disabled"`
+
+	// Id usr- and random characters; id: and it names the user in a path.
+	Id string `json:"id"`
 
 	// LastLoginAt Null when they never logged in.
 	LastLoginAt *time.Time `json:"last_login_at"`
@@ -1007,8 +1013,8 @@ type Version struct {
 	Version    string `json:"version"`
 }
 
-// Username defines model for Username.
-type Username = string
+// UserRef defines model for UserRef.
+type UserRef = string
 
 // BackupJSONRequestBody defines body for Backup for application/json ContentType.
 type BackupJSONRequestBody = Backup
@@ -1479,15 +1485,15 @@ type ClientInterface interface {
 	//
 	// Errors: not_found.
 	//
-	// Corresponds with DELETE /v1/users/{username} (the `RemoveUser` operationId).
-	RemoveUser(ctx context.Context, username Username, reqEditors ...RequestEditorFn) (*http.Response, error)
+	// Corresponds with DELETE /v1/users/{user} (the `RemoveUser` operationId).
+	RemoveUser(ctx context.Context, user UserRef, reqEditors ...RequestEditorFn) (*http.Response, error)
 
 	// GetUser One user, with their browser sessions counted and their nodes
 	//
 	// Errors: not_found.
 	//
-	// Corresponds with GET /v1/users/{username} (the `GetUser` operationId).
-	GetUser(ctx context.Context, username Username, reqEditors ...RequestEditorFn) (*http.Response, error)
+	// Corresponds with GET /v1/users/{user} (the `GetUser` operationId).
+	GetUser(ctx context.Context, user UserRef, reqEditors ...RequestEditorFn) (*http.Response, error)
 
 	// UpdateUserWithBody Disable a user, or enable them again
 	//
@@ -1498,8 +1504,8 @@ type ClientInterface interface {
 	//
 	// Takes any type of body and a specified content type.
 	//
-	// Corresponds with PATCH /v1/users/{username} (the `UpdateUser` operationId).
-	UpdateUserWithBody(ctx context.Context, username Username, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
+	// Corresponds with PATCH /v1/users/{user} (the `UpdateUser` operationId).
+	UpdateUserWithBody(ctx context.Context, user UserRef, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
 
 	// UpdateUser Disable a user, or enable them again
 	//
@@ -1510,8 +1516,8 @@ type ClientInterface interface {
 	//
 	// Takes a body of the `application/json` content type.
 	//
-	// Corresponds with PATCH /v1/users/{username} (the `UpdateUser` operationId).
-	UpdateUser(ctx context.Context, username Username, body UpdateUserJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
+	// Corresponds with PATCH /v1/users/{user} (the `UpdateUser` operationId).
+	UpdateUser(ctx context.Context, user UserRef, body UpdateUserJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
 
 	// CreateUserResetWithBody Make a password reset, a link that sets a user's password
 	//
@@ -1524,8 +1530,8 @@ type ClientInterface interface {
 	//
 	// Takes any type of body and a specified content type.
 	//
-	// Corresponds with POST /v1/users/{username}/resets (the `CreateUserReset` operationId).
-	CreateUserResetWithBody(ctx context.Context, username Username, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
+	// Corresponds with POST /v1/users/{user}/resets (the `CreateUserReset` operationId).
+	CreateUserResetWithBody(ctx context.Context, user UserRef, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
 
 	// CreateUserReset Make a password reset, a link that sets a user's password
 	//
@@ -1538,8 +1544,8 @@ type ClientInterface interface {
 	//
 	// Takes a body of the `application/json` content type.
 	//
-	// Corresponds with POST /v1/users/{username}/resets (the `CreateUserReset` operationId).
-	CreateUserReset(ctx context.Context, username Username, body CreateUserResetJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
+	// Corresponds with POST /v1/users/{user}/resets (the `CreateUserReset` operationId).
+	CreateUserReset(ctx context.Context, user UserRef, body CreateUserResetJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
 
 	// GetVersion Version of the hub
 	//
@@ -2182,9 +2188,9 @@ func (c *Client) ListUsers(ctx context.Context, reqEditors ...RequestEditorFn) (
 //
 // Errors: not_found.
 //
-// Corresponds with DELETE /v1/users/{username} (the `RemoveUser` operationId).
-func (c *Client) RemoveUser(ctx context.Context, username Username, reqEditors ...RequestEditorFn) (*http.Response, error) {
-	req, err := NewRemoveUserRequest(c.Server, username)
+// Corresponds with DELETE /v1/users/{user} (the `RemoveUser` operationId).
+func (c *Client) RemoveUser(ctx context.Context, user UserRef, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewRemoveUserRequest(c.Server, user)
 	if err != nil {
 		return nil, err
 	}
@@ -2199,9 +2205,9 @@ func (c *Client) RemoveUser(ctx context.Context, username Username, reqEditors .
 //
 // Errors: not_found.
 //
-// Corresponds with GET /v1/users/{username} (the `GetUser` operationId).
-func (c *Client) GetUser(ctx context.Context, username Username, reqEditors ...RequestEditorFn) (*http.Response, error) {
-	req, err := NewGetUserRequest(c.Server, username)
+// Corresponds with GET /v1/users/{user} (the `GetUser` operationId).
+func (c *Client) GetUser(ctx context.Context, user UserRef, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewGetUserRequest(c.Server, user)
 	if err != nil {
 		return nil, err
 	}
@@ -2221,9 +2227,9 @@ func (c *Client) GetUser(ctx context.Context, username Username, reqEditors ...R
 //
 // Takes any type of body and a specified content type.
 //
-// Corresponds with PATCH /v1/users/{username} (the `UpdateUser` operationId).
-func (c *Client) UpdateUserWithBody(ctx context.Context, username Username, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
-	req, err := NewUpdateUserRequestWithBody(c.Server, username, contentType, body)
+// Corresponds with PATCH /v1/users/{user} (the `UpdateUser` operationId).
+func (c *Client) UpdateUserWithBody(ctx context.Context, user UserRef, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewUpdateUserRequestWithBody(c.Server, user, contentType, body)
 	if err != nil {
 		return nil, err
 	}
@@ -2243,9 +2249,9 @@ func (c *Client) UpdateUserWithBody(ctx context.Context, username Username, cont
 //
 // Takes a body of the `application/json` content type.
 //
-// Corresponds with PATCH /v1/users/{username} (the `UpdateUser` operationId).
-func (c *Client) UpdateUser(ctx context.Context, username Username, body UpdateUserJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
-	req, err := NewUpdateUserRequest(c.Server, username, body)
+// Corresponds with PATCH /v1/users/{user} (the `UpdateUser` operationId).
+func (c *Client) UpdateUser(ctx context.Context, user UserRef, body UpdateUserJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewUpdateUserRequest(c.Server, user, body)
 	if err != nil {
 		return nil, err
 	}
@@ -2267,9 +2273,9 @@ func (c *Client) UpdateUser(ctx context.Context, username Username, body UpdateU
 //
 // Takes any type of body and a specified content type.
 //
-// Corresponds with POST /v1/users/{username}/resets (the `CreateUserReset` operationId).
-func (c *Client) CreateUserResetWithBody(ctx context.Context, username Username, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
-	req, err := NewCreateUserResetRequestWithBody(c.Server, username, contentType, body)
+// Corresponds with POST /v1/users/{user}/resets (the `CreateUserReset` operationId).
+func (c *Client) CreateUserResetWithBody(ctx context.Context, user UserRef, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewCreateUserResetRequestWithBody(c.Server, user, contentType, body)
 	if err != nil {
 		return nil, err
 	}
@@ -2291,9 +2297,9 @@ func (c *Client) CreateUserResetWithBody(ctx context.Context, username Username,
 //
 // Takes a body of the `application/json` content type.
 //
-// Corresponds with POST /v1/users/{username}/resets (the `CreateUserReset` operationId).
-func (c *Client) CreateUserReset(ctx context.Context, username Username, body CreateUserResetJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
-	req, err := NewCreateUserResetRequest(c.Server, username, body)
+// Corresponds with POST /v1/users/{user}/resets (the `CreateUserReset` operationId).
+func (c *Client) CreateUserReset(ctx context.Context, user UserRef, body CreateUserResetJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewCreateUserResetRequest(c.Server, user, body)
 	if err != nil {
 		return nil, err
 	}
@@ -2965,12 +2971,12 @@ func NewListUsersRequest(server string) (*http.Request, error) {
 }
 
 // NewRemoveUserRequest constructs an http.Request for the RemoveUser method
-func NewRemoveUserRequest(server string, username Username) (*http.Request, error) {
+func NewRemoveUserRequest(server string, user UserRef) (*http.Request, error) {
 	var err error
 
 	var pathParam0 string
 
-	pathParam0, err = runtime.StyleParamWithOptions("simple", false, "username", username, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	pathParam0, err = runtime.StyleParamWithOptions("simple", false, "user", user, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
 	if err != nil {
 		return nil, err
 	}
@@ -2999,12 +3005,12 @@ func NewRemoveUserRequest(server string, username Username) (*http.Request, erro
 }
 
 // NewGetUserRequest constructs an http.Request for the GetUser method
-func NewGetUserRequest(server string, username Username) (*http.Request, error) {
+func NewGetUserRequest(server string, user UserRef) (*http.Request, error) {
 	var err error
 
 	var pathParam0 string
 
-	pathParam0, err = runtime.StyleParamWithOptions("simple", false, "username", username, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	pathParam0, err = runtime.StyleParamWithOptions("simple", false, "user", user, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
 	if err != nil {
 		return nil, err
 	}
@@ -3033,23 +3039,23 @@ func NewGetUserRequest(server string, username Username) (*http.Request, error) 
 }
 
 // NewUpdateUserRequest calls the generic UpdateUser builder with application/json body
-func NewUpdateUserRequest(server string, username Username, body UpdateUserJSONRequestBody) (*http.Request, error) {
+func NewUpdateUserRequest(server string, user UserRef, body UpdateUserJSONRequestBody) (*http.Request, error) {
 	var bodyReader io.Reader
 	buf, err := json.Marshal(body)
 	if err != nil {
 		return nil, err
 	}
 	bodyReader = bytes.NewReader(buf)
-	return NewUpdateUserRequestWithBody(server, username, "application/json", bodyReader)
+	return NewUpdateUserRequestWithBody(server, user, "application/json", bodyReader)
 }
 
 // NewUpdateUserRequestWithBody constructs an http.Request for the UpdateUser method, with any body, and a specified content type
-func NewUpdateUserRequestWithBody(server string, username Username, contentType string, body io.Reader) (*http.Request, error) {
+func NewUpdateUserRequestWithBody(server string, user UserRef, contentType string, body io.Reader) (*http.Request, error) {
 	var err error
 
 	var pathParam0 string
 
-	pathParam0, err = runtime.StyleParamWithOptions("simple", false, "username", username, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	pathParam0, err = runtime.StyleParamWithOptions("simple", false, "user", user, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
 	if err != nil {
 		return nil, err
 	}
@@ -3080,23 +3086,23 @@ func NewUpdateUserRequestWithBody(server string, username Username, contentType 
 }
 
 // NewCreateUserResetRequest calls the generic CreateUserReset builder with application/json body
-func NewCreateUserResetRequest(server string, username Username, body CreateUserResetJSONRequestBody) (*http.Request, error) {
+func NewCreateUserResetRequest(server string, user UserRef, body CreateUserResetJSONRequestBody) (*http.Request, error) {
 	var bodyReader io.Reader
 	buf, err := json.Marshal(body)
 	if err != nil {
 		return nil, err
 	}
 	bodyReader = bytes.NewReader(buf)
-	return NewCreateUserResetRequestWithBody(server, username, "application/json", bodyReader)
+	return NewCreateUserResetRequestWithBody(server, user, "application/json", bodyReader)
 }
 
 // NewCreateUserResetRequestWithBody constructs an http.Request for the CreateUserReset method, with any body, and a specified content type
-func NewCreateUserResetRequestWithBody(server string, username Username, contentType string, body io.Reader) (*http.Request, error) {
+func NewCreateUserResetRequestWithBody(server string, user UserRef, contentType string, body io.Reader) (*http.Request, error) {
 	var err error
 
 	var pathParam0 string
 
-	pathParam0, err = runtime.StyleParamWithOptions("simple", false, "username", username, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	pathParam0, err = runtime.StyleParamWithOptions("simple", false, "user", user, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
 	if err != nil {
 		return nil, err
 	}
@@ -3586,8 +3592,8 @@ type ClientWithResponsesInterface interface {
 	//
 	// Returns a wrapper object for the known response body format(s).
 	//
-	// Corresponds with DELETE /v1/users/{username} (the `RemoveUser` operationId).
-	RemoveUserWithResponse(ctx context.Context, username Username, reqEditors ...RequestEditorFn) (*RemoveUserResponse, error)
+	// Corresponds with DELETE /v1/users/{user} (the `RemoveUser` operationId).
+	RemoveUserWithResponse(ctx context.Context, user UserRef, reqEditors ...RequestEditorFn) (*RemoveUserResponse, error)
 
 	// GetUserWithResponse One user, with their browser sessions counted and their nodes
 	//
@@ -3595,8 +3601,8 @@ type ClientWithResponsesInterface interface {
 	//
 	// Returns a wrapper object for the known response body format(s).
 	//
-	// Corresponds with GET /v1/users/{username} (the `GetUser` operationId).
-	GetUserWithResponse(ctx context.Context, username Username, reqEditors ...RequestEditorFn) (*GetUserResponse, error)
+	// Corresponds with GET /v1/users/{user} (the `GetUser` operationId).
+	GetUserWithResponse(ctx context.Context, user UserRef, reqEditors ...RequestEditorFn) (*GetUserResponse, error)
 
 	// UpdateUserWithBodyWithResponse Disable a user, or enable them again
 	//
@@ -3607,8 +3613,8 @@ type ClientWithResponsesInterface interface {
 	//
 	// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
 	//
-	// Corresponds with PATCH /v1/users/{username} (the `UpdateUser` operationId).
-	UpdateUserWithBodyWithResponse(ctx context.Context, username Username, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*UpdateUserResponse, error)
+	// Corresponds with PATCH /v1/users/{user} (the `UpdateUser` operationId).
+	UpdateUserWithBodyWithResponse(ctx context.Context, user UserRef, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*UpdateUserResponse, error)
 
 	// UpdateUserWithResponse Disable a user, or enable them again
 	//
@@ -3619,8 +3625,8 @@ type ClientWithResponsesInterface interface {
 	//
 	// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
 	//
-	// Corresponds with PATCH /v1/users/{username} (the `UpdateUser` operationId).
-	UpdateUserWithResponse(ctx context.Context, username Username, body UpdateUserJSONRequestBody, reqEditors ...RequestEditorFn) (*UpdateUserResponse, error)
+	// Corresponds with PATCH /v1/users/{user} (the `UpdateUser` operationId).
+	UpdateUserWithResponse(ctx context.Context, user UserRef, body UpdateUserJSONRequestBody, reqEditors ...RequestEditorFn) (*UpdateUserResponse, error)
 
 	// CreateUserResetWithBodyWithResponse Make a password reset, a link that sets a user's password
 	//
@@ -3633,8 +3639,8 @@ type ClientWithResponsesInterface interface {
 	//
 	// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
 	//
-	// Corresponds with POST /v1/users/{username}/resets (the `CreateUserReset` operationId).
-	CreateUserResetWithBodyWithResponse(ctx context.Context, username Username, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*CreateUserResetResponse, error)
+	// Corresponds with POST /v1/users/{user}/resets (the `CreateUserReset` operationId).
+	CreateUserResetWithBodyWithResponse(ctx context.Context, user UserRef, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*CreateUserResetResponse, error)
 
 	// CreateUserResetWithResponse Make a password reset, a link that sets a user's password
 	//
@@ -3647,8 +3653,8 @@ type ClientWithResponsesInterface interface {
 	//
 	// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
 	//
-	// Corresponds with POST /v1/users/{username}/resets (the `CreateUserReset` operationId).
-	CreateUserResetWithResponse(ctx context.Context, username Username, body CreateUserResetJSONRequestBody, reqEditors ...RequestEditorFn) (*CreateUserResetResponse, error)
+	// Corresponds with POST /v1/users/{user}/resets (the `CreateUserReset` operationId).
+	CreateUserResetWithResponse(ctx context.Context, user UserRef, body CreateUserResetJSONRequestBody, reqEditors ...RequestEditorFn) (*CreateUserResetResponse, error)
 
 	// GetVersionWithResponse Version of the hub
 	//
@@ -5347,9 +5353,9 @@ func (c *ClientWithResponses) ListUsersWithResponse(ctx context.Context, reqEdit
 //
 // Returns a wrapper object for the known response body format(s).
 //
-// Corresponds with DELETE /v1/users/{username} (the `RemoveUser` operationId).
-func (c *ClientWithResponses) RemoveUserWithResponse(ctx context.Context, username Username, reqEditors ...RequestEditorFn) (*RemoveUserResponse, error) {
-	rsp, err := c.RemoveUser(ctx, username, reqEditors...)
+// Corresponds with DELETE /v1/users/{user} (the `RemoveUser` operationId).
+func (c *ClientWithResponses) RemoveUserWithResponse(ctx context.Context, user UserRef, reqEditors ...RequestEditorFn) (*RemoveUserResponse, error) {
+	rsp, err := c.RemoveUser(ctx, user, reqEditors...)
 	if err != nil {
 		return nil, err
 	}
@@ -5362,9 +5368,9 @@ func (c *ClientWithResponses) RemoveUserWithResponse(ctx context.Context, userna
 //
 // Returns a wrapper object for the known response body format(s).
 //
-// Corresponds with GET /v1/users/{username} (the `GetUser` operationId).
-func (c *ClientWithResponses) GetUserWithResponse(ctx context.Context, username Username, reqEditors ...RequestEditorFn) (*GetUserResponse, error) {
-	rsp, err := c.GetUser(ctx, username, reqEditors...)
+// Corresponds with GET /v1/users/{user} (the `GetUser` operationId).
+func (c *ClientWithResponses) GetUserWithResponse(ctx context.Context, user UserRef, reqEditors ...RequestEditorFn) (*GetUserResponse, error) {
+	rsp, err := c.GetUser(ctx, user, reqEditors...)
 	if err != nil {
 		return nil, err
 	}
@@ -5380,9 +5386,9 @@ func (c *ClientWithResponses) GetUserWithResponse(ctx context.Context, username 
 //
 // Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
 //
-// Corresponds with PATCH /v1/users/{username} (the `UpdateUser` operationId).
-func (c *ClientWithResponses) UpdateUserWithBodyWithResponse(ctx context.Context, username Username, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*UpdateUserResponse, error) {
-	rsp, err := c.UpdateUserWithBody(ctx, username, contentType, body, reqEditors...)
+// Corresponds with PATCH /v1/users/{user} (the `UpdateUser` operationId).
+func (c *ClientWithResponses) UpdateUserWithBodyWithResponse(ctx context.Context, user UserRef, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*UpdateUserResponse, error) {
+	rsp, err := c.UpdateUserWithBody(ctx, user, contentType, body, reqEditors...)
 	if err != nil {
 		return nil, err
 	}
@@ -5398,9 +5404,9 @@ func (c *ClientWithResponses) UpdateUserWithBodyWithResponse(ctx context.Context
 //
 // Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
 //
-// Corresponds with PATCH /v1/users/{username} (the `UpdateUser` operationId).
-func (c *ClientWithResponses) UpdateUserWithResponse(ctx context.Context, username Username, body UpdateUserJSONRequestBody, reqEditors ...RequestEditorFn) (*UpdateUserResponse, error) {
-	rsp, err := c.UpdateUser(ctx, username, body, reqEditors...)
+// Corresponds with PATCH /v1/users/{user} (the `UpdateUser` operationId).
+func (c *ClientWithResponses) UpdateUserWithResponse(ctx context.Context, user UserRef, body UpdateUserJSONRequestBody, reqEditors ...RequestEditorFn) (*UpdateUserResponse, error) {
+	rsp, err := c.UpdateUser(ctx, user, body, reqEditors...)
 	if err != nil {
 		return nil, err
 	}
@@ -5418,9 +5424,9 @@ func (c *ClientWithResponses) UpdateUserWithResponse(ctx context.Context, userna
 //
 // Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
 //
-// Corresponds with POST /v1/users/{username}/resets (the `CreateUserReset` operationId).
-func (c *ClientWithResponses) CreateUserResetWithBodyWithResponse(ctx context.Context, username Username, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*CreateUserResetResponse, error) {
-	rsp, err := c.CreateUserResetWithBody(ctx, username, contentType, body, reqEditors...)
+// Corresponds with POST /v1/users/{user}/resets (the `CreateUserReset` operationId).
+func (c *ClientWithResponses) CreateUserResetWithBodyWithResponse(ctx context.Context, user UserRef, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*CreateUserResetResponse, error) {
+	rsp, err := c.CreateUserResetWithBody(ctx, user, contentType, body, reqEditors...)
 	if err != nil {
 		return nil, err
 	}
@@ -5438,9 +5444,9 @@ func (c *ClientWithResponses) CreateUserResetWithBodyWithResponse(ctx context.Co
 //
 // Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
 //
-// Corresponds with POST /v1/users/{username}/resets (the `CreateUserReset` operationId).
-func (c *ClientWithResponses) CreateUserResetWithResponse(ctx context.Context, username Username, body CreateUserResetJSONRequestBody, reqEditors ...RequestEditorFn) (*CreateUserResetResponse, error) {
-	rsp, err := c.CreateUserReset(ctx, username, body, reqEditors...)
+// Corresponds with POST /v1/users/{user}/resets (the `CreateUserReset` operationId).
+func (c *ClientWithResponses) CreateUserResetWithResponse(ctx context.Context, user UserRef, body CreateUserResetJSONRequestBody, reqEditors ...RequestEditorFn) (*CreateUserResetResponse, error) {
+	rsp, err := c.CreateUserReset(ctx, user, body, reqEditors...)
 	if err != nil {
 		return nil, err
 	}
@@ -6304,17 +6310,17 @@ type ServerInterface interface {
 	// (GET /v1/users)
 	ListUsers(w http.ResponseWriter, r *http.Request)
 	// RemoveUser Remove a user, keeping their username taken
-	// (DELETE /v1/users/{username})
-	RemoveUser(w http.ResponseWriter, r *http.Request, username Username)
+	// (DELETE /v1/users/{user})
+	RemoveUser(w http.ResponseWriter, r *http.Request, user UserRef)
 	// GetUser One user, with their browser sessions counted and their nodes
-	// (GET /v1/users/{username})
-	GetUser(w http.ResponseWriter, r *http.Request, username Username)
+	// (GET /v1/users/{user})
+	GetUser(w http.ResponseWriter, r *http.Request, user UserRef)
 	// UpdateUser Disable a user, or enable them again
-	// (PATCH /v1/users/{username})
-	UpdateUser(w http.ResponseWriter, r *http.Request, username Username)
+	// (PATCH /v1/users/{user})
+	UpdateUser(w http.ResponseWriter, r *http.Request, user UserRef)
 	// CreateUserReset Make a password reset, a link that sets a user's password
-	// (POST /v1/users/{username}/resets)
-	CreateUserReset(w http.ResponseWriter, r *http.Request, username Username)
+	// (POST /v1/users/{user}/resets)
+	CreateUserReset(w http.ResponseWriter, r *http.Request, user UserRef)
 	// GetVersion Version of the hub
 	// (GET /v1/version)
 	GetVersion(w http.ResponseWriter, r *http.Request)
@@ -6649,17 +6655,17 @@ func (siw *ServerInterfaceWrapper) RemoveUser(w http.ResponseWriter, r *http.Req
 	var err error
 	_ = err
 
-	// ------------- Path parameter "username" -------------
-	var username Username
+	// ------------- Path parameter "user" -------------
+	var user UserRef
 
-	err = runtime.BindStyledParameterWithOptions("simple", "username", r.PathValue("username"), &username, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	err = runtime.BindStyledParameterWithOptions("simple", "user", r.PathValue("user"), &user, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
 	if err != nil {
-		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "username", Err: err})
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "user", Err: err})
 		return
 	}
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		siw.Handler.RemoveUser(w, r, username)
+		siw.Handler.RemoveUser(w, r, user)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -6675,17 +6681,17 @@ func (siw *ServerInterfaceWrapper) GetUser(w http.ResponseWriter, r *http.Reques
 	var err error
 	_ = err
 
-	// ------------- Path parameter "username" -------------
-	var username Username
+	// ------------- Path parameter "user" -------------
+	var user UserRef
 
-	err = runtime.BindStyledParameterWithOptions("simple", "username", r.PathValue("username"), &username, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	err = runtime.BindStyledParameterWithOptions("simple", "user", r.PathValue("user"), &user, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
 	if err != nil {
-		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "username", Err: err})
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "user", Err: err})
 		return
 	}
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		siw.Handler.GetUser(w, r, username)
+		siw.Handler.GetUser(w, r, user)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -6701,17 +6707,17 @@ func (siw *ServerInterfaceWrapper) UpdateUser(w http.ResponseWriter, r *http.Req
 	var err error
 	_ = err
 
-	// ------------- Path parameter "username" -------------
-	var username Username
+	// ------------- Path parameter "user" -------------
+	var user UserRef
 
-	err = runtime.BindStyledParameterWithOptions("simple", "username", r.PathValue("username"), &username, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	err = runtime.BindStyledParameterWithOptions("simple", "user", r.PathValue("user"), &user, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
 	if err != nil {
-		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "username", Err: err})
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "user", Err: err})
 		return
 	}
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		siw.Handler.UpdateUser(w, r, username)
+		siw.Handler.UpdateUser(w, r, user)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -6727,17 +6733,17 @@ func (siw *ServerInterfaceWrapper) CreateUserReset(w http.ResponseWriter, r *htt
 	var err error
 	_ = err
 
-	// ------------- Path parameter "username" -------------
-	var username Username
+	// ------------- Path parameter "user" -------------
+	var user UserRef
 
-	err = runtime.BindStyledParameterWithOptions("simple", "username", r.PathValue("username"), &username, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	err = runtime.BindStyledParameterWithOptions("simple", "user", r.PathValue("user"), &user, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
 	if err != nil {
-		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "username", Err: err})
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "user", Err: err})
 		return
 	}
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		siw.Handler.CreateUserReset(w, r, username)
+		siw.Handler.CreateUserReset(w, r, user)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -6890,10 +6896,10 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/v1/backup", wrapper.Backup)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/v1/invites", wrapper.CreateInvite)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/v1/users", wrapper.ListUsers)
-	m.HandleFunc(http.MethodDelete+" "+options.BaseURL+"/v1/users/{username}", wrapper.RemoveUser)
-	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/v1/users/{username}", wrapper.GetUser)
-	m.HandleFunc(http.MethodPatch+" "+options.BaseURL+"/v1/users/{username}", wrapper.UpdateUser)
-	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/v1/users/{username}/resets", wrapper.CreateUserReset)
+	m.HandleFunc(http.MethodDelete+" "+options.BaseURL+"/v1/users/{user}", wrapper.RemoveUser)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/v1/users/{user}", wrapper.GetUser)
+	m.HandleFunc(http.MethodPatch+" "+options.BaseURL+"/v1/users/{user}", wrapper.UpdateUser)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/v1/users/{user}/resets", wrapper.CreateUserReset)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/v1/audit/verification", wrapper.VerifyAudit)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/v1/node-logins", wrapper.StartNodeLogin)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/v1/node-logins/exchange", wrapper.ExchangeNodeLogin)
@@ -7636,7 +7642,7 @@ func (response ListUsersdefaultApplicationProblemPlusJSONResponse) VisitListUser
 }
 
 type RemoveUserRequestObject struct {
-	Username Username `json:"username"`
+	User UserRef `json:"user"`
 }
 
 type RemoveUserResponseObject interface {
@@ -7675,7 +7681,7 @@ func (response RemoveUserdefaultApplicationProblemPlusJSONResponse) VisitRemoveU
 }
 
 type GetUserRequestObject struct {
-	Username Username `json:"username"`
+	User UserRef `json:"user"`
 }
 
 type GetUserResponseObject interface {
@@ -7714,8 +7720,8 @@ func (response GetUserdefaultApplicationProblemPlusJSONResponse) VisitGetUserRes
 }
 
 type UpdateUserRequestObject struct {
-	Username Username `json:"username"`
-	Body     *UpdateUserJSONRequestBody
+	User UserRef `json:"user"`
+	Body *UpdateUserJSONRequestBody
 }
 
 type UpdateUserResponseObject interface {
@@ -7754,8 +7760,8 @@ func (response UpdateUserdefaultApplicationProblemPlusJSONResponse) VisitUpdateU
 }
 
 type CreateUserResetRequestObject struct {
-	Username Username `json:"username"`
-	Body     *CreateUserResetJSONRequestBody
+	User UserRef `json:"user"`
+	Body *CreateUserResetJSONRequestBody
 }
 
 type CreateUserResetResponseObject interface {
@@ -7891,16 +7897,16 @@ type StrictServerInterface interface {
 	// (GET /v1/users)
 	ListUsers(ctx context.Context, request ListUsersRequestObject) (ListUsersResponseObject, error)
 	// RemoveUser Remove a user, keeping their username taken
-	// (DELETE /v1/users/{username})
+	// (DELETE /v1/users/{user})
 	RemoveUser(ctx context.Context, request RemoveUserRequestObject) (RemoveUserResponseObject, error)
 	// GetUser One user, with their browser sessions counted and their nodes
-	// (GET /v1/users/{username})
+	// (GET /v1/users/{user})
 	GetUser(ctx context.Context, request GetUserRequestObject) (GetUserResponseObject, error)
 	// UpdateUser Disable a user, or enable them again
-	// (PATCH /v1/users/{username})
+	// (PATCH /v1/users/{user})
 	UpdateUser(ctx context.Context, request UpdateUserRequestObject) (UpdateUserResponseObject, error)
 	// CreateUserReset Make a password reset, a link that sets a user's password
-	// (POST /v1/users/{username}/resets)
+	// (POST /v1/users/{user}/resets)
 	CreateUserReset(ctx context.Context, request CreateUserResetRequestObject) (CreateUserResetResponseObject, error)
 	// GetVersion Version of the hub
 	// (GET /v1/version)
@@ -8467,10 +8473,10 @@ func (sh *strictHandler) ListUsers(w http.ResponseWriter, r *http.Request) {
 }
 
 // RemoveUser operation middleware
-func (sh *strictHandler) RemoveUser(w http.ResponseWriter, r *http.Request, username Username) {
+func (sh *strictHandler) RemoveUser(w http.ResponseWriter, r *http.Request, user UserRef) {
 	var request RemoveUserRequestObject
 
-	request.Username = username
+	request.User = user
 
 	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
 		return sh.ssi.RemoveUser(ctx, request.(RemoveUserRequestObject))
@@ -8493,10 +8499,10 @@ func (sh *strictHandler) RemoveUser(w http.ResponseWriter, r *http.Request, user
 }
 
 // GetUser operation middleware
-func (sh *strictHandler) GetUser(w http.ResponseWriter, r *http.Request, username Username) {
+func (sh *strictHandler) GetUser(w http.ResponseWriter, r *http.Request, user UserRef) {
 	var request GetUserRequestObject
 
-	request.Username = username
+	request.User = user
 
 	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
 		return sh.ssi.GetUser(ctx, request.(GetUserRequestObject))
@@ -8519,10 +8525,10 @@ func (sh *strictHandler) GetUser(w http.ResponseWriter, r *http.Request, usernam
 }
 
 // UpdateUser operation middleware
-func (sh *strictHandler) UpdateUser(w http.ResponseWriter, r *http.Request, username Username) {
+func (sh *strictHandler) UpdateUser(w http.ResponseWriter, r *http.Request, user UserRef) {
 	var request UpdateUserRequestObject
 
-	request.Username = username
+	request.User = user
 
 	var body UpdateUserJSONRequestBody
 	if err := runtime.BindJSONBody(r, &body); err != nil {
@@ -8552,10 +8558,10 @@ func (sh *strictHandler) UpdateUser(w http.ResponseWriter, r *http.Request, user
 }
 
 // CreateUserReset operation middleware
-func (sh *strictHandler) CreateUserReset(w http.ResponseWriter, r *http.Request, username Username) {
+func (sh *strictHandler) CreateUserReset(w http.ResponseWriter, r *http.Request, user UserRef) {
 	var request CreateUserResetRequestObject
 
-	request.Username = username
+	request.User = user
 
 	var body CreateUserResetJSONRequestBody
 	if err := runtime.BindJSONBody(r, &body); err != nil {
@@ -8613,150 +8619,151 @@ func (sh *strictHandler) GetVersion(w http.ResponseWriter, r *http.Request) {
 // const string: with thousands of chunks the chained `+` fold is several
 // times slower for the Go compiler than parsing a slice literal.
 var swaggerSpec = []string{
-	"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",
+	"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",
 }
 
 // decodeSpec returns the embedded OpenAPI spec as raw JSON bytes,

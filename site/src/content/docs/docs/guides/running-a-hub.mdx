@@ -120,12 +120,14 @@ The hub's commands talk to the running hub over its admin socket, which only roo
 ```console
 $ sudo wdx-hub version
 $ sudo wdx-hub user list
-$ sudo wdx-hub user disable --username bob
-$ sudo wdx-hub user reset --username bob --second-factor
+$ sudo wdx-hub user disable --name bob
+$ sudo wdx-hub user reset --name bob --second-factor
 $ sudo wdx-hub setting set --name log.level --value debug
 $ sudo wdx-hub audit verify
 $ journalctl -u wdx-hub
 ```
+
+A user is named by `--name`, their username whatever its case, or by `--id`, the `usr-` id that `wdx-hub user list --json` and `user get` show: exactly one of them, as with wdx's commands. `--username`, the flag's name in the dev releases before, still works.
 
 Disabling or removing a user, as removing a node, cuts it off at once: the hub closes its control connections and every stream open between its nodes, and the nodes close their sessions.
 
@@ -143,7 +145,7 @@ Only replace a master key that has sealed nothing yet: the secrets sealed under 
 
 <Since v="0.5.0" /> In a shell started after the install, Tab completes `wdx-hub`'s commands and flags, after `wdx-hub` or `sudo wdx-hub`, as it does wdx's ([Shell completion](/wdx/docs/guides/completion/)). The install wrote the script of each shell it found, for every user: `/usr/share/bash-completion/completions/wdx-hub` (bash, with the bash-completion package), `/usr/local/share/zsh/site-functions/_wdx-hub` (zsh) and `/usr/share/fish/vendor_completions.d/wdx-hub.fish` (fish); `wdx-hub update --apply` writes them again. `wdx-hub completion <shell>` prints one, for setting it up by hand.
 
-Help and completion work even where the hub's settings do not load, as for a user other than the hub's. Usernames after `--username` come from the running hub, over its admin socket, so they are offered only to a user who reaches it; to others Tab offers nothing there.
+Help and completion work even where the hub's settings do not load, as for a user other than the hub's. Usernames after `--name`, and ids after `--id`, come from the running hub, over its admin socket, so they are offered only to a user who reaches it; to others Tab offers nothing there.
 
 ## Updating
 

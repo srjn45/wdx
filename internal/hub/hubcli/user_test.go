@@ -23,6 +23,7 @@ import (
 	"github.com/srjn45/wdx/internal/hub/node"
 	"github.com/srjn45/wdx/internal/hub/server"
 	"github.com/srjn45/wdx/internal/hubapi"
+	"github.com/srjn45/wdx/internal/style"
 )
 
 // newUser signs up username on the hub s from an invite, with a browser
@@ -155,7 +156,7 @@ func TestUserList(t *testing.T) {
 	newUser(t, s, "bob", false)
 	newUser(t, s, "alice", true)
 	newUser(t, s, "carol", false)
-	if v, exit := hubJSON(t, home, "user", "remove", "--username", "carol", "--yes"); exit != clikit.ExitOK {
+	if v, exit := hubJSON(t, home, "user", "remove", "--name", "carol", "--yes"); exit != clikit.ExitOK {
 		t.Fatalf("remove: %v", v)
 	}
 	v, exit = hubJSON(t, home, "user", "list")
@@ -205,7 +206,7 @@ func TestUserGet(t *testing.T) {
 	home, s := newHubServer(t)
 	newUser(t, s, "alice", true)
 	newNode(t, s, "alice", "desktop")
-	v, exit := hubJSON(t, home, "user", "get", "--username", "ALICE")
+	v, exit := hubJSON(t, home, "user", "get", "--name", "ALICE")
 	u, _ := v["user"].(map[string]any)
 	if exit != clikit.ExitOK || u["username"] != "alice" || u["sessions"] != float64(1) || u["second_factor"] != "totp" || u["nodes"] != float64(1) {
 		t.Fatalf("want alice with her session and node, got exit %d: %v", exit, v)
@@ -216,12 +217,12 @@ func TestUserGet(t *testing.T) {
 	if out := hub(t, home, "user", "list"); !strings.Contains(out.Stdout, "NODES") {
 		t.Fatalf("want the nodes counted in the list, got %+v", out)
 	}
-	v, exit = hubJSON(t, home, "user", "get", "--username", "nobody")
+	v, exit = hubJSON(t, home, "user", "get", "--name", "nobody")
 	want(t, v, exit, clikit.ExitRejected, "code", string(hubapi.ErrorCodeNotFound))
 	if d, _ := v["details"].(map[string]any); d["username"] != "nobody" {
 		t.Fatalf("want the username in details, got %v", v)
 	}
-	if out := hub(t, home, "user", "get", "--username", "alice"); out.Exit != clikit.ExitOK || !strings.HasPrefix(out.Stdout, "user alice\n  factor") ||
+	if out := hub(t, home, "user", "get", "--name", "alice"); out.Exit != clikit.ExitOK || !strings.HasPrefix(out.Stdout, "user alice\n  id         usr-") ||
 		!strings.Contains(out.Stdout, "sessions   1\n") || !strings.Contains(out.Stdout, "nodes      1\n") || !strings.Contains(out.Stdout, "desktop") {
 		t.Fatalf("unexpected text %+v", out)
 	}
@@ -231,31 +232,31 @@ func TestUserDisableEnable(t *testing.T) {
 	t.Parallel()
 	home, s := newHubServer(t)
 	newUser(t, s, "alice", false)
-	v, exit := hubJSON(t, home, "user", "disable", "--username", "alice")
+	v, exit := hubJSON(t, home, "user", "disable", "--name", "alice")
 	want(t, v, exit, clikit.ExitOK, "result", string(hubapi.ResultDisabled))
 	if u, _ := v["user"].(map[string]any); u["disabled"] != true || u["sessions"] != float64(0) {
 		t.Fatalf("want alice disabled, her sessions ended, got %v", v)
 	}
-	v, exit = hubJSON(t, home, "user", "disable", "--username", "alice")
+	v, exit = hubJSON(t, home, "user", "disable", "--name", "alice")
 	want(t, v, exit, clikit.ExitOK, "result", string(hubapi.ResultUnchanged))
-	v, exit = hubJSON(t, home, "user", "enable", "--username", "alice")
+	v, exit = hubJSON(t, home, "user", "enable", "--name", "alice")
 	want(t, v, exit, clikit.ExitOK, "result", string(hubapi.ResultEnabled))
 	if u, _ := v["user"].(map[string]any); u["disabled"] != false {
 		t.Fatalf("want alice enabled, got %v", v)
 	}
-	v, exit = hubJSON(t, home, "user", "enable", "--username", "alice")
+	v, exit = hubJSON(t, home, "user", "enable", "--name", "alice")
 	want(t, v, exit, clikit.ExitOK, "result", string(hubapi.ResultUnchanged))
 	for _, verb := range []string{"disable", "enable"} {
-		v, exit = hubJSON(t, home, "user", verb, "--username", "nobody")
+		v, exit = hubJSON(t, home, "user", verb, "--name", "nobody")
 		want(t, v, exit, clikit.ExitRejected, "code", string(hubapi.ErrorCodeNotFound))
 	}
-	if out := hub(t, home, "user", "disable", "--username", "alice"); out.Stdout != "disabled user alice; their browser sessions ended and their nodes were cut off\n" {
+	if out := hub(t, home, "user", "disable", "--name", "alice"); out.Stdout != "disabled user alice; their browser sessions ended and their nodes were cut off\n" {
 		t.Fatalf("unexpected text %+v", out)
 	}
-	if out := hub(t, home, "user", "disable", "--username", "alice"); out.Stdout != "user alice is disabled already\n" {
+	if out := hub(t, home, "user", "disable", "--name", "alice"); out.Stdout != "user alice is disabled already\n" {
 		t.Fatalf("unexpected text %+v", out)
 	}
-	if out := hub(t, home, "user", "enable", "--username", "alice"); out.Stdout != "enabled user alice\n" {
+	if out := hub(t, home, "user", "enable", "--name", "alice"); out.Stdout != "enabled user alice\n" {
 		t.Fatalf("unexpected text %+v", out)
 	}
 }
@@ -264,21 +265,21 @@ func TestUserReset(t *testing.T) {
 	t.Parallel()
 	home, s := newHubServer(t)
 	newUser(t, s, "alice", true)
-	v, exit := hubJSON(t, home, "user", "reset", "--username", "alice")
+	v, exit := hubJSON(t, home, "user", "reset", "--name", "alice")
 	want(t, v, exit, clikit.ExitOK, "result", string(hubapi.ResultReset))
 	wantLinkSecret(t, home, linkOf(t, v, "reset"), "/reset", "token")
 	if r, _ := v["reset"].(map[string]any); r["second_factor"] != false || r["expires_at"] == nil {
 		t.Fatalf("want a password reset, got %v", v)
 	}
-	v, exit = hubJSON(t, home, "user", "reset", "--username", "alice", "--second-factor")
+	v, exit = hubJSON(t, home, "user", "reset", "--name", "alice", "--second-factor")
 	want(t, v, exit, clikit.ExitOK, "result", string(hubapi.ResultReset))
 	if r, _ := v["reset"].(map[string]any); r["second_factor"] != true {
 		t.Fatalf("want the second factor reset too, got %v", v)
 	}
-	v, exit = hubJSON(t, home, "user", "reset", "--username", "nobody")
+	v, exit = hubJSON(t, home, "user", "reset", "--name", "nobody")
 	want(t, v, exit, clikit.ExitRejected, "code", string(hubapi.ErrorCodeNotFound))
 
-	out := hub(t, home, "user", "reset", "--username", "alice", "--second-factor")
+	out := hub(t, home, "user", "reset", "--name", "alice", "--second-factor")
 	lines := strings.Split(out.Stdout, "\n")
 	if out.Exit != clikit.ExitOK || len(lines) != 3 || !strings.HasPrefix(lines[0], "reset the password and second factor of alice: the link works once, until ") {
 		t.Fatalf("unexpected text %+v", out)
@@ -290,14 +291,14 @@ func TestUserRemove(t *testing.T) {
 	t.Parallel()
 	home, s := newHubServer(t)
 	newUser(t, s, "alice", false)
-	v, exit := hubJSON(t, home, "user", "remove", "--username", "alice")
+	v, exit := hubJSON(t, home, "user", "remove", "--name", "alice")
 	want(t, v, exit, clikit.ExitUsage, "code", clikit.CodeUsage)
-	v, exit = hubJSON(t, home, "user", "remove", "--username", "alice", "--yes")
+	v, exit = hubJSON(t, home, "user", "remove", "--name", "alice", "--yes")
 	want(t, v, exit, clikit.ExitOK, "result", string(hubapi.ResultRemoved))
 	if u, _ := v["user"].(map[string]any); u["username"] != "alice" {
 		t.Fatalf("want alice as she was, got %v", v)
 	}
-	v, exit = hubJSON(t, home, "user", "remove", "--username", "alice", "--yes")
+	v, exit = hubJSON(t, home, "user", "remove", "--name", "alice", "--yes")
 	want(t, v, exit, clikit.ExitRejected, "code", string(hubapi.ErrorCodeNotFound))
 	// The username stays taken.
 	inv, err := s.Accounts().CreateInvite(context.Background(), account.Admin, time.Hour)
@@ -309,12 +310,12 @@ func TestUserRemove(t *testing.T) {
 	}
 
 	newUser(t, s, "bob", false)
-	if out := hub(t, home, "user", "remove", "--username", "bob", "--yes"); out.Stdout != "removed user bob; the username stays taken\n" {
+	if out := hub(t, home, "user", "remove", "--name", "bob", "--yes"); out.Stdout != "removed user bob; the username stays taken\n" {
 		t.Fatalf("unexpected text %+v", out)
 	}
 	// Without a terminal nothing is asked.
 	newUser(t, s, "carol", false)
-	if out := hub(t, home, "user", "remove", "--username", "carol"); out.Exit != clikit.ExitUsage || !strings.Contains(out.Stderr, "pass --yes") {
+	if out := hub(t, home, "user", "remove", "--name", "carol"); out.Exit != clikit.ExitUsage || !strings.Contains(out.Stderr, "pass --yes") {
 		t.Fatalf("want --yes asked for, got %+v", out)
 	}
 }
@@ -327,18 +328,18 @@ func TestUserRemoveAnswered(t *testing.T) {
 		stdin := clikittest.Typed(t, answers...)
 		return func(env *Env) { env.Stdin = stdin }
 	}
-	out := hubWith(t, home, answering("n"), "user", "remove", "--username", "alice")
+	out := hubWith(t, home, answering("n"), "user", "remove", "--name", "alice")
 	if out.Exit != clikit.ExitRejected || !strings.Contains(out.Stderr, "remove user alice? Their username stays taken. [y/N]: ") || !strings.Contains(out.Stderr, "[cancelled]") {
 		t.Fatalf("want it cancelled, got %+v", out)
 	}
-	if v, exit := hubJSON(t, home, "user", "get", "--username", "alice"); exit != clikit.ExitOK {
+	if v, exit := hubJSON(t, home, "user", "get", "--name", "alice"); exit != clikit.ExitOK {
 		t.Fatalf("want alice kept, got %v", v)
 	}
-	out = hubWith(t, home, answering("maybe", "y"), "user", "remove", "--username", "alice")
+	out = hubWith(t, home, answering("maybe", "y"), "user", "remove", "--name", "alice")
 	if out.Exit != clikit.ExitOK || out.Stdout != "removed user alice; the username stays taken\n" {
 		t.Fatalf("want alice removed, got %+v", out)
 	}
-	out = hubWith(t, home, answering("y"), "user", "remove", "--username", "alice")
+	out = hubWith(t, home, answering("y"), "user", "remove", "--name", "alice")
 	if out.Exit != clikit.ExitRejected || !strings.Contains(out.Stderr, "[not_found]") {
 		t.Fatalf("want not_found before asking, got %+v", out)
 	}
@@ -388,11 +389,11 @@ func TestAccountsWithoutHub(t *testing.T) {
 	for _, args := range [][]string{
 		{"user", "invite"},
 		{"user", "list"},
-		{"user", "get", "--username", "alice"},
-		{"user", "disable", "--username", "alice"},
-		{"user", "enable", "--username", "alice"},
-		{"user", "reset", "--username", "alice"},
-		{"user", "remove", "--username", "alice", "--yes"},
+		{"user", "get", "--name", "alice"},
+		{"user", "disable", "--name", "alice"},
+		{"user", "enable", "--name", "alice"},
+		{"user", "reset", "--name", "alice"},
+		{"user", "remove", "--name", "alice", "--yes"},
 		{"audit", "verify"},
 	} {
 		v, exit := hubJSON(t, home, args...)
@@ -400,5 +401,104 @@ func TestAccountsWithoutHub(t *testing.T) {
 		if v["hint"] != "run "+name+" serve" {
 			t.Fatalf("%v: want the hint, got %v", args, v)
 		}
+	}
+}
+
+// userID is the id of username, as user list gives it.
+func userID(t *testing.T, home, username string) string {
+	t.Helper()
+	v, exit := hubJSON(t, home, "user", "list")
+	list, _ := v["users"].([]any)
+	for _, u := range list {
+		if m, _ := u.(map[string]any); m["username"] == username {
+			if id, _ := m["id"].(string); strings.HasPrefix(id, "usr-") {
+				return id
+			}
+		}
+	}
+	t.Fatalf("no id of %s in exit %d: %v", username, exit, v)
+	return ""
+}
+
+func TestUserByID(t *testing.T) {
+	t.Parallel()
+	home, s := newHubServer(t)
+	newUser(t, s, "alice", false)
+	newUser(t, s, "bob", false)
+	id := userID(t, home, "alice")
+	v, exit := hubJSON(t, home, "user", "get", "--id", id)
+	if u, _ := v["user"].(map[string]any); exit != clikit.ExitOK || u["username"] != "alice" || u["id"] != id {
+		t.Fatalf("want alice by her id, got exit %d: %v", exit, v)
+	}
+	v, exit = hubJSON(t, home, "user", "disable", "--id", id)
+	want(t, v, exit, clikit.ExitOK, "result", string(hubapi.ResultDisabled))
+	if u, _ := v["user"].(map[string]any); u["username"] != "alice" || u["disabled"] != true {
+		t.Fatalf("want alice disabled, got %v", v)
+	}
+	if out := hub(t, home, "user", "reset", "--id", id); out.Exit != clikit.ExitOK || !strings.HasPrefix(out.Stdout, "reset the password of "+id+": ") {
+		t.Fatalf("want the reset named by the id given, got %+v", out)
+	}
+	if out := hub(t, home, "user", "get", "--id", id); !strings.Contains(out.Stdout, "\n  id         "+id+"\n") {
+		t.Fatalf("want the id shown, got %+v", out)
+	}
+	v, exit = hubJSON(t, home, "user", "get", "--id", "usr-00000000")
+	want(t, v, exit, clikit.ExitRejected, "code", string(hubapi.ErrorCodeNotFound))
+	if d, _ := v["details"].(map[string]any); d["id"] != "usr-00000000" || d["username"] != nil {
+		t.Fatalf("want the id in details, got %v", v)
+	}
+	// A username is never taken for an id, nor an id for a username.
+	v, exit = hubJSON(t, home, "user", "get", "--name", id)
+	want(t, v, exit, clikit.ExitRejected, "code", string(hubapi.ErrorCodeNotFound))
+	v, exit = hubJSON(t, home, "user", "remove", "--id", "bob", "--yes")
+	want(t, v, exit, clikit.ExitRejected, "code", string(hubapi.ErrorCodeNotFound))
+	v, exit = hubJSON(t, home, "user", "remove", "--id", userID(t, home, "bob"), "--yes")
+	want(t, v, exit, clikit.ExitOK, "result", string(hubapi.ResultRemoved))
+}
+
+func TestUserNameFlags(t *testing.T) {
+	t.Parallel()
+	home, s := newHubServer(t)
+	newUser(t, s, "alice", false)
+	// --username, the flag's name in earlier dev releases, still works.
+	v, exit := hubJSON(t, home, "user", "get", "--username", "alice")
+	if u, _ := v["user"].(map[string]any); exit != clikit.ExitOK || u["username"] != "alice" {
+		t.Fatalf("want alice by --username, got exit %d: %v", exit, v)
+	}
+	for _, args := range [][]string{
+		{"user", "get"},
+		{"user", "get", "--name", "alice", "--id", userID(t, home, "alice")},
+	} {
+		v, exit := hubJSON(t, home, args...)
+		want(t, v, exit, clikit.ExitUsage, "code", clikit.CodeUsage)
+	}
+	if out := hub(t, home, "user", "get", "--help"); strings.Contains(out.Stdout, "--username") || !strings.Contains(out.Stdout, "--id <id>") || !strings.Contains(out.Stdout, "--name <name>") {
+		t.Fatalf("want --id and --name in the help, and --username hidden, got %+v", out)
+	}
+}
+
+func TestUserTableHeadings(t *testing.T) {
+	t.Parallel()
+	home, s := newHubServer(t)
+	newUser(t, s, "alice", false)
+	newNode(t, s, "alice", "desktop")
+	st := style.New(true)
+	if out := hub(t, home, "user", "list", "--color", "always"); !strings.HasPrefix(out.Stdout, st.Heading("USERNAME")) {
+		t.Fatalf("want the list's headers as headings, got %q", out.Stdout)
+	}
+	if out := hub(t, home, "user", "get", "--name", "alice", "--color", "always"); !strings.Contains(out.Stdout, "\n"+st.Heading("NODE")) {
+		t.Fatalf("want the nodes' headers as headings, got %q", out.Stdout)
+	}
+}
+
+func TestUserCompletion(t *testing.T) {
+	t.Parallel()
+	home, s := newHubServer(t)
+	newUser(t, s, "alice", false)
+	id := userID(t, home, "alice")
+	if out := hub(t, home, "__complete", "user", "get", "--name", ""); !strings.HasPrefix(out.Stdout, "alice\tnone yet, enabled\n") {
+		t.Fatalf("want alice offered for --name, got %+v", out)
+	}
+	if out := hub(t, home, "__complete", "user", "get", "--id", ""); !strings.HasPrefix(out.Stdout, id+"\talice\n") {
+		t.Fatalf("want alice's id offered for --id, got %+v", out)
 	}
 }

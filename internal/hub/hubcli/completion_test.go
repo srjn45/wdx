@@ -70,7 +70,7 @@ func TestCompletionWithoutSettings(t *testing.T) {
 		t.Fatalf("want user offered, got %+v", out)
 	}
 	// No hub answers: no usernames, and no failure.
-	out = startup(t, home, "__complete", "user", "disable", "--username", "")
+	out = startup(t, home, "__complete", "user", "disable", "--name", "")
 	if out.Exit != clikit.ExitOK || out.Stdout != ":4\n" {
 		t.Fatalf("want nothing offered, got %+v", out)
 	}

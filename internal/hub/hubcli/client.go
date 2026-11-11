@@ -155,32 +155,32 @@ func (c *client) users(ctx context.Context) (hubapi.UserList, error) {
 	return result(r.HTTPResponse, r.Body, r.ApplicationproblemJSONDefault, r.JSON200)
 }
 
-func (c *client) user(ctx context.Context, username string) (hubapi.UserEnvelope, error) {
-	r, err := c.api.GetUserWithResponse(ctx, username)
+func (c *client) user(ctx context.Context, user string) (hubapi.UserEnvelope, error) {
+	r, err := c.api.GetUserWithResponse(ctx, user)
 	if err != nil {
 		return hubapi.UserEnvelope{}, err
 	}
 	return result(r.HTTPResponse, r.Body, r.ApplicationproblemJSONDefault, r.JSON200)
 }
 
-func (c *client) updateUser(ctx context.Context, username string, disabled bool) (hubapi.UserResult, error) {
-	r, err := c.api.UpdateUserWithResponse(ctx, username, hubapi.UpdateUser{Disabled: disabled})
+func (c *client) updateUser(ctx context.Context, user string, disabled bool) (hubapi.UserResult, error) {
+	r, err := c.api.UpdateUserWithResponse(ctx, user, hubapi.UpdateUser{Disabled: disabled})
 	if err != nil {
 		return hubapi.UserResult{}, err
 	}
 	return result(r.HTTPResponse, r.Body, r.ApplicationproblemJSONDefault, r.JSON200)
 }
 
-func (c *client) createReset(ctx context.Context, username string, secondFactor bool) (hubapi.ResetResult, error) {
-	r, err := c.api.CreateUserResetWithResponse(ctx, username, hubapi.CreateReset{SecondFactor: &secondFactor})
+func (c *client) createReset(ctx context.Context, user string, secondFactor bool) (hubapi.ResetResult, error) {
+	r, err := c.api.CreateUserResetWithResponse(ctx, user, hubapi.CreateReset{SecondFactor: &secondFactor})
 	if err != nil {
 		return hubapi.ResetResult{}, err
 	}
 	return result(r.HTTPResponse, r.Body, r.ApplicationproblemJSONDefault, r.JSON201)
 }
 
-func (c *client) removeUser(ctx context.Context, username string) (hubapi.UserResult, error) {
-	r, err := c.api.RemoveUserWithResponse(ctx, username)
+func (c *client) removeUser(ctx context.Context, user string) (hubapi.UserResult, error) {
+	r, err := c.api.RemoveUserWithResponse(ctx, user)
 	if err != nil {
 		return hubapi.UserResult{}, err
 	}

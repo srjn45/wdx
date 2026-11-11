@@ -264,7 +264,7 @@ func TestNodeState(t *testing.T) {
 			t.Errorf("listed %+v", n)
 		}
 	}
-	user, err := h.Admin().GetUserWithResponse(context.Background(), hubapi.Username(h.User.Username))
+	user, err := h.Admin().GetUserWithResponse(context.Background(), hubapi.UserRef(h.User.Username))
 	if err != nil || user.JSON200 == nil {
 		t.Fatal(err)
 	}

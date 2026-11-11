@@ -55,12 +55,19 @@ type InvalidPathError struct {
 func (e *InvalidPathError) Error() string { return e.Path + ": " + e.Reason }
 
 // userError is a failure of an act on the user named username.
+// userError is a failure about the user named username, or id when the
+// request named them by id.
 type userError struct {
-	username string
-	err      error
+	username, id string
+	err          error
 }
 
-func (e *userError) Error() string { return e.err.Error() + ": " + e.username }
+func (e *userError) Error() string {
+	if e.id != "" {
+		return e.err.Error() + ": " + idRef + e.id
+	}
+	return e.err.Error() + ": " + e.username
+}
 func (e *userError) Unwrap() error { return e.err }
 
 // AuditBrokenError is an audit chain with a row whose hash does not match.
@@ -110,7 +117,9 @@ func classify(err error) (hubapi.ErrorCode, map[string]any) {
 		return hubapi.ErrorCodeInvalidArgument, map[string]any{"argument": "path", "path": e.Path}
 	}
 	if errors.Is(err, account.ErrNotFound) {
-		if e, ok := errors.AsType[*userError](err); ok {
+		if e, ok := errors.AsType[*userError](err); ok && e.id != "" {
+			return hubapi.ErrorCodeNotFound, map[string]any{"id": e.id}
+		} else if ok {
 			return hubapi.ErrorCodeNotFound, map[string]any{"username": e.username}
 		}
 		return hubapi.ErrorCodeNotFound, nil

@@ -181,9 +181,9 @@ paths:
               schema: { $ref: "#/components/schemas/UserList" }
         default: { $ref: "#/components/responses/Problem" }
 
-  /v1/users/{username}:
+  /v1/users/{user}:
     parameters:
-      - $ref: "#/components/parameters/Username"
+      - $ref: "#/components/parameters/UserRef"
     get:
       operationId: getUser
       tags: [admin]
@@ -235,9 +235,9 @@ paths:
               schema: { $ref: "#/components/schemas/UserResult" }
         default: { $ref: "#/components/responses/Problem" }
 
-  /v1/users/{username}/resets:
+  /v1/users/{user}/resets:
     parameters:
-      - $ref: "#/components/parameters/Username"
+      - $ref: "#/components/parameters/UserRef"
     post:
       operationId: createUserReset
       tags: [admin]
@@ -529,11 +529,11 @@ paths:
 
 components:
   parameters:
-    Username:
-      name: username
+    UserRef:
+      name: user
       in: path
       required: true
-      description: The user's username, whatever its case.
+      description: "The user's username, whatever its case, or id: and their id."
       schema: { type: string }
 
   responses:
@@ -965,8 +965,9 @@ components:
 
     User:
       type: object
-      required: [username, created_at, last_login_at, disabled, second_factor, nodes]
+      required: [id, username, created_at, last_login_at, disabled, second_factor, nodes]
       properties:
+        id: { type: string, description: "usr- and random characters; id: and it names the user in a path." }
         username: { type: string }
         nodes: { type: integer, description: "Their nodes not removed." }
         created_at: { type: string, format: date-time }

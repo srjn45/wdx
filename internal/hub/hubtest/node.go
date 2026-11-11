@@ -126,7 +126,7 @@ func (h *Hub) RemoveNode(n Node, ref string) {
 // DisableUser disables username, as the hub's admin does.
 func (h *Hub) DisableUser(username string) {
 	h.t.Helper()
-	r, err := h.Admin().UpdateUserWithResponse(context.Background(), hubapi.Username(username), hubapi.UpdateUser{Disabled: true})
+	r, err := h.Admin().UpdateUserWithResponse(context.Background(), hubapi.UserRef(username), hubapi.UpdateUser{Disabled: true})
 	if err != nil {
 		h.t.Fatalf("hubtest: disable %s: %v", username, err)
 	}
