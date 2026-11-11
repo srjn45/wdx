@@ -18,14 +18,13 @@ The browser is opened with `xdg-open` or `open`, the optional entry `browser` in
 ### Which hub
 
 - **No `hub.url` setting.** The hub's address is kept with the login, in `<home>/hub/`, and `wdx hub status` shows it. A setting could be changed while logged in to another hub, which nothing could make sense of.
-- **The central hub without a flag, `--url <url>` for another** (the wdx doc HUB_CENTRAL, which replaced the `--hub-central` flag first planned here): with no `--url`, `wdx hub login` logs in to the hub wdx's users share, `https://wdx-hub.fly.dev`, its address built into the binary (`identity.CentralHub`) so that nobody changes it, and text mode says so first on stderr: `logging in to the central hub, <url>; --url logs in to another`. `--url` is a hub of one's own; a self-hosted hub's nodes name it.
-- A release that changes the central hub's address changes where later logins go only; a node already logged in keeps its address, and the move's plan says how its nodes follow.
+- **`--url <url>` is required; there is no default hub** (since 0.6.0, replacing the wdx doc HUB_CENTRAL): `wdx hub login` without it is a `usage` error, `required flag(s) "url" not set`, before anything is asked. A hub is self-hosted, by a person or an organisation, and its nodes name it. Until 0.6.0 a login without `--url` went to a central hub built into the binary, `https://wdx-hub.fly.dev`; that hub is now the author's own, personal and invite-only, and nothing in wdx names it. A node already logged in keeps its hub's address, whichever it is.
 
 ### `wdx hub login`
 
 | Flag | |
 |---|---|
-| `--url <url>` | a hub of one's own; the central hub when not given |
+| `--url <url>` | the hub to log in to; required |
 | `--name <name>` | this node's name in the account; the hostname by default; unique in the account |
 | `--no-browser` | print the link and code; open no browser |
 

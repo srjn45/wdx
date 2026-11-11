@@ -144,10 +144,10 @@ With `--json`, `result` is one of: `set_up`.
 Make this machine a node of your account on a hub.
 
 ```sh
-wdx hub login [--url <url>] [--name <name>] [--no-browser] [flags]
+wdx hub login --url <url> [--name <name>] [--no-browser] [flags]
 ```
 
-Without `--url` the login goes to the central hub, https://wdx-hub.fly.dev; `--url` logs in to a hub of your own instead.
+`--url` names the hub: a wdx-hub you or your organisation run. There is no default hub.
 
 The browser opens on the hub's page, where you log in and approve the machine; the link is printed too, for when none opens. With `--no-browser`, or without a browser to open (wdx deps list), the hub's page and a code to type on it are printed instead, to open in a browser on any device. What to open, and the code, go to stderr, with `--json` too. The login waits until it is approved or denied, at most 10 minutes; Ctrl-C cancels it.
 
@@ -159,22 +159,21 @@ The url is https, or plain http to localhost or 127.0.0.1 only.
 |---|---|---|
 | `--name <name>` |  | name of this node in the account; the hostname by default |
 | `--no-browser` |  | open no browser: print the hub's page and a code to type on it |
-| `--url <url>` |  | url of a hub of your own, as https://hub.example.com; the central hub when not given |
+| `--url <url>` |  | url of the hub to log in to, as https://hub.example.com |
+
+- `--url` is required
 
 ### Examples
 
 ```sh
-# Log in to the central hub, in the browser
-wdx hub login
-
-# Log in to a hub of your own
+# Log in to your hub, in the browser
 wdx hub login --url https://hub.example.com
 
 # Over SSH, with a code typed on another device
-wdx hub login --no-browser
+wdx hub login --url https://hub.example.com --no-browser
 
 # Name the node, from a script
-wdx hub login --name laptop --no-browser --json
+wdx hub login --url https://hub.example.com --name laptop --no-browser --json
 ```
 
 ### Output

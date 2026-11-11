@@ -58,10 +58,10 @@ func newHubLoginCmd() *cobra.Command {
 	var url, name string
 	var noBrowser bool
 	cmd := &cobra.Command{
-		Use:   "login [--url <url>] [--name <name>] [--no-browser]",
+		Use:   "login --url <url> [--name <name>] [--no-browser]",
 		Short: "Make this machine a node of your account on a hub",
-		Long: "Without --url the login goes to the central hub, " + identity.CentralHub + ";\n" +
-			"--url logs in to a hub of your own instead.\n\n" +
+		Long: "--url names the hub: a wdx-hub you or your organisation run. There is no\n" +
+			"default hub.\n\n" +
 			"The browser opens on the hub's page, where you log in and approve the\n" +
 			"machine; the link is printed too, for when none opens. With --no-browser,\n" +
 			"or without a browser to open (wdx deps list), the hub's page and a code to\n" +
@@ -70,10 +70,9 @@ func newHubLoginCmd() *cobra.Command {
 			"is approved or denied, at most 10 minutes; Ctrl-C cancels it.\n\n" +
 			"The url is https, or plain http to localhost or 127.0.0.1 only.",
 		Example: clikit.Examples(
-			"Log in to the central hub, in the browser", identity.Name+" hub login",
-			"Log in to a hub of your own", identity.Name+" hub login --url https://hub.example.com",
-			"Over SSH, with a code typed on another device", identity.Name+" hub login --no-browser",
-			"Name the node, from a script", identity.Name+" hub login --name laptop --no-browser --json",
+			"Log in to your hub, in the browser", identity.Name+" hub login --url https://hub.example.com",
+			"Over SSH, with a code typed on another device", identity.Name+" hub login --url https://hub.example.com --no-browser",
+			"Name the node, from a script", identity.Name+" hub login --url https://hub.example.com --name laptop --no-browser --json",
 		),
 		Args: cobra.NoArgs,
 		Annotations: map[string]string{
@@ -89,9 +88,10 @@ func newHubLoginCmd() *cobra.Command {
 			return runHubLogin(cmd, url, name, noBrowser)
 		},
 	}
-	cmd.Flags().StringVar(&url, "url", "", "`url` of a hub of your own, as https://hub.example.com; the central hub when not given")
+	cmd.Flags().StringVar(&url, "url", "", "`url` of the hub to log in to, as https://hub.example.com")
 	cmd.Flags().StringVar(&name, "name", "", "`name` of this node in the account; the hostname by default")
 	cmd.Flags().BoolVar(&noBrowser, "no-browser", false, "open no browser: print the hub's page and a code to type on it")
+	_ = cmd.MarkFlagRequired("url")
 	clikit.CompleteFlag(cmd, "url", cobra.NoFileCompletions)
 	clikit.CompleteFlag(cmd, "name", cobra.NoFileCompletions)
 	return cmd
@@ -114,13 +114,6 @@ func runHubLogin(cmd *cobra.Command, url, name string, noBrowser bool) error {
 			return &clikit.UsageError{Err: fmt.Errorf("the hostname cannot be read, so pass --name: %w", err)}
 		}
 		name = host
-	}
-	if url == "" {
-		url = env.CentralHub
-		log.Info("login to the central hub", "url", url, "reason", "no --url")
-		if !clikit.JSONMode(cmd) {
-			fmt.Fprintf(stderr, "logging in to the central hub, %s; --url logs in to another\n", st.Name(url))
-		}
 	}
 	flow, opener := api.HubLoginFlowDevice, ""
 	if noBrowser {

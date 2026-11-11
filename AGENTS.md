@@ -93,7 +93,7 @@ internal/update/  replaces an installed program with a release and rolls it back
 internal/codesign/  signs a wdx binary on macOS with a self-signed certificate in a keychain of its own in the home, so the permissions macOS grants wdx survive updates (the wdx doc MAC_SIGNING)
 internal/atomicfile/  writes a file whole or not at all: a synced temporary file renamed into place
 internal/unixsocket/  checks a Unix socket's path fits the system's limit before a program listens on it, for the daemon and the hub alike; uses only the standard library
-internal/identity/  the name, version and paths every package agrees on: the home's files, sockets, environment variables, and the central hub's address, which main hands the cli in cli.Env
+internal/identity/  the name, version and paths every package agrees on: the home's files, sockets, and environment variables
 internal/gittest/  makes git behave the same in every test run, and creates the repositories tests use
 internal/runtest/  gives a test binary a scope of its own: a directory, a clean environment, executables no fork holds busy, and a check at its end that it left nothing behind
 internal/waittest/  gives every wait in the tests one deadline, from the test binary's -timeout

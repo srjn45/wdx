@@ -140,10 +140,7 @@ type hubHome struct {
 	home  string
 	hub   *hubtest.Hub
 	clock *hubClock
-	// central is the central hub, which login goes to without --url: the
-	// test's hub unless a test changes it.
-	central string
-	mu      sync.Mutex
+	mu    sync.Mutex
 	// secrets are what no line of the home's logs may hold.
 	secrets []string
 	// codes are the authenticator codes the test computed, which no line of
@@ -169,7 +166,7 @@ func newHubHomeOn(t *testing.T, h *hubtest.Hub, clock *hubClock) *hubHome {
 // newHubHomeShell is newHubHomeOn whose terminals run script.
 func newHubHomeShell(t *testing.T, h *hubtest.Hub, clock *hubClock, script string) *hubHome {
 	t.Helper()
-	hh := &hubHome{t: t, hub: h, clock: clock, central: h.URL}
+	hh := &hubHome{t: t, hub: h, clock: clock}
 	hh.home = newHomeOpts(t, script, nil, func(o *daemon.Options) {
 		// Here, between the home made and the daemon served: so they run
 		// once the daemon stopped, and before the home is removed.
@@ -275,7 +272,6 @@ func hubJSONOf(t *testing.T, out clikittest.Output, args []string) (hubOutput, i
 func (hh *hubHome) env(adjust func(*Env)) func(*Env) {
 	return func(env *Env) {
 		env.Deps = noOpener()
-		env.CentralHub = hh.central
 		env.OpenBrowser = func(_ context.Context, _, link string) error {
 			hh.t.Errorf("a browser opened %s", link)
 			return errors.New("no browser in a test")
@@ -520,73 +516,16 @@ func TestHubLoginNoOpener(t *testing.T) {
 	}
 }
 
-func TestHubLoginCentral(t *testing.T) {
+// TestHubLoginNoURL: there is no default hub, so a login without --url is
+// refused before anything is asked.
+func TestHubLoginNoURL(t *testing.T) {
 	t.Parallel()
 	hh := newHubHome(t)
-	r := hh.start("hub", "login", "--name", "desk")
-	code := r.stderr.wait(t, userCode)[2]
-	hh.secret(code)
-	want := "logging in to the central hub, " + hh.hub.URL + "; --url logs in to another\n"
-	if !strings.HasPrefix(r.stderr.String(), want) {
-		t.Fatalf("want stderr to start with %q, got %q", want, r.stderr.String())
+	v, exit := hh.hubJSON(nil, "hub", "login", "--name", "desk", "--no-browser")
+	wantError(t, v.jsonOutput, exit, api.ErrorCodeUsage, clikit.ExitUsage)
+	if !strings.Contains(v.Detail, `required flag(s) "url" not set`) {
+		t.Fatalf("detail %q", v.Detail)
 	}
-	if err := hh.hub.Browser(hh.hub.User).ApproveCode(code, ""); err != nil {
-		t.Fatal(err)
-	}
-	hh.clock.waitPoll(t)
-	out := hh.wait(r)
-	if out.Exit != clikit.ExitOK || out.Stdout != "logged in to "+hh.hub.URL+" as alice; this machine is node desk\n" {
-		t.Fatalf("%+v", out)
-	}
-	hh.keySecret()
-}
-
-func TestHubLoginCentralJSON(t *testing.T) {
-	t.Parallel()
-	hh := newHubHome(t)
-	r := hh.start("hub", "login", "--name", "desk", "--no-browser", "--json")
-	code := r.stderr.wait(t, userCode)[2]
-	hh.secret(code)
-	if strings.Contains(r.stderr.String(), "central hub") {
-		t.Fatalf("stderr %q", r.stderr.String())
-	}
-	if err := hh.hub.Browser(hh.hub.User).ApproveCode(code, ""); err != nil {
-		t.Fatal(err)
-	}
-	hh.clock.waitPoll(t)
-	out := hh.wait(r)
-	v, exit := hubJSONOf(t, out, r.args)
-	if exit != clikit.ExitOK || v.Result != "logged_in" || deref(v.Hub.Url) != hh.hub.URL {
-		t.Fatalf("exit %d, %+v", exit, out)
-	}
-	hh.keySecret()
-}
-
-// TestHubLoginOwnHub logs in with --url while the central hub is down: the
-// login goes to the hub --url names.
-func TestHubLoginOwnHub(t *testing.T) {
-	t.Parallel()
-	hh := newHubHome(t)
-	ln, err := net.Listen("tcp", "127.0.0.1:0")
-	if err != nil {
-		t.Fatal(err)
-	}
-	hh.central = "http://" + ln.Addr().String()
-	ln.Close()
-	r, code := hh.deviceLogin("--name", "desk")
-	if strings.Contains(r.stderr.String(), "central hub") {
-		t.Fatalf("stderr %q", r.stderr.String())
-	}
-	if err := hh.hub.Browser(hh.hub.User).ApproveCode(code, ""); err != nil {
-		t.Fatal(err)
-	}
-	hh.clock.waitPoll(t)
-	out := hh.wait(r)
-	v, exit := hubJSONOf(t, out, r.args)
-	if exit != clikit.ExitOK || v.Result != "logged_in" || deref(v.Hub.Url) != hh.hub.URL {
-		t.Fatalf("exit %d, %+v", exit, out)
-	}
-	hh.keySecret()
 }
 
 func TestHubLoginAlreadyLoggedIn(t *testing.T) {
