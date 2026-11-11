@@ -1,9 +1,26 @@
 ---
-// Coming next: in design, with no dates (the wdx doc SITE, question 5).
+// The hub, shipped in 0.5.0: the landing's one place for it (the wdx doc SITE, step F).
+const base = import.meta.env.BASE_URL.replace(/\/$/, '');
 ---
 <section class="sec band tight"><div class="wrap">
-  <div class="hub"><div class="hub-copy"><span class="tag">IN DESIGN</span><h2>Next: wdx hub</h2><p class="lede">Reach your agents from another machine, end to end encrypted, and keep docs and plans in sync across the machines you work on.</p><a class="more" href={`${import.meta.env.BASE_URL.replace(/\/$/, '')}/docs/project/roadmap/`}>The roadmap →</a></div>
-  <pre class="term wrapping"><span class="d"># planned, no dates yet</span>
-<span class="p">$</span> wdx hub login
-<span class="p">$</span> wdx agent attach --node workstation --name reviewer</pre></div>
+  <div class="hub"><div class="hub-copy"><span class="tag">NEW IN 0.5.0</span><span class="eyebrow">Hub</span><h2>Your machines, one account.</h2><p class="lede">Log your machines in to a hub, and reach each one's agents, terminals and TIDE from any other with <code>--node</code>. The hub passes the connection on but cannot read it: TLS runs between the two machines, and the machine checks its own authenticator code.</p>
+    <ul class="hub-points">
+      <li>Remote access is off on a machine until you set up its code there.</li>
+      <li>A project's docs can be pushed to the hub, encrypted at rest.</li>
+      <li>Run your own on a Linux server with one command, or on Fly.io.</li>
+    </ul>
+  </div>
+  <pre class="term"><span class="p">$</span> wdx hub login
+<span class="d">logged in to https://wdx-hub.fly.dev as alice; this machine is node desk</span>
+
+<span class="p">$</span> wdx hub node list
+NAME         ONLINE  LAST SEEN            VERSION  OS            ID
+desk (this)  yes     2026-11-08 15:33:10  0.5.0    linux/amd64   node-1a2b3c4d
+laptop       yes     2026-11-08 15:32:58  0.5.0    darwin/arm64  node-5e6f7a8b
+
+<span class="p">$</span> wdx tide --node laptop
+<span class="d">on node laptop</span>
+code for laptop: <span class="s">492133</span></pre>
+  <div class="hub-foot"><p>The central hub, wdx-hub.fly.dev, is invite-only for now; it opens to everyone in a later release, once the first version is complete. Until then, run your own.</p>
+    <div class="hub-links"><a class="more" href={`${base}/docs/guides/hub/`}>Use a hub →</a><a class="more" href={`${base}/docs/guides/running-a-hub/`}>Run your own →</a></div></div></div>
 </div></section>
