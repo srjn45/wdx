@@ -1,0 +1,11 @@
+goal: Give notes a count command and tests, and say so in the README.
+constraints:
+  - Change only the file your task names.
+tasks:
+  - id: count
+    prompt: In notes.py, add 'count', printing how many notes there are.
+  - id: tests
+    prompt: Write test_notes.py, unittest tests of add and list.
+  - id: readme
+    after: [count, tests]
+    prompt: In README.md, list every command and how to run the tests.

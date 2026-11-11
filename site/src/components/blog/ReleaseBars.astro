@@ -1,0 +1,39 @@
+---
+// Per release: commits since the release before, and Go lines added since
+// it, side by side, each on its own scale.
+import Diagram from '../diagrams/Diagram.astro';
+import { RELEASES, fmt, compact } from './releases.js';
+import './chart.css';
+
+const W = 720, H = 300, T = 56, B = 250, BAR = 24, R = 4;
+const panels = [
+  { title: 'commits', key: 'commits', left: 50, right: 340, max: 250, ticks: [0, 50, 100, 150, 200, 250], tick: (n: number) => String(n) },
+  { title: 'Go lines added', key: 'goAdded', left: 420, right: 710, max: 70000, ticks: [0, 10000, 20000, 30000, 40000, 50000, 60000, 70000], tick: compact },
+];
+// A column with a 4px rounded top, square at the baseline.
+const col = (cx: number, top: number) => `M${cx - BAR / 2} ${B} V${top + R} Q${cx - BAR / 2} ${top} ${cx - BAR / 2 + R} ${top} H${cx + BAR / 2 - R} Q${cx + BAR / 2} ${top} ${cx + BAR / 2} ${top + R} V${B} Z`;
+const y = (p: (typeof panels)[number], v: number) => B - (v / p.max) * (B - T);
+const cx = (p: (typeof panels)[number], i: number) => p.left + ((i + 0.5) * (p.right - p.left)) / RELEASES.length;
+---
+<Diagram id="rb" width={W} height={H}
+  label={`Per release, commits and Go lines added since the release before, generated code left out: ${RELEASES.map((r) => `${r.tag}, ${r.commits} commits and ${fmt(r.goAdded)} lines`).join('; ')}.`}
+  caption="Per release: the commits since the release before, and the Go lines they added, generated code left out. Each chart has its own scale.">
+  <g class="chart">
+    {panels.map((p) => (
+      <g>
+        <text class="ttl" x={p.left} y="22">{p.title}</text>
+        {p.ticks.map((t) => <><path class="grid" d={`M${p.left} ${y(p, t)} H${p.right}`} /><text class="tick" x={p.left - 8} y={y(p, t) + 4} text-anchor="end">{p.tick(t)}</text></>)}
+        {RELEASES.map((r, i) => {
+          const v = (r as any)[p.key] as number;
+          return (
+            <g class="col">
+              <path class="bar" d={col(cx(p, i), y(p, v))}><title>{`${r.tag}: ${fmt(v)} ${p.title}`}</title></path>
+              <text class="tick" x={cx(p, i)} y={B + 18} text-anchor="middle">{r.tag.replace(/\.0$/, '')}</text>
+              {i === RELEASES.length - 1 && <text class="val" x={cx(p, i)} y={y(p, v) - 8} text-anchor="middle">{fmt(v)}</text>}
+            </g>
+          );
+        })}
+      </g>
+    ))}
+  </g>
+</Diagram>

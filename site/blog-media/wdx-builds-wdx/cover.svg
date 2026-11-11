@@ -1,0 +1,63 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="630" viewBox="0 0 1200 630">
+  <!-- The cover of "I built wdx with wdx": the wdx mark at the root of a tree,
+       an approved doc, the plan's tasks, and the agents' branches merging into
+       one. Fonts: Bricolage Grotesque and JetBrains Mono, as the site's;
+       render.sh loads them. -->
+  <defs>
+    <pattern id="dots" width="24" height="24" patternUnits="userSpaceOnUse"><circle cx="2" cy="2" r="1.2" fill="#232836" /></pattern>
+    <linearGradient id="fade" x1="0" y1="0" x2="1" y2="0"><stop offset="0" stop-color="#6fd3c1" stop-opacity=".25" /><stop offset="1" stop-color="#6fd3c1" stop-opacity="1" /></linearGradient>
+  </defs>
+  <rect width="1200" height="630" fill="#13161c" />
+  <rect width="1200" height="630" fill="url(#dots)" />
+
+  <text x="72" y="118" fill="#e9ecf2" font-family="Bricolage Grotesque" font-weight="800" font-size="66">I built wdx with wdx</text>
+  <text x="74" y="166" fill="#98a1b3" font-family="JetBrains Mono" font-size="25">a team of AI agents wrote most of its code</text>
+
+  <!-- the mark, at the root -->
+  <g transform="translate(72 300) scale(2.1)">
+    <polyline points="5.5,46 13,76 20.5,50 28,76 35.5,46" fill="none" stroke="#e9ecf2" stroke-width="8" stroke-linecap="round" stroke-linejoin="round" />
+    <circle cx="59.5" cy="64" r="12" fill="none" stroke="#e9ecf2" stroke-width="8" />
+    <line x1="71.5" y1="42" x2="71.5" y2="76" stroke="#e9ecf2" stroke-width="8" stroke-linecap="round" />
+    <line x1="78.5" y1="14" x2="94.5" y2="30" stroke="#6fd3c1" stroke-width="7" stroke-linecap="round" />
+    <line x1="94.5" y1="14" x2="78.5" y2="30" stroke="#6fd3c1" stroke-width="7" stroke-linecap="round" />
+  </g>
+
+  <!-- the trunk: root to the doc, to the plan -->
+  <path d="M290 440 H340" stroke="#3a4152" stroke-width="4" stroke-linecap="round" />
+
+  <!-- an approved doc -->
+  <g transform="translate(346 372)">
+    <rect width="196" height="136" rx="12" fill="#1e222a" stroke="#2e3443" stroke-width="2" />
+    <text x="20" y="38" fill="#e9ecf2" font-family="JetBrains Mono" font-weight="700" font-size="19">DESIGN</text>
+    <rect x="20" y="56" width="150" height="8" rx="4" fill="#2c3240" />
+    <rect x="20" y="74" width="118" height="8" rx="4" fill="#2c3240" />
+    <rect x="20" y="98" width="112" height="24" rx="12" fill="#6ccf7f" fill-opacity=".16" />
+    <path d="M31 110 l5 5 l9 -10" fill="none" stroke="#6ccf7f" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" />
+    <text x="52" y="116" fill="#6ccf7f" font-family="JetBrains Mono" font-size="15">approved</text>
+  </g>
+  <path d="M542 440 H600" stroke="#3a4152" stroke-width="4" stroke-linecap="round" />
+
+  <!-- the plan: two tasks at once, a third after both -->
+  <g font-family="JetBrains Mono" font-size="15" fill="#d5dae4">
+    <path d="M612 440 C650 440 650 376 690 376 M612 440 C650 440 650 504 690 504" fill="none" stroke="#3a4152" stroke-width="3" />
+    <circle cx="610" cy="440" r="9" fill="#13161c" stroke="#98a1b3" stroke-width="3" />
+    <path d="M702 376 C752 376 752 440 790 440 M702 504 C752 504 752 440 790 440" fill="none" stroke="#3a4152" stroke-width="3" />
+    <circle cx="700" cy="376" r="9" fill="#6fd3c1" /><text x="684" y="352">task</text>
+    <circle cx="700" cy="504" r="9" fill="#6fd3c1" /><text x="684" y="540">task</text>
+    <circle cx="800" cy="440" r="9" fill="#e2b75e" /><text x="780" y="476">after</text>
+  </g>
+
+  <!-- the agents' branches, merging into one -->
+  <g fill="none" stroke-width="4" stroke-linecap="round">
+    <path d="M812 440 C860 440 860 330 910 330 H1000 C1050 330 1050 440 1100 440" stroke="#6fd3c1" stroke-opacity=".55" />
+    <path d="M812 440 C860 440 860 385 910 385 H1000 C1050 385 1050 440 1100 440" stroke="#6fd3c1" stroke-opacity=".75" />
+    <path d="M812 440 H1100" stroke="#6fd3c1" />
+    <path d="M812 440 C860 440 860 495 910 495 H1000 C1050 495 1050 440 1100 440" stroke="#6fd3c1" stroke-opacity=".75" />
+    <path d="M812 440 C860 440 860 550 910 550 H1000 C1050 550 1050 440 1100 440" stroke="#6fd3c1" stroke-opacity=".55" />
+  </g>
+  <g fill="#13161c" stroke="#6fd3c1" stroke-width="3">
+    <circle cx="955" cy="330" r="8" /><circle cx="955" cy="385" r="8" /><circle cx="955" cy="440" r="8" /><circle cx="955" cy="495" r="8" /><circle cx="955" cy="550" r="8" />
+  </g>
+  <circle cx="1112" cy="440" r="13" fill="#6fd3c1" />
+  <text x="1112" y="482" fill="#98a1b3" font-family="JetBrains Mono" font-size="15" text-anchor="middle">main</text>
+</svg>

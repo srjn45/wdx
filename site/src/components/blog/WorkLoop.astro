@@ -1,0 +1,23 @@
+---
+// How a feature of wdx is made: the person's steps and the agents' and wdx's.
+import Diagram from '../diagrams/Diagram.astro';
+---
+<Diagram id="wl" width={720} height={330}
+  label="The loop wdx is built in. You design with an agent; the design is a wdx doc, and you approve it. An agent writes a plan from it. wdx runs the plan: an agent per task, each in a worktree. Each finished task lands on the plan's branch after the landing check. You review the plan's branch and land it. A task that fails waits for you; the rest goes on."
+  caption="Teal is yours to do: the design, the approval and the landing. The rest is the agents' and wdx's, and a task that fails waits for you.">
+  <rect class="bx hot" x="10" y="40" width="210" height="70" rx="8" /><text x="26" y="68">You design it</text><text class="sm" x="26" y="90">with an agent, as a doc</text>
+  <rect class="bx hot" x="255" y="40" width="210" height="70" rx="8" /><text x="271" y="68">You approve the doc</text><text class="sm" x="271" y="90">wip → review → approved</text>
+  <rect class="bx" x="500" y="40" width="210" height="70" rx="8" /><text x="516" y="68">An agent writes a plan</text><text class="sm" x="516" y="90">tasks, each with its after:</text>
+  <rect class="bx" x="500" y="200" width="210" height="70" rx="8" /><text x="516" y="228">Agents run the tasks</text><text class="sm" x="516" y="250">one per task, in worktrees</text>
+  <rect class="bx" x="255" y="200" width="210" height="70" rx="8" /><text x="271" y="228">Each lands on plan/&lt;name&gt;</text><text class="sm" x="271" y="250">after the landing check</text>
+  <rect class="bx hot" x="10" y="200" width="210" height="70" rx="8" /><text x="26" y="228">You review and land it</text><text class="sm" x="26" y="250">wdx worktree land</text>
+  <path class="ar" d="M220 75 H251" marker-end="url(#wl-a)" />
+  <path class="ar" d="M465 75 H496" marker-end="url(#wl-a)" />
+  <path class="ar" d="M605 110 V196" marker-end="url(#wl-a)" />
+  <path class="ar" d="M500 235 H469" marker-end="url(#wl-a)" />
+  <path class="ar" d="M255 235 H224" marker-end="url(#wl-a)" />
+  <path class="ar dash" d="M605 270 V300 H115 V274" marker-end="url(#wl-a)" />
+  <text class="sm" x="300" y="318">a task that fails waits for you; the rest goes on</text>
+  <rect class="bx hot" x="10" y="8" width="14" height="14" rx="3" /><text class="sm" x="30" y="20">you</text>
+  <rect class="bx" x="80" y="8" width="14" height="14" rx="3" /><text class="sm" x="100" y="20">agents and wdx</text>
+</Diagram>

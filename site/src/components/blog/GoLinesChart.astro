@@ -1,0 +1,36 @@
+---
+// Go lines in wdx's tree at each release, by the day since the first commit.
+import Diagram from '../diagrams/Diagram.astro';
+import { RELEASES, FIRST, fmt, compact } from './releases.js';
+import './chart.css';
+
+const W = 720, H = 320, L = 64, R = 690, T = 28, B = 266;
+const maxDay = 16, maxY = 200000;
+const x = (d: number) => L + (d / maxDay) * (R - L);
+const y = (v: number) => B - (v / maxY) * (B - T);
+const pts = [FIRST, ...RELEASES];
+const line = pts.map((p, i) => `${i ? 'L' : 'M'}${x(p.day).toFixed(1)} ${y(p.goLines).toFixed(1)}`).join(' ');
+const area = `${line} L${x(maxDay)} ${B} L${x(0)} ${B} Z`;
+const yTicks = [0, 50000, 100000, 150000, 200000];
+const xTicks = [0, 2, 4, 6, 8, 10, 12, 14, 16];
+const last = RELEASES[RELEASES.length - 1];
+---
+<Diagram id="gl" width={W} height={H}
+  label={`Go lines in wdx's tree, generated code left out, by day since the first commit: ${RELEASES.map((r) => `${r.tag} on day ${r.day}, ${fmt(r.goLines)}`).join('; ')}.`}
+  caption="Go lines in the tree at each release, generated code left out, by day since the first commit on 26 October 2026.">
+  <g class="chart">
+    {yTicks.map((t) => <><path class="grid" d={`M${L} ${y(t)} H${R}`} /><text class="tick" x={L - 10} y={y(t) + 4} text-anchor="end">{compact(t)}</text></>)}
+    {xTicks.map((d) => <text class="tick" x={x(d)} y={B + 20} text-anchor="middle">{d}</text>)}
+    <text class="tick" x={R} y={B + 40} text-anchor="end">days since the first commit</text>
+    <path class="wash" d={area} />
+    <path class="ln" d={line} />
+    {RELEASES.map((r) => (
+      <g class="pt">
+        <circle cx={x(r.day)} cy={y(r.goLines)} r="5" />
+        <circle class="hit" cx={x(r.day)} cy={y(r.goLines)} r="14"><title>{`${r.tag}, ${r.date} (day ${r.day}): ${fmt(r.goLines)} Go lines`}</title></circle>
+        <text class="rel" x={x(r.day) - 10} y={y(r.goLines) - 10} text-anchor="end">{r === last ? `${r.tag} · ${fmt(r.goLines)}` : r.tag}</text>
+      </g>
+    ))}
+  </g>
+</Diagram>
+
