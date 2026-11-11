@@ -394,7 +394,7 @@ func done(next string) string {
 }
 
 func redirect(w http.ResponseWriter, r *http.Request, to string) {
-	http.Redirect(w, r, to, http.StatusSeeOther)
+	http.Redirect(w, r, to, http.StatusSeeOther) //nolint:gosec // every caller passes a hub path, a next through safeNext or a callback checkCallback kept to 127.0.0.1
 }
 
 func setSession(w http.ResponseWriter, token string) {

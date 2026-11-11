@@ -183,7 +183,7 @@ func (f *fixture) wantDistinct(t *testing.T, from, to int64, keys ...*otp.Key) {
 // code is the authenticator's code at step.
 func code(t *testing.T, key *otp.Key, step int64) string {
 	t.Helper()
-	c, err := hotp.GenerateCodeCustom(key.Secret(), uint64(step), hotp.ValidateOpts{Digits: otp.DigitsSix, Algorithm: otp.AlgorithmSHA1}) //nolint:gosec // a step after 1970
+	c, err := hotp.GenerateCodeCustom(key.Secret(), uint64(step), hotp.ValidateOpts{Digits: otp.DigitsSix, Algorithm: otp.AlgorithmSHA1})
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -13,7 +13,7 @@ func userPIDs() ([]int, error) {
 	if err != nil {
 		return nil, err
 	}
-	uid := uint32(os.Getuid())
+	uid := uint32(os.Getuid()) //nolint:gosec // a user id fits a uint32
 	var pids []int
 	for _, e := range entries {
 		pid, err := strconv.Atoi(e.Name())

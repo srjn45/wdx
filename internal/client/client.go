@@ -146,7 +146,7 @@ func (d *doer) Do(req *http.Request) (*http.Response, error) {
 	if d.opts.Dial != nil {
 		return d.doNode(req, start)
 	}
-	resp, err := d.http.Do(req)
+	resp, err := d.http.Do(req) //nolint:gosec // the daemon's socket, or the node --node names through it
 	if err != nil {
 		log.Info("daemon unreachable", "method", req.Method, "path", req.URL.Path, "socket", d.opts.Socket, "err", err)
 		// "connect: connection refused" says it; the request and address
@@ -182,7 +182,7 @@ func (d *doer) doNode(req *http.Request, start time.Time) (*http.Response, error
 	node := d.opts.Node
 	req.Header.Set(api.APIVersionHeader, strconv.Itoa(api.CurrentVersion))
 	req.Header.Set(api.APIOldestHeader, strconv.Itoa(api.OldestCompatible))
-	resp, err := d.http.Do(req)
+	resp, err := d.http.Do(req) //nolint:gosec // the daemon's socket
 	if err != nil {
 		log.Info("node unreachable", "method", req.Method, "path", req.URL.Path, "node", node, "err", err)
 		if dial, ok := errors.AsType[*dialError](err); ok {

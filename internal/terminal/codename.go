@@ -33,5 +33,5 @@ var nouns = []string{
 
 // codename returns an adjective-noun name such as "swift-falcon".
 func codename() string {
-	return adjectives[rand.IntN(len(adjectives))] + "-" + nouns[rand.IntN(len(nouns))]
+	return adjectives[rand.IntN(len(adjectives))] + "-" + nouns[rand.IntN(len(nouns))] //nolint:gosec // a name to read, not a secret
 }

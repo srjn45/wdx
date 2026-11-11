@@ -397,7 +397,7 @@ func writeCompletions(cmd *cobra.Command, o update.Options) []string {
 			return o.Program.Command(ctx, o.Program.Binary, env.Config.Home, "completion", c.Shell)
 		})
 		if err == nil {
-			err = os.MkdirAll(filepath.Dir(c.Path), 0o755)
+			err = os.MkdirAll(filepath.Dir(c.Path), 0o755) //nolint:gosec // the release's directory, which the hub's user reads
 		}
 		if err == nil {
 			err = atomicfile.Write(c.Path, script, 0o644)
@@ -415,14 +415,14 @@ func writeCompletions(cmd *cobra.Command, o update.Options) []string {
 // asAccount runs a release as the user a, on the home it is given.
 func asAccount(a hubconfig.Account) func(ctx context.Context, binary, home string, args ...string) *exec.Cmd {
 	return func(ctx context.Context, binary, home string, args ...string) *exec.Cmd {
-		c := exec.CommandContext(ctx, binary, args...)
+		c := exec.CommandContext(ctx, binary, args...) //nolint:gosec // the release just installed, as the hub's user
 		c.Env = []string{"PATH=" + servicePath, "HOME=" + a.Home, hubconfig.EnvPrefix + "HOME=" + home}
 		if a.UID != os.Geteuid() {
 			groups := make([]uint32, len(a.Groups))
 			for i, g := range a.Groups {
-				groups[i] = uint32(g)
+				groups[i] = uint32(g) //nolint:gosec // a group id the system gave fits a uint32
 			}
-			c.SysProcAttr = &syscall.SysProcAttr{Credential: &syscall.Credential{Uid: uint32(a.UID), Gid: uint32(a.GID), Groups: groups}}
+			c.SysProcAttr = &syscall.SysProcAttr{Credential: &syscall.Credential{Uid: uint32(a.UID), Gid: uint32(a.GID), Groups: groups}} //nolint:gosec // a user id the system gave fits a uint32
 		}
 		return c
 	}
@@ -443,7 +443,7 @@ func (s hubService) systemctl(ctx context.Context, args ...string) error {
 		log.Info("systemctl ran", "args", args, "ok", err == nil)
 		return err
 	}
-	out, err := exec.CommandContext(ctx, "systemctl", args...).CombinedOutput()
+	out, err := exec.CommandContext(ctx, "systemctl", args...).CombinedOutput() //nolint:gosec // systemctl, with the hub's own arguments
 	log.Info("systemctl ran", "args", args, "ok", err == nil)
 	if err != nil {
 		log.Error("systemctl failed", "args", args, "output", string(out))

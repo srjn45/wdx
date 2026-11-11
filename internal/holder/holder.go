@@ -329,7 +329,7 @@ func (h *holder) open(dir string, historyLines int64) error {
 	if err := os.MkdirAll(dir, 0o700); err != nil {
 		return err
 	}
-	if err := os.Chmod(dir, 0o700); err != nil {
+	if err := os.Chmod(dir, 0o700); err != nil { //nolint:gosec // a directory, private to the user
 		return err
 	}
 	var err error
@@ -359,7 +359,7 @@ func listen(socket string) (*net.UnixListener, error) {
 	if err := os.MkdirAll(dir, 0o700); err != nil {
 		return nil, err
 	}
-	if err := os.Chmod(dir, 0o700); err != nil {
+	if err := os.Chmod(dir, 0o700); err != nil { //nolint:gosec // a directory, private to the user
 		return nil, err
 	}
 	// Left behind by a holder that was killed; the daemon starts one holder

@@ -75,10 +75,10 @@ func CreateEntry(ctx context.Context, c Checkouts, name, path string, directory 
 	}
 	full := filepath.Join(dir, base)
 	if directory {
-		err = os.Mkdir(full, 0o777)
+		err = os.Mkdir(full, 0o777) //nolint:gosec // a directory the user makes in their checkout, under their umask
 	} else {
 		var f *os.File
-		if f, err = os.OpenFile(full, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0o666); err == nil {
+		if f, err = os.OpenFile(full, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0o666); err == nil { //nolint:gosec // a file the user makes in their checkout, under their umask
 			err = f.Close()
 		}
 	}

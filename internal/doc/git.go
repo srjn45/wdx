@@ -57,7 +57,7 @@ func (s *Store) SyncToGit(ctx context.Context, projectID, root, dir string) (Syn
 	if err != nil {
 		return Synced{}, err
 	}
-	if err := os.MkdirAll(target, 0o755); err != nil {
+	if err := os.MkdirAll(target, 0o755); err != nil { //nolint:gosec // a directory in the user's repository, as git makes them
 		return Synced{}, err
 	}
 	log := logging.FromContext(ctx).With("path", target)

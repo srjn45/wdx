@@ -208,7 +208,7 @@ func askHidden(cmd *cobra.Command, question string) (string, error) {
 		return "", errors.New("stdin is not a terminal")
 	}
 	fmt.Fprint(cmd.ErrOrStderr(), question)
-	b, err := term.ReadPassword(int(f.Fd())) //nolint:gosec // a file descriptor fits an int
+	b, err := term.ReadPassword(int(f.Fd()))
 	fmt.Fprintln(cmd.ErrOrStderr())
 	if err != nil {
 		return "", fmt.Errorf("the answer could not be read: %w", err)

@@ -340,7 +340,7 @@ func keep(ctx context.Context, o Options, replaced, updatedTo string) (warning s
 		return "", err
 	}
 	dir := o.Program.Previous
-	if err := os.MkdirAll(filepath.Dir(dir), 0o755); err != nil {
+	if err := os.MkdirAll(filepath.Dir(dir), 0o755); err != nil { //nolint:gosec // the previous release's directory, as the home's others
 		return "", err
 	}
 	old := dir + ".old"
@@ -710,7 +710,7 @@ func preflight(ctx context.Context, o Options, binary, version, dir string) (sta
 		// The new binary runs as the owner: it reaches the download through
 		// the directories above it and writes in the home it is checked on.
 		for _, d := range []string{filepath.Dir(dir), dir} {
-			if err := os.Chmod(d, 0o711); err != nil {
+			if err := os.Chmod(d, 0o711); err != nil { //nolint:gosec // a directory others must pass through to the binary
 				return "", Settings{}, err
 			}
 		}

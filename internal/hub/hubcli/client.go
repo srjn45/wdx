@@ -82,7 +82,7 @@ func (d *doer) Do(req *http.Request) (*http.Response, error) {
 		req.Header.Set(hubapi.LogLevelHeader, hubapi.LogLevelDebug)
 	}
 	log := logging.FromContext(req.Context())
-	resp, err := d.http.Do(req)
+	resp, err := d.http.Do(req) //nolint:gosec // the hub's admin socket
 	if err != nil {
 		log.Info("hub unreachable", "method", req.Method, "path", req.URL.Path, "socket", d.socket, "err", err)
 		// "connect: connection refused" says it; the request and address

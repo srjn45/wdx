@@ -273,7 +273,7 @@ func (b *Backups) toTrash(ctx context.Context, id string) error {
 	if err := os.MkdirAll(trash, 0o700); err != nil {
 		return err
 	}
-	if err := os.Chmod(filepath.Dir(trash), 0o700); err != nil {
+	if err := os.Chmod(filepath.Dir(trash), 0o700); err != nil { //nolint:gosec // a directory, private to the user
 		return err
 	}
 	to := filepath.Join(trash, id)

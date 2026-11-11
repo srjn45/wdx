@@ -116,7 +116,7 @@ func (k *keychain) make(ctx context.Context) error {
 	if err := os.MkdirAll(k.dir, 0o700); err != nil {
 		return err
 	}
-	if err := os.Chmod(k.dir, 0o700); err != nil {
+	if err := os.Chmod(k.dir, 0o700); err != nil { //nolint:gosec // a directory, private to the user
 		return err
 	}
 	// A keychain the password does not open is replaced: create-keychain

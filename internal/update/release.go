@@ -55,7 +55,7 @@ type releases struct {
 
 func newReleases(p Program, base string) releases {
 	transport := http.DefaultTransport.(*http.Transport).Clone()
-	transport.RegisterProtocol("file", http.NewFileTransport(http.Dir("/")))
+	transport.RegisterProtocol("file", http.NewFileTransport(http.Dir("/"))) //nolint:gosec // a release's base may be a local directory, which the user names
 	return releases{
 		base:      base,
 		name:      p.Name,
@@ -196,11 +196,11 @@ func extract(archive io.Reader, name, dest string) error {
 		if h.Name != name {
 			continue
 		}
-		f, err := os.OpenFile(dest, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0o755)
+		f, err := os.OpenFile(dest, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0o755) //nolint:gosec // the program's binary, which every user may run
 		if err != nil {
 			return err
 		}
-		if _, err := io.Copy(f, tr); err != nil {
+		if _, err := io.Copy(f, tr); err != nil { //nolint:gosec // the archive matched its release's checksum
 			f.Close()
 			return err
 		}

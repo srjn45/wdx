@@ -88,7 +88,7 @@ func (l *Link) update(c *credentials, fn func()) bool {
 // jitter is a wait of d made random in its upper half, so that nodes cut
 // off together do not come back together.
 func jitter(d time.Duration) time.Duration {
-	return d/2 + rand.N(d/2+1)
+	return d/2 + rand.N(d/2+1) //nolint:gosec // a jitter, not a secret
 }
 
 // keepControl keeps the control connection of c open, trying again with a

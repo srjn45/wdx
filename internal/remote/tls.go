@@ -53,7 +53,7 @@ func config(cert tls.Certificate, server bool) *tls.Config {
 	if server {
 		c.ClientAuth = tls.RequireAnyClientCert
 	} else {
-		c.InsecureSkipVerify = true //nolint:gosec // the peer is verified by its pinned key or CPace, in VerifyConnection and after
+		c.InsecureSkipVerify = true // the peer is verified by its pinned key or CPace, in VerifyConnection and after
 		c.ServerName = "wdx-node"
 	}
 	return c

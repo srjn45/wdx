@@ -101,6 +101,7 @@ type SlotUse struct {
 // slotUses returns the slots of the plans matched by where, on docs d, by plan id,
 // each with the task holding it.
 func (s *Store) slotUses(ctx context.Context, where string, args ...any) (map[string][]SlotUse, error) {
+	//nolint:gosec // where is the code's own, its values are arguments
 	rows, err := s.db.QueryContext(ctx, `
 		SELECT sl.plan_id, sl.slot, sl.path, coalesce(t.task_id, '')
 		FROM plan_slots sl JOIN docs d ON d.id = sl.plan_id
@@ -755,6 +756,7 @@ func (rs runState) shown() (state, reason string) {
 // runStates returns the runs' states of the plans matched by where, on docs d, by
 // plan id.
 func (s *Store) runStates(ctx context.Context, where string, args ...any) (map[string]runState, error) {
+	//nolint:gosec // where is the code's own, its values are arguments
 	rows, err := s.db.QueryContext(ctx, `
 		SELECT r.plan_id, r.state, p.state = 'closed', r.archived_at,
 			(SELECT count(*) FROM plan_tasks t WHERE t.plan_id = r.plan_id AND t.state = 'done'),

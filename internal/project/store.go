@@ -286,7 +286,7 @@ func (s *Store) Create(ctx context.Context, name, parent string) (Opened, error)
 		}
 		created = filepath.Join(existing, strings.Split(rel, string(filepath.Separator))[0])
 	}
-	if err := os.MkdirAll(dest, 0o755); err != nil {
+	if err := os.MkdirAll(dest, 0o755); err != nil { //nolint:gosec // a directory for the user's checkout, as git makes them
 		return Opened{}, err
 	}
 	log.Info("directory created", "path", dest)
@@ -357,7 +357,7 @@ func (s *Store) openKnown(ctx context.Context, id, name string) (Opened, error) 
 func (s *Store) cloneAndOpen(ctx context.Context, url, dest, name string, progress io.Writer) (Opened, error) {
 	log := logging.FromContext(ctx)
 	parent := filepath.Dir(dest)
-	if err := os.MkdirAll(parent, 0o755); err != nil {
+	if err := os.MkdirAll(parent, 0o755); err != nil { //nolint:gosec // a directory for the user's checkout, as git makes them
 		return Opened{}, err
 	}
 	removeCloneLeftovers(ctx, parent)
@@ -366,7 +366,7 @@ func (s *Store) cloneAndOpen(ctx context.Context, url, dest, name string, progre
 		return Opened{}, err
 	}
 	// As git would make it, not private as a temporary directory is.
-	if err := os.Chmod(tmp, 0o755); err != nil {
+	if err := os.Chmod(tmp, 0o755); err != nil { //nolint:gosec // a checkout's directory, as git makes them
 		removeClone(ctx, tmp)
 		return Opened{}, err
 	}

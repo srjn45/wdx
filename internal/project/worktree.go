@@ -249,10 +249,10 @@ func excludeWorktrees(ctx context.Context, root string) error {
 		return err
 	}
 	exclude := filepath.Join(commonDir, "info", "exclude")
-	if err := os.MkdirAll(filepath.Dir(exclude), 0o755); err != nil {
+	if err := os.MkdirAll(filepath.Dir(exclude), 0o755); err != nil { //nolint:gosec // git's own directory, as git makes it
 		return err
 	}
-	f, err := os.OpenFile(exclude, os.O_APPEND|os.O_CREATE|os.O_RDWR, 0o644)
+	f, err := os.OpenFile(exclude, os.O_APPEND|os.O_CREATE|os.O_RDWR, 0o644) //nolint:gosec // git's exclude file, as git makes it
 	if err != nil {
 		return err
 	}

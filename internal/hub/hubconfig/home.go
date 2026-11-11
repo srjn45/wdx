@@ -34,7 +34,7 @@ func MakeHome(home string) error {
 	if err := os.MkdirAll(home, 0o700); err != nil {
 		return err
 	}
-	return os.Chmod(home, 0o700)
+	return os.Chmod(home, 0o700) //nolint:gosec // a directory, private to the hub's user
 }
 
 // BackupsDir is where wdx-hub update keeps a backup of the database before

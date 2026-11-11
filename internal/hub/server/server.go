@@ -641,12 +641,12 @@ func (s *Server) close() {
 // lock locks the file at path, failing with an *AlreadyRunningError when
 // another process holds it, and writes this process's pid into it.
 func lock(path string) (*os.File, error) {
-	f, err := os.OpenFile(path, os.O_RDWR|os.O_CREATE, 0o600)
+	f, err := os.OpenFile(path, os.O_RDWR|os.O_CREATE, 0o600) //nolint:gosec // the lock file in the hub's home
 	if err != nil {
 		return nil, err
 	}
 	if err := syscall.Flock(int(f.Fd()), syscall.LOCK_EX|syscall.LOCK_NB); err != nil {
-		b, _ := os.ReadFile(path)
+		b, _ := os.ReadFile(path) //nolint:gosec // the lock file in the hub's home
 		pid, _ := strconv.Atoi(strings.TrimSpace(string(b)))
 		f.Close()
 		if errors.Is(err, syscall.EWOULDBLOCK) {

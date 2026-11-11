@@ -66,6 +66,7 @@ func (r *Remote) SessionsWith(ctx context.Context, nodeID string) ([]Session, er
 }
 
 func (r *Remote) sessions(ctx context.Context, where string, args ...any) ([]Session, error) {
+	//nolint:gosec // where is the code's own, its values are arguments
 	rows, err := r.opts.DB.QueryContext(ctx, "SELECT "+sessionColumns+" FROM hub_sessions WHERE closed_at IS NULL AND "+where+" ORDER BY opened_at, id", args...)
 	if err != nil {
 		return nil, err
@@ -157,6 +158,7 @@ func (r *Remote) closeWhere(ctx context.Context, reason Reason, where string, ar
 		return nil, err
 	}
 	defer tx.Rollback() // a no-op once committed
+	//nolint:gosec // where is the code's own, its values are arguments
 	rows, err := tx.QueryContext(ctx, "SELECT "+sessionColumns+" FROM hub_sessions WHERE closed_at IS NULL AND "+where+" ORDER BY opened_at, id", args...)
 	if err != nil {
 		return nil, err

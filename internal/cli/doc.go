@@ -305,7 +305,7 @@ func writeCopy(ctx context.Context, path, content string, overwrite bool) error 
 	if !overwrite {
 		flags |= os.O_EXCL
 	}
-	f, err := os.OpenFile(path, flags, 0o644)
+	f, err := os.OpenFile(path, flags, 0o644) //nolint:gosec // a copy of a doc the user asked for, as other files they write
 	if errors.Is(err, fs.ErrExist) {
 		p := api.NewProblem(api.ErrorCodePathExists, path+" already exists")
 		p.Details = &map[string]any{"path": path}

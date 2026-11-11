@@ -39,7 +39,7 @@ func Start(cmd *exec.Cmd, cols, rows int) (*os.File, error) {
 // Setsize sets the size of the terminal f is a side of.
 func Setsize(f *os.File, cols, rows int) error {
 	return control(f, func(fd int) error {
-		return unix.IoctlSetWinsize(fd, unix.TIOCSWINSZ, &unix.Winsize{Col: uint16(cols), Row: uint16(rows)})
+		return unix.IoctlSetWinsize(fd, unix.TIOCSWINSZ, &unix.Winsize{Col: uint16(cols), Row: uint16(rows)}) //nolint:gosec // a terminal's size fits a uint16
 	})
 }
 

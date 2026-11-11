@@ -10,6 +10,7 @@ linters:
     - depguard
     - errorlint
     - forbidigo
+    - gosec
     - misspell
     - nolintlint
     - paralleltest
@@ -350,6 +351,10 @@ linters:
           msg: tests wait on what they need with waittest, never a fixed time
         - pattern: ^time\.Since$
           msg: a test's outcome never depends on how long something took
+    gosec:
+      excludes:
+        # errcheck checks unhandled errors, with its own exclusions.
+        - G104
     nolintlint:
       require-explanation: true
       require-specific: true
@@ -379,6 +384,17 @@ linters:
       # The tests' request helpers read and close the body themselves.
       - path: _test\.go$
         linters: [bodyclose]
+      # gosec is for what reaches users: tests, their helpers and the
+      # developer's scripts write temporary files and run what they built.
+      - path: (_test\.go$|^internal/([a-z]+/)*[a-z]*test/|^scripts/)
+        linters: [gosec]
+      # wdx runs on the user's machine as the user: it opens the files of its
+      # home, the user's checkouts and the paths given to it, and runs the
+      # programs it is for (git, shells, the ACAs, editors) with arguments,
+      # never through a shell. The hub, a server, is held to both.
+      - path-except: ^internal/hub/
+        linters: [gosec]
+        text: ^(G204|G304)
 
 formatters:
   enable:

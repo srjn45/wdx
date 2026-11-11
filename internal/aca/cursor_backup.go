@@ -2,7 +2,7 @@ package aca
 
 import (
 	"context"
-	"crypto/md5"
+	"crypto/md5" //nolint:gosec // Cursor names its chat directories by an md5, not to keep a secret
 	"database/sql"
 	"encoding/hex"
 	"encoding/json"
@@ -201,7 +201,7 @@ func cursorRootMessageIDs(root []byte) ([]string, error) {
 		default:
 			return nil, fmt.Errorf("%w: its root has wire type %d", errCursorStore, wire)
 		}
-		if size > uint64(len(root)-i) {
+		if size > uint64(len(root)-i) { //nolint:gosec // i is at most len(root)
 			return nil, fmt.Errorf("%w: its root ends inside field %d", errCursorStore, field)
 		}
 		value := root[i : i+int(size)]
@@ -231,7 +231,7 @@ func cursorVarint(b []byte) (uint64, int) {
 
 // cursorChatDir is where Cursor keeps the chat id made in dir, in config.
 func cursorChatDir(config, dir, id string) string {
-	sum := md5.Sum([]byte(dir))
+	sum := md5.Sum([]byte(dir)) //nolint:gosec // Cursor names its chat directories by an md5, not to keep a secret
 	return filepath.Join(config, cursorChatsDir, hex.EncodeToString(sum[:]), id)
 }
 

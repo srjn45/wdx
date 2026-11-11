@@ -206,7 +206,7 @@ func writeFrame(w io.Writer, t frameType, payload any) error {
 func writeRaw(w io.Writer, t frameType, body []byte) error {
 	frame := make([]byte, 5+len(body))
 	frame[0] = byte(t)
-	binary.BigEndian.PutUint32(frame[1:5], uint32(len(body)))
+	binary.BigEndian.PutUint32(frame[1:5], uint32(len(body))) //nolint:gosec // a frame's payload is far under 4 GiB
 	copy(frame[5:], body)
 	_, err := w.Write(frame)
 	return err

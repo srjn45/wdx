@@ -62,6 +62,7 @@ func scanMessage(scan func(...any) error) (Message, error) {
 }
 
 func (s *Store) messages(ctx context.Context, where string, args ...any) ([]Message, error) {
+	//nolint:gosec // where is the code's own, its values are arguments
 	rows, err := s.db.QueryContext(ctx, "SELECT "+messageColumns+" FROM messages m JOIN terminals t ON t.id = m.terminal_id WHERE "+where+" ORDER BY m.created_at, m.rowid", args...)
 	if err != nil {
 		return nil, err
