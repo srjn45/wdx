@@ -10,6 +10,154 @@ editUrl: false
 
 Every release of wdx, generated from the commits by git-cliff: do not edit.
 
+## v0.5.0 - 2026-11-11
+
+### Features
+
+- give wdx its mark, wdˣ, and put it on the site
+- site: give tide its mark, a terminal window, on the site
+- tide: render Markdown docs and files, m for their source
+- read how much of its account's limits a Claude Code agent's ACA tells
+- serve usage as GET /v1/usage and wdx usage
+- tide: show the usage of each AI coding agent's account in a stats tab
+- add the hub's API spec and its generated internal/hubapi
+- add the hub's settings table and home in internal/hub/hubconfig
+- add the hub's database in internal/hub/hubdb
+- add the hub's certificate authority in internal/hub/ca
+- serve the hub's API on its three endpoints in internal/hub/server
+- add wdx-hub's commands in cmd/wdx-hub and internal/hub/hubcli
+- build and ship wdx-hub, and run it from deploy/hub
+- add the hub's accounts store, the audit chain and sealing
+- add the hub's admin commands for accounts and the audit chain
+- serve the hub's sign-in pages on the web endpoint
+- store a usage row limited when the ACA says so, whatever its percentage
+- read Antigravity's usage from the quota of its status line
+- read Codex's usage from its session file
+- read Cursor's usage from its dashboard API
+- show the usage of Codex, Antigravity and Cursor accounts
+- make machines nodes of the hub's accounts, on the hub's side
+- add hublink, the node's side of the hub
+- add wdx hub login, logout, status and node, served by the daemon
+- keep the docs nodes push on the hub, sealed at rest
+- queue a synced project's doc changes for the hub in an outbox
+- push synced projects' docs to the hub with wdx project sync
+- relay streams between two nodes of one user through the hub
+- set up the host's authenticator code and keep the node's audit chain
+- open sessions between two nodes of one account with the host's code
+- serve a node's API through a session to another node
+- run a command on another node with --node
+- attach to a terminal or an agent on another node with --node
+- open TIDE on another node with wdx tide --node
+- show in the host's TIDE that a remote session is open
+- wdx-hub update installs and rolls back the installed hub
+- install wdx-hub as a system service with install-hub.sh
+- deploy wdx-hub on Fly.io with make hub-fly-deploy
+- read the draft's text from every ACA's input box
+- submit a typed message once its paste shows, and confirm it went
+- close a removed node's sessions on the account's other nodes
+- close the sessions into this node from TIDE's Sessions dialog
+- complete wdx-hub on Tab, and run help and completion on any settings
+- log in to the central hub when wdx hub login has no --url
+- say which usage buckets an agent's model draws on
+- mark an agent limited while a bucket its model draws on is
+- show in tide that an agent is limited
+
+### Fixes
+
+- label a holder's log lines holder, and log each key once
+- say a message queued when its shell or agent ends is kept, not lost
+- write TIDE in capitals in wdx's own text, as the site does
+- name web.tls_cert before web.tls_key when serve finds both missing
+- site: import Since on the stats page
+- log why the hub link lost control before saying so
+- tell the hub a renewed certificate is saved before using it
+- read the sync status in one transaction and log a push before the outbox changes
+- bind a session's code to the step it arrived in, and log every hub request before it stops
+- reset the hub's failed service before an update starts it
+- show the host's reason when a remote TIDE's session closes
+- list a bucket's usage windows together
+- let the hub's user read the releases in test-hub-install
+- release the update lock while a forked child holds its file
+- let a remote client open a stream beside one in use
+- start a terminal or agent created with --node in the project's checkout
+- close a node's sessions on their hosts when it logs out
+- nest a plan of plans' plans under it in TIDE's Plans section
+- print Cursor's footer from the status line wdx pins
+- read Cursor's tell box at 40 columns, recorded under wdx's status line
+- put the hub's first Fly machine in the region asked for
+- refuse --node naming this machine before asking for a code
+- say what to do for a worktree in a repository with no commit
+- log one debug_id on each line of the host's session streams
+- log where each of the hub's requests came from
+- name a Unix socket path too long before listening on it
+- pass the host's last answer on before a session stream closes
+- hand the hub's control goroutines a copy of the node
+- bound the hub's request bodies and close idle connections
+- bound what a login costs on the hub
+- cut every stream and session when a node or user is cut off
+- keep secret setting values out of the logs and argv
+- have an update as root trust only what root chose
+- keep a node's pinned key when the hub says it is gone
+- have a node's wait after wrong codes keep doubling to an hour
+- give the wait for a session's confirm a deadline of its own
+- record a node's certificate saved after the hub sent another
+- show the wrong codes tried since the last session opened
+- audit a node login's start only once a user answers it
+- count an IPv6 client by its /64 in the hub's rate limits
+- warn when the hub serves plain HTTP and trusts no proxy
+- treat a pushed doc the hub does not find as refused for good
+- make node login ids unguessable and count unknown ones
+- send a browser to log in again without signing it out on a GET
+- name the hub's Fly machine and trust Fly's ingress address
+- deps: upgrade golang.org/x/net to v0.62.0 and filippo.io/edwards25519 to v1.1.1
+- bound every step of reaching another node through the hub
+- notice a dead stream to another node within 30 seconds
+- show reconnecting in a remote TIDE when the project's stream breaks
+- keep a session in use open, whatever passes through it
+- move the client's row of a session as the host moves its own
+- close a session gone idle during a suspend, and retry after an error
+- check a session open already with the host before saying unchanged
+- keep no session on the host that its client does not have
+- refuse a stream whose session closed after it was checked
+- leave sessions opened after the hub was asked for the account's nodes
+- report a logout racing a stream as session_closed, logged_out
+- report a stream to another node cut before it answered as connection_lost
+- close a removed agent's tabs in a remote TIDE
+- read a remote TIDE's failed views again once a session opens
+- mark a remote TIDE's tabs missing as a local TIDE's are
+- give a tab completion with --node 5 seconds to reach the host
+- keep this machine's home out of paths for another node
+- give wdx usage --node, as every command the daemon serves has
+- take the project from a parent named by id with agent create --node
+- try the hub again at least once a minute after it goes away
+- send a node's state once at each control connection
+- welcome a node newer than the hub, and check every node request's API version
+- let the hub move to another address without nodes logging in again
+- refuse a client whose oldest API version is past the host's, before any handler
+- answer a newer client's request the host's spec does not allow with node_version_unsupported
+- give the host's protocol range in a refusal between nodes, and accept a range
+- pass the relayed client's holder version to the holder, which decides
+- exit by the problem's status when its code is unknown
+- fail only the doc a push refuses, and split a batch refused as usage
+- keep each pushed revision's hash, and a doc and a plan apart by name
+- write a node's last seen time when its control connection closes
+- log a stream the host serves under its stream_id
+- refuse an invite's life below a second before it can overflow
+- back up the hub's certificate authority, and refuse a start without it
+- give the hub, the link and remote sessions limits tests lengthen
+- close the hub CLI's connections to the hub when a run ends
+- make unixsocket.MaxPath a constant
+- log what the daemon's HTTP servers report of connections
+- fail a session's use when its close reason cannot be read
+- say what is so in remote's, hublink's and the daemon's messages
+- read wdx-hub's --json in install-hub.sh, never its text
+- name a hub user by --name or --id, with Heading table headers
+- log a connect given up on during its upgrade
+- run gosec, each finding fixed or annotated with its reason
+- run sqlclosecheck and rowserrcheck
+- build with Go 1.26.11 for GO-2026-6859
+- remove an update's old CA backup with its database backup
+
 ## v0.4.0 - 2026-11-07
 
 ### Breaking changes
