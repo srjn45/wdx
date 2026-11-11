@@ -230,6 +230,9 @@ func column(t *testing.T, db *sql.DB, query string) []string {
 		}
 		list = append(list, s)
 	}
+	if err := rows.Err(); err != nil {
+		t.Fatal(err)
+	}
 	return list
 }
 

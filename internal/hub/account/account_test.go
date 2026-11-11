@@ -213,6 +213,9 @@ func (f *fixture) actions(t *testing.T) []string {
 		}
 		list = append(list, a)
 	}
+	if err := rows.Err(); err != nil {
+		t.Fatal(err)
+	}
 	return list
 }
 
@@ -1039,6 +1042,9 @@ func TestRecordLockout(t *testing.T) {
 		}
 		got = append(got, action+" "+id+" "+details)
 	}
+	if err := rows.Err(); err != nil {
+		t.Fatal(err)
+	}
 	if want := ActionLockedOut + " " + u.ID + " {}," + ActionPasswordAttacked + " " + u.ID + " {}"; strings.Join(got, ",") != want {
 		t.Errorf("rows %v, want alice's lockout and attack alone, and nothing typed", got)
 	}
@@ -1400,6 +1406,9 @@ func TestNoSecretLogged(t *testing.T) {
 		}
 		secrets = append(secrets, string(v))
 		secrets = append(secrets, hashForms(v)...)
+	}
+	if err := rows.Err(); err != nil {
+		t.Fatal(err)
 	}
 	log := f.log.String()
 	if !strings.Contains(log, `"msg":"sql exec"`) || !strings.Contains(log, "[secret, ") {

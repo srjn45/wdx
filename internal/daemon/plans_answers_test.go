@@ -71,6 +71,9 @@ func (td *testDaemon) messagesTo(t *testing.T, id string) []string {
 		}
 		list = append(list, text)
 	}
+	if err := rows.Err(); err != nil {
+		t.Fatal(err)
+	}
 	return list
 }
 

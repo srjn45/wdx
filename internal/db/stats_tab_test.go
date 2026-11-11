@@ -56,6 +56,9 @@ func TestStatsTabMigration(t *testing.T) {
 		}
 		kinds = append(kinds, k)
 	}
+	if err := rows.Err(); err != nil {
+		t.Fatal(err)
+	}
 	if !slices.Equal(kinds, []string{"settings", "file", "stats"}) {
 		t.Fatalf("tabs after 0029: %v", kinds)
 	}

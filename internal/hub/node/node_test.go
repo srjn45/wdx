@@ -111,6 +111,9 @@ func (f *fixture) actions(t *testing.T) []string {
 		}
 		list = append(list, a)
 	}
+	if err := rows.Err(); err != nil {
+		t.Fatal(err)
+	}
 	return list
 }
 

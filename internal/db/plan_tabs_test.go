@@ -63,6 +63,9 @@ func TestPlanTabsMigration(t *testing.T) {
 			}
 			list = append(list, k)
 		}
+		if err := rows.Err(); err != nil {
+			t.Fatal(err)
+		}
 		return list
 	}
 	if got := kinds(); !slices.Equal(got, []string{"agent", "doc", "file", "plan"}) {

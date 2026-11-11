@@ -145,6 +145,9 @@ func (hh *hubHome) auditActions() []string {
 		}
 		actions = append(actions, a)
 	}
+	if err := rows.Err(); err != nil {
+		hh.t.Fatal(err)
+	}
 	return actions
 }
 

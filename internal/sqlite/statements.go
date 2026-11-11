@@ -22,7 +22,7 @@ func NewStatements(db *sql.DB) *Statements {
 
 // Query runs query, prepared the first time.
 func (s *Statements) Query(ctx context.Context, query string, args ...any) (*sql.Rows, error) {
-	stmt, err := s.statement(ctx, query)
+	stmt, err := s.statement(ctx, query) //nolint:sqlclosecheck // kept prepared for as long as the database is open
 	if err != nil {
 		return nil, err
 	}
@@ -35,7 +35,7 @@ func (s *Statements) statement(ctx context.Context, query string) (*sql.Stmt, er
 	if stmt, ok := s.prepared[query]; ok {
 		return stmt, nil
 	}
-	stmt, err := s.db.PrepareContext(ctx, query)
+	stmt, err := s.db.PrepareContext(ctx, query) //nolint:sqlclosecheck // kept prepared for as long as the database is open
 	if err != nil {
 		return nil, err
 	}

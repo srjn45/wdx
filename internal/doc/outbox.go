@@ -243,6 +243,20 @@ func (o *Outbox) Next(ctx context.Context, limit int) ([]Outgoing, error) {
 	if err != nil {
 		return nil, err
 	}
+	list, err := waiting(ctx, tx, limit)
+	if err != nil {
+		return nil, err
+	}
+	if err := tx.Commit(); err != nil {
+		return nil, err
+	}
+	logging.FromContext(ctx).Debug("hub outbox read", "changes", len(list), "gone", gone, "merged", merged)
+	return list, nil
+}
+
+// waiting is up to limit of the oldest changes waiting, read in tx, as Next
+// says.
+func waiting(ctx context.Context, tx *sql.Tx, limit int) ([]Outgoing, error) {
 	rows, err := tx.QueryContext(ctx, `
 		SELECT o.seq, o.change, o.doc_id, o.project_id, coalesce(p.origin_key, ''), coalesce(o.revision, 0), r.content,
 			d.id IS NOT NULL, coalesce(d.kind, 'doc'), coalesce(d.name, ''), coalesce(d.folder, ''), coalesce(d.format, ''),
@@ -259,6 +273,7 @@ func (o *Outbox) Next(ctx context.Context, limit int) ([]Outgoing, error) {
 	if err != nil {
 		return nil, err
 	}
+	defer rows.Close()
 	var list []Outgoing
 	for rows.Next() {
 		var c Outgoing
@@ -268,12 +283,10 @@ func (o *Outbox) Next(ctx context.Context, limit int) ([]Outgoing, error) {
 		if err := rows.Scan(&c.Seq, &c.Change, &c.DocID, &c.ProjectID, &c.RepoKey, &c.Revision, &c.Content,
 			&found, &c.Kind, &c.Doc.Name, &c.Doc.Folder, &c.Doc.Format, &labels, &c.Doc.Status, &c.Doc.Revision, &c.Doc.Size,
 			&created, &updated, &project); err != nil {
-			rows.Close()
 			return nil, err
 		}
 		if found {
 			if err := json.Unmarshal([]byte(labels), &c.Doc.Labels); err != nil {
-				rows.Close()
 				return nil, fmt.Errorf("labels of doc %s: %w", c.DocID, err)
 			}
 			c.Doc.ID, c.Doc.ProjectID, c.Doc.ProjectName = c.DocID, c.ProjectID, project
@@ -282,7 +295,6 @@ func (o *Outbox) Next(ctx context.Context, limit int) ([]Outgoing, error) {
 		if c.Content != nil {
 			text, err := unpack(c.Content)
 			if err != nil {
-				rows.Close()
 				return nil, fmt.Errorf("revision %d of doc %s: %w", c.Revision, c.DocID, err)
 			}
 			sum := sha256.Sum256(text)
@@ -290,15 +302,7 @@ func (o *Outbox) Next(ctx context.Context, limit int) ([]Outgoing, error) {
 		}
 		list = append(list, c)
 	}
-	rows.Close()
-	if err := rows.Err(); err != nil {
-		return nil, err
-	}
-	if err := tx.Commit(); err != nil {
-		return nil, err
-	}
-	logging.FromContext(ctx).Debug("hub outbox read", "changes", len(list), "gone", gone, "merged", merged)
-	return list, nil
+	return list, rows.Err()
 }
 
 // Done deletes the changes with seqs, which the hub applied, and marks their

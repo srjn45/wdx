@@ -393,6 +393,9 @@ func (n *node) audited() []string {
 		}
 		actions = append(actions, a)
 	}
+	if err := rows.Err(); err != nil {
+		n.t.Fatal(err)
+	}
 	return actions
 }
 

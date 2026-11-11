@@ -14,7 +14,9 @@ linters:
     - misspell
     - nolintlint
     - paralleltest
+    - rowserrcheck
     - sloglint
+    - sqlclosecheck
   settings:
     depguard:
       rules:

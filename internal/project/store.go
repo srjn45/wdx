@@ -596,28 +596,10 @@ func (s *Store) Remove(ctx context.Context, id string) (Project, error) {
 // dropMissing deletes the project's checkouts that are no longer on disk and
 // returns them.
 func dropMissing(ctx context.Context, tx *sql.Tx, projectID string) ([]Worktree, error) {
-	rows, err := tx.QueryContext(ctx, `
-		SELECT id, path, git_common_dir, created_at FROM project_worktrees
-		WHERE project_id = ? ORDER BY created_at, path`, projectID)
+	all, err := recorded(ctx, tx, projectID)
 	if err != nil {
 		return nil, err
 	}
-	var all []Worktree
-	for rows.Next() {
-		var w Worktree
-		var created int64
-		if err := rows.Scan(&w.ID, &w.Path, &w.GitCommonDir, &created); err != nil {
-			rows.Close()
-			return nil, err
-		}
-		w.CreatedAt = time.UnixMilli(created)
-		all = append(all, w)
-	}
-	rows.Close()
-	if err := rows.Err(); err != nil {
-		return nil, err
-	}
-
 	var dropped []Worktree
 	for _, w := range all {
 		ok, err := isCheckout(ctx, w.Path)
@@ -634,6 +616,28 @@ func dropMissing(ctx context.Context, tx *sql.Tx, projectID string) ([]Worktree,
 		dropped = append(dropped, w)
 	}
 	return dropped, nil
+}
+
+// recorded is the checkouts recorded of the project, read in tx.
+func recorded(ctx context.Context, tx *sql.Tx, projectID string) ([]Worktree, error) {
+	rows, err := tx.QueryContext(ctx, `
+		SELECT id, path, git_common_dir, created_at FROM project_worktrees
+		WHERE project_id = ? ORDER BY created_at, path`, projectID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var all []Worktree
+	for rows.Next() {
+		var w Worktree
+		var created int64
+		if err := rows.Scan(&w.ID, &w.Path, &w.GitCommonDir, &created); err != nil {
+			return nil, err
+		}
+		w.CreatedAt = time.UnixMilli(created)
+		all = append(all, w)
+	}
+	return all, rows.Err()
 }
 
 // queryRower is satisfied by *sql.DB and *sql.Tx.

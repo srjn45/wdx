@@ -66,8 +66,17 @@ func (r *Remote) SessionsWith(ctx context.Context, nodeID string) ([]Session, er
 }
 
 func (r *Remote) sessions(ctx context.Context, where string, args ...any) ([]Session, error) {
-	//nolint:gosec // where is the code's own, its values are arguments
-	rows, err := r.opts.DB.QueryContext(ctx, "SELECT "+sessionColumns+" FROM hub_sessions WHERE closed_at IS NULL AND "+where+" ORDER BY opened_at, id", args...)
+	return r.sessionsIn(ctx, r.opts.DB, where, args...)
+}
+
+// querier is the database or a transaction.
+type querier interface {
+	QueryContext(ctx context.Context, query string, args ...any) (*sql.Rows, error)
+}
+
+// sessionsIn is the sessions open that where matches, read through q.
+func (r *Remote) sessionsIn(ctx context.Context, q querier, where string, args ...any) ([]Session, error) {
+	rows, err := q.QueryContext(ctx, "SELECT "+sessionColumns+" FROM hub_sessions WHERE closed_at IS NULL AND "+where+" ORDER BY opened_at, id", args...)
 	if err != nil {
 		return nil, err
 	}
@@ -158,22 +167,8 @@ func (r *Remote) closeWhere(ctx context.Context, reason Reason, where string, ar
 		return nil, err
 	}
 	defer tx.Rollback() // a no-op once committed
-	//nolint:gosec // where is the code's own, its values are arguments
-	rows, err := tx.QueryContext(ctx, "SELECT "+sessionColumns+" FROM hub_sessions WHERE closed_at IS NULL AND "+where+" ORDER BY opened_at, id", args...)
+	closed, err := r.sessionsIn(ctx, tx, where, args...)
 	if err != nil {
-		return nil, err
-	}
-	var closed []Session
-	for rows.Next() {
-		s, err := r.scanSession(rows.Scan)
-		if err != nil {
-			rows.Close()
-			return nil, err
-		}
-		closed = append(closed, s)
-	}
-	rows.Close()
-	if err := rows.Err(); err != nil {
 		return nil, err
 	}
 	now := r.opts.Clock.Now()
