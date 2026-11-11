@@ -12,13 +12,19 @@ func TestReduce(t *testing.T) {
 # the order matters
 tasks:
   - id: a
+    aca: claude
+    model: opus
     prompt: p
   - id: b
+    aca: claude
+    model: opus
     after: [a]
     prompt: |
       Two lines
       of prompt.
   - id: c
+    aca: claude
+    model: opus
     after: [a, b] # a goes
     prompt: p
 `
@@ -50,7 +56,7 @@ tasks:
 
 func TestReduceNothing(t *testing.T) {
 	t.Parallel()
-	content := "goal:   g\ntasks:\n    - id: a\n      prompt: p\n    - id: b\n      after:\n        - a\n      prompt: p\n"
+	content := "goal:   g\ntasks:\n    - id: a\n      aca: claude\n      model: opus\n      prompt: p\n    - id: b\n      aca: claude\n      model: opus\n      after:\n        - a\n      prompt: p\n"
 	r, problems := Reduce([]byte(content))
 	if problems != nil {
 		t.Fatal(problems)

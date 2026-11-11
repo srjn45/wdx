@@ -395,6 +395,21 @@ func Listen(ctx context.Context, opts Options) (_ *Daemon, err error) {
 		},
 	})
 	d.agents = agent.NewManager(agents, d.terminals, d.backups)
+	d.plans.SetModels(func(ctx context.Context, id string) ([]string, error) {
+		models, err := d.agents.Models(ctx, id)
+		if err != nil {
+			var unavailable *agent.UnavailableError
+			if errors.Is(err, agent.ErrUnknownACA) || errors.As(err, &unavailable) {
+				return nil, &plan.ACAError{Err: err}
+			}
+			return nil, err
+		}
+		ids := make([]string, len(models))
+		for i, m := range models {
+			ids[i] = m.ID
+		}
+		return ids, nil
+	})
 	// It lives until the daemon closes it, and connects in the background.
 	hubOpts := opts.Hub.link()
 	hubOpts.Outbox = hubOutbox{d.outbox}

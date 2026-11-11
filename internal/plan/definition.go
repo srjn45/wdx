@@ -32,10 +32,14 @@ type Definition struct {
 
 // Task is one task of a plan: a prompt for an agent, and the tasks it waits for.
 type Task struct {
-	ID     string
-	After  []string
-	Prompt string
-	Line   int
+	ID        string
+	ACA       string
+	Model     string
+	After     []string
+	Prompt    string
+	Line      int
+	acaLine   int
+	modelLine int
 }
 
 // Child is one plan a plan of plans lists, by name, and the plans it waits for.
@@ -65,15 +69,18 @@ const (
 
 // entry is a task or a child, as the check sees both.
 type entry struct {
-	id     string
-	after  []string
-	prompt string
-	line   int
-	key    *yaml.Node // the entry's id key, for its line
-	value  *yaml.Node // the id itself, which a copy renames
-	item   *yaml.Node // the entry's mapping, which a copy may leave out
-	afters []*yaml.Node
-	seq    *yaml.Node // its after's sequence, which reduction edits
+	id         string
+	aca, model string
+	after      []string
+	prompt     string
+	line       int
+	acaLine    int
+	modelLine  int
+	key        *yaml.Node // the entry's id key, for its line
+	value      *yaml.Node // the id itself, which a copy renames
+	item       *yaml.Node // the entry's mapping, which a copy may leave out
+	afters     []*yaml.Node
+	seq        *yaml.Node // its after's sequence, which reduction edits
 }
 
 // parsed is a plan's YAML read, with the nodes reduction rewrites.
@@ -257,7 +264,7 @@ func (p *parsed) list(n *yaml.Node, what, one string, maxID int, prompted bool) 
 	}
 	known := []string{"id", "after"}
 	if prompted {
-		known = []string{"id", "after", "prompt"}
+		known = []string{"id", "aca", "model", "after", "prompt"}
 	}
 	var entries []*entry
 	ids := map[string]int{}
@@ -267,12 +274,20 @@ func (p *parsed) list(n *yaml.Node, what, one string, maxID int, prompted bool) 
 			continue
 		}
 		e := &entry{line: item.Line, item: item}
-		var prompt *yaml.Node
+		var aca, model, prompt *yaml.Node
 		for _, kv := range p.pairs(item, known...) {
 			switch kv.key.Value {
 			case "id":
 				e.key, e.value = kv.key, kv.value
 				e.id, _ = p.text(kv.value, "the id")
+			case "aca":
+				aca = kv.key
+				e.acaLine = kv.key.Line
+				e.aca, _ = p.text(kv.value, "the aca")
+			case "model":
+				model = kv.key
+				e.modelLine = kv.key.Line
+				e.model, _ = p.text(kv.value, "the model")
 			case "after":
 				e.seq = p.afterList(kv.value)
 			case "prompt":
@@ -299,6 +314,18 @@ func (p *parsed) list(n *yaml.Node, what, one string, maxID int, prompted bool) 
 			ids[strings.ToLower(e.id)] = e.line
 		}
 		if prompted {
+			switch {
+			case aca == nil:
+				p.problem(item.Line, "task %s has no aca", e.id)
+			case strings.TrimSpace(e.aca) == "" && !p.reported(aca.Line):
+				p.problem(aca.Line, "the aca of task %s is blank", e.id)
+			}
+			switch {
+			case model == nil:
+				p.problem(item.Line, "task %s has no model", e.id)
+			case strings.TrimSpace(e.model) == "" && !p.reported(model.Line):
+				p.problem(model.Line, "the model of task %s is blank", e.id)
+			}
 			switch {
 			case prompt == nil:
 				p.problem(item.Line, "task %s has no prompt", e.id)
@@ -384,7 +411,16 @@ func (p *parsed) fill() {
 			after = []string{}
 		}
 		if p.tasks {
-			p.def.Tasks = append(p.def.Tasks, Task{ID: e.id, After: after, Prompt: e.prompt, Line: e.line})
+			p.def.Tasks = append(p.def.Tasks, Task{
+				ID:        e.id,
+				ACA:       strings.TrimSpace(e.aca),
+				Model:     strings.TrimSpace(e.model),
+				After:     after,
+				Prompt:    e.prompt,
+				Line:      e.line,
+				acaLine:   e.acaLine,
+				modelLine: e.modelLine,
+			})
 		} else {
 			p.def.Plans = append(p.def.Plans, Child{ID: e.id, After: after, Line: e.line})
 		}

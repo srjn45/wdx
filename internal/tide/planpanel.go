@@ -98,6 +98,13 @@ func (v *planView) parts(it planItem, now time.Time, st style.Style) panelParts 
 	p.enter = st.Command("Enter") + " " + it.enterVerb(c.Plan)
 
 	if t := it.task; t != nil {
+		if t.Aca != "" && t.Model != "" {
+			p.facts = append(p.facts, t.Aca+" · "+t.Model)
+		} else if t.Aca != "" {
+			p.facts = append(p.facts, t.Aca)
+		} else if t.Model != "" {
+			p.facts = append(p.facts, t.Model)
+		}
 		if t.Agent != nil {
 			p.facts = append(p.facts, t.Agent.Name)
 		}

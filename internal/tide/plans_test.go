@@ -376,7 +376,7 @@ func TestPlanLive(t *testing.T) {
 	h.serve(t)
 	h.newProject(t, "app", api.ProjectStateOpen)
 	ctx, c, app := context.Background(), h.client(), "app"
-	if _, err := c.CreatePlan(ctx, api.CreatePlan{Project: &app, Name: "sso", Content: "goal: One.\ntasks:\n  - id: a\n    prompt: p\n"}); err != nil {
+	if _, err := c.CreatePlan(ctx, api.CreatePlan{Project: &app, Name: "sso", Content: "goal: One.\ntasks:\n  - id: a\n    aca: claude_code\n    model: opus\n    prompt: p\n"}); err != nil {
 		t.Fatal(err)
 	}
 
@@ -390,7 +390,7 @@ func TestPlanLive(t *testing.T) {
 	p.keys("enter")
 	p.until(t, "the plan's tasks", func(m *Model) bool { return strings.Contains(text(m), "1 task, not run yet") })
 
-	if _, err := c.UpdatePlanContent(ctx, "sso", app, "", 1, "goal: Two.\ntasks:\n  - id: a\n    prompt: p\n  - id: b\n    prompt: p\n"); err != nil {
+	if _, err := c.UpdatePlanContent(ctx, "sso", app, "", 1, "goal: Two.\ntasks:\n  - id: a\n    aca: claude_code\n    model: opus\n    prompt: p\n  - id: b\n    aca: claude_code\n    model: opus\n    prompt: p\n"); err != nil {
 		t.Fatal(err)
 	}
 	p.until(t, "revision 2", func(m *Model) bool { return strings.Contains(text(m), "2 tasks, not run yet") })

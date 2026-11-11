@@ -17,8 +17,8 @@ func TestPlanSlotsGuarded(t *testing.T) {
 	ctx := context.Background()
 	td := start(t)
 	td.planProject(t, "a manual\n")
-	td.createPlan(t, "app", "auth", "goal: g\ntasks:\n  - id: a\n    prompt: p\n")
-	if p := td.createPlan(t, "app", "other", "goal: g\ntasks:\n  - id: a\n    prompt: p\n").Plan; p.Slots == nil || len(p.Slots) != 0 {
+	td.createPlan(t, "app", "auth", "goal: g\ntasks:\n  - id: a\n    aca: claude_code\n    model: opus\n    prompt: p\n")
+	if p := td.createPlan(t, "app", "other", "goal: g\ntasks:\n  - id: a\n    aca: claude_code\n    model: opus\n    prompt: p\n").Plan; p.Slots == nil || len(p.Slots) != 0 {
 		t.Errorf("a draft's slots: %+v", p.Slots)
 	}
 	td.runPlan(t, "auth", 0)

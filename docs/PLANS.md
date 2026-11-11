@@ -53,25 +53,33 @@ constraints:
   - Run make check before each commit.
 tasks:
   - id: schema
+    aca: claude_code
+    model: sonnet
     prompt: >-
       Add the sso_identities table ...
   - id: api
+    aca: claude_code
+    model: sonnet
     after: [schema]
     prompt: >-
       ...
   - id: cli
+    aca: claude_code
+    model: sonnet
     after: [schema]
     prompt: ...
   - id: docs
+    aca: claude_code
+    model: sonnet
     after: [api, cli]
     prompt: ...
 ```
 
 - `goal` is required: every task's agent gets it, so that it knows what its part is for. `constraints` is optional, and every agent gets it too.
-- A task has an `id` (a name, as agents' names are), a `prompt`, and `after`, the tasks it waits for. Tasks with no `after` start at once. Nothing is chained by itself, as warden did with tasks that had no edges: a plan says what waits.
-- Refused with `invalid_plan`, every problem listed with its line in `details.problems`: YAML that does not parse, an unknown key, a missing `goal` or `prompt`, a duplicate id, an `after` naming no task or the task itself, a cycle (naming its tasks), no tasks.
+- A task has an `id` (a name, as agents' names are), an `aca` (one of the installed AI coding agents), a `model` (one the ACA offers), a `prompt`, and `after`, the tasks it waits for. Tasks with no `after` start at once. Nothing is chained by itself, as warden did with tasks that had no edges: a plan says what waits.
+- Refused with `invalid_plan`, every problem listed with its line in `details.problems`: YAML that does not parse, an unknown key, a missing `goal` or `prompt`, a missing or blank `aca` or `model`, an unknown `aca` or one not installed, a `model` the ACA does not offer, a duplicate id, an `after` naming no task or the task itself, a cycle (naming its tasks), no tasks.
 - "DAG order", wherever tasks are listed, is a topological order that keeps the file's order among tasks free to go in either, so that it reads as written.
-- Left out from warden: `done_when` (the agents' summaries and the person say when it is done), per-task worktree, ACA, model or role (they come with the agent parameters of docs/CHILD_AGENTS.md, if wanted), `run_if` (a failure waits for the person).
+- Left out from warden: `done_when` (the agents' summaries and the person say when it is done), per-task worktree or role, `run_if` (a failure waits for the person).
 
 ### Kept as a doc
 
@@ -409,17 +417,25 @@ constraints:
   - Every new table gets a migration test.
 tasks:
   - id: schema
+    aca: claude_code
+    model: sonnet
     prompt: |
       Add a sessions table with id, user_id and expires_at.
   - id: store
+    aca: claude_code
+    model: opus
     after: [schema]
     prompt: |
       Write the session store on top of the table.
   - id: api
+    aca: claude_code
+    model: sonnet
     after: [schema]
     prompt: |
       Change the login and logout handlers to use sessions.
   - id: docs
+    aca: claude_code
+    model: haiku
     after: [store, api]
     prompt: |
       Document the session lifetime in docs/AUTH.md.
@@ -437,12 +453,12 @@ plans:
     after: [auth-tokens]
 ```
 
-- `definition.go`: `Parse(content []byte) (Definition, []Problem)`. `Definition` holds `Goal`, `Constraints`, and either `Tasks` (`ID`, `After`, `Prompt`) or `Plans` (`ID`, `After`), in DAG order. A `Problem` is a line and a message.
+- `definition.go`: `Parse(content []byte) (Definition, []Problem)`. `Definition` holds `Goal`, `Constraints`, and either `Tasks` (`ID`, `ACA`, `Model`, `After`, `Prompt`) or `Plans` (`ID`, `After`), in DAG order. A `Problem` is a line and a message.
 - It decodes through yaml.v3's node tree, already a dependency, so that every problem has its line, and reports all it finds rather than the first:
   - not YAML, or not a mapping at the top;
-  - a key other than `goal`, `constraints`, `tasks`, `plans`, in a task other than `id`, `after`, `prompt`, or in a child plan other than `id`, `after`;
+  - a key other than `goal`, `constraints`, `tasks`, `plans`, in a task other than `id`, `aca`, `model`, `after`, `prompt`, or in a child plan other than `id`, `after`;
   - `goal` missing or blank; `constraints` not a list of strings;
-  - both `tasks` and `plans`, or neither, or the one given empty; a task with no `id` or a blank `prompt`;
+  - both `tasks` and `plans`, or neither, or the one given empty; a task with no `id`, a missing or blank `aca` or `model`, or a blank `prompt`;
   - a task `id` that is not `A-Z a-z 0-9 -`, at most 50, as it goes into agents' names, which cannot hold `_`, and branches'; one used twice, whatever its case;
   - an `after` naming no entry, the entry itself, or one twice;
   - a cycle, naming its entries in order (`schema → api → schema`).
@@ -964,45 +980,44 @@ The plan's tab, redesigned: the tab of steps 1 to 6 is the key/value list of the
 Five parts, top to bottom (wide, then narrow):
 
 ```
- sso-login                                                                      ● running   rev 3
- ━━━━━━━━━━━━━━━━━▬▬▬▬▬────────────  3/6 tasks · 1 failed · on plan/sso-login · 23m
- Goal  Let users sign in with the company's SSO, keeping password login.
- ▸ 3 constraints
-┌─ Tasks ────────────────────────────────────────────────────┬─ ui-button ───────────────────────┐
-│ ✓       schema      done          claude-a1  4m            │ ✗ failed: check · 3m              │
-│ ├───╮                                                      │ codex-d4 · terminal t-91          │
-│ ✓   │   oidc-client done          claude-b2  9m ▲ needs    │                                   │
-│ ├─╮ │                                                      │ Needs                             │
-│ │ │ ✓   docs        done          claude-e5  2m            │   ✓ oidc-client                   │
-│ ● │     callback    running       claude-c3  6m            │ Unblocks                          │
-│▌│ ✗     ui-button   failed: check codex-d4   3m            │   ○ e2e, also after callback      │
-│ ├─╯                                                        │                                   │
-│ ○       e2e         waiting       —          —  ▼ unblocks │ Prompt                            │
-│                                                            │   Add a "Sign in with SSO"        │
-│                                                            │   button to the login page,       │
-│                                                            │   next to the password …+2        │
-│                                                            │                                   │
-│                                                            │ Enter answer it                   │
-└────────────────────────────────────────────────────────────┴───────────────────────────────────┘
+ sso-login                                                                                       ● running   rev 3
+ ━━━━━━━━━━━━━━━━━━━━▬▬▬▬▬▬──────────────  3/6 tasks · 1 failed · on plan/sso-login · 23m
+ ▸ goal and 3 constraints
+┌─ Tasks ─────────────────────────────────────────────────────────────────┬─ ui-button ───────────────────────────┐
+│ ✓       schema      done          claude sonnet claude-a1 4m            │ ✗ failed: check · 3m                  │
+│ ├─╮                                                                     │ codex · gpt-5 · codex-d4 · terminal   │
+│ ✓ │     oidc-client done          claude sonnet claude-b2 9m    ▲ needs │ t-91                                  │
+│ ├─┼─╮                                                                   │                                       │
+│ │ ✓ │   docs        done          claude haiku  claude-e5 2m            │ Needs                                 │
+│ ●   │   callback    running       claude sonnet claude-c3 6m            │   ✓ oidc-client                       │
+│▌│   ✗   ui-button   failed: check codex  gpt-5  codex-d4  3m  needs you │ Unblocks                              │
+│ ├───╯                                                                   │   ○ e2e, also after callback          │
+│ ○       e2e         waiting       claude sonnet —         —  ▼ unblocks │                                       │
+│                                                                         │ Prompt                                │
+│                                                                         │   Add a "Sign in with SSO"            │
+│                                                                         │   button to the login page,           │
+│                                                                         │   next to the password …+2            │
+│                                                                         │                                       │
+│                                                                         │ Enter answer it                       │
+└─────────────────────────────────────────────────────────────────────────┴───────────────────────────────────────┘
  p pause  c cancel  y copy   ↑↓ select  Enter answer it  → constraints
 ```
 
 ```
  sso-login                                            ● running   rev 3
- ━━━━━━━━━━━━━━━▬▬▬▬▬──────────  3/6 · 1 failed · 23m
+ ━━━━━━━━━━━▬▬▬────────  3/6 tasks · 1 failed · on plan/sso-login · 23m
  ▸ goal and 3 constraints
 ┌─ Tasks ──────────────────────────────────────────────────────────────┐
-│ ✓       schema      done          4m                                 │
-│ ├───╮                                                                │
-│ ✓   │   oidc-client done          9m                      ▲ needs    │
-│ ├─╮ │                                                                │
-│ │ │ ✓   docs        done          2m                                 │
-│ ● │     callback    running       6m                                 │
-│▌│ ✗     ui-button   failed: check 3m                                 │
-│ ├─╯                                                                  │
-│ ○       e2e         waiting       —                       ▼ unblocks │
+│ ✓       schema      done          claude sonnet 4m                   │
+│ ├─╮                                                                  │
+│ ✓ │     oidc-client done          claude sonnet 9m           ▲ needs │
+│ ├─┼─╮                                                                │
+│ │ ✓ │   docs        done          claude haiku  2m                   │
+│ ●   │   callback    running       claude sonnet 6m                   │
+│▌│   ✗   ui-button   failed: check codex  gpt-5  3m         needs you │
+│ ▾ 1 more                                                             │
 ├─ ui-button ──────────────────────────────────────────────────────────┤
-│ ✗ failed: check · codex-d4 · 3m · terminal t-91                      │
+│ ✗ failed: check · 3m · codex · gpt-5 · codex-d4 · terminal t-91      │
 │ Needs ✓ oidc-client · Unblocks ○ e2e (also after callback)           │
 │ Add a "Sign in with SSO" button to the login page, next …+2          │
 │ Enter answer it                                                      │
@@ -1014,8 +1029,8 @@ Five parts, top to bottom (wide, then narrow):
   - the plan's name, its state as a badge, and its revision. The badges: `○ draft` Muted, `● running` Success, `⏸ paused` Warning (`⏸ paused (project closed)`), `✓ done` Success, `✗ cancelled` Failure; `archived` after the state, Muted.
   - a progress bar of its tasks, done in Success, failed (failed or land failed) in Failure, the rest Muted; then `3/6 tasks · 1 failed`, the run's branch, and how long it has run, from the run's `started_at` to its `finished_at` or now. A draft has no bar, but `6 tasks, not run yet`.
 - **About**: the goal, wrapped, and the constraints folded to `▸ 3 constraints`, unfolded as a list with `→` and folded with `←`; the fold is kept per tab, in tide's memory, as a plan of plans' fold is. Where the pane is short, the goal folds with them (`▸ goal and 3 constraints`).
-- **The list** of tasks, in the definition's DAG order, with the rail (below) at its left. A task's row: its state glyph on the rail, its id, its state in words (`failed: check`, `land failed: rebase`, `waiting`, `ready`), its agent, and its time, `finished_at` less `started_at`, or since `started_at` for one running, in minutes (`6m`, `1h 4m`). A task that needs the person, failed or land failed in a plan going on, says `needs you` in Warning, as the Plans section does. The list scrolls under the header; rows out of sight say `▾ 8 more`.
-- **The detail panel**: the task under the cursor. Its glyph, state and the failure's reason, its agent, time, slot, the check's terminal and the files that conflict, those that apply; `Needs` and `Unblocks`, the tasks before and after it with their glyphs, an unblocked task with what else it waits for; the prompt, as many lines as fit and `…+N`; a done task's summary under it; and what `Enter` does. At the right on a wide pane, in what the list's widest row leaves and never under 35 columns, or 4 lines under the list on a narrow one.
+- **The list** of tasks, in the definition's DAG order, with the rail (below) at its left. A task's row: its state glyph on the rail, its id, its state in words (`failed: check`, `land failed: rebase`, `waiting`, `ready`), its aca and model, its agent once run, and its time, `finished_at` less `started_at`, or since `started_at` for one running, in minutes (`6m`, `1h 4m`). A draft shows id, state, aca and model, with no agent or time columns. A task that needs the person, failed or land failed in a plan going on, says `needs you` in Warning, as the Plans section does. The list scrolls under the header; rows out of sight say `▾ 8 more`.
+- **The detail panel**: the task under the cursor. Its glyph, state and the failure's reason, its time, its aca and model, its agent, slot, the check's terminal and the files that conflict, those that apply; `Needs` and `Unblocks`, the tasks before and after it with their glyphs, an unblocked task with what else it waits for; the prompt, as many lines as fit and `…+N`; a done task's summary under it; and what `Enter` does. At the right on a wide pane, in what the list's widest row leaves and never under 35 columns, or 4 lines under the list on a narrow one.
 - **The keys**: only those the plan's state takes, so that `r` is seen: a draft `r run  y copy`; running `p pause  c cancel  y copy`; paused `p resume  c cancel`, or `c cancel` while its project is closed; done or cancelled `a archive  y copy`; archived `a unarchive  y copy`. A child plan's draft says `runs with <parent>`. Then `↑↓ select`, and what `Enter` does on the task under the cursor.
 
 The glyphs, each in the style of its state, so that with color off the tab reads the same: `✓` done, `●` running, `◐` landing, `✗` failed, `⚠` land failed, `○` pending (Normal when ready, Muted while waiting), `⊘` skipped.
@@ -1023,7 +1038,7 @@ The glyphs, each in the style of its state, so that with color off the tab reads
 - As built (step 2), chosen by the human on 2026-11-05: a plan of plans, and a plan not read yet, keep the key/value tab until step 3; `Enter` on a task neither running, landing nor waiting for the person does nothing until step 3 shows the whole prompt; `needs you` is at the row's end, where the marks are, a mark winning on the same row.
 - As built (step 2): the goal folds with the constraints in a pane under 20 lines. The progress bar takes what its line leaves, 10 to 40 cells, and the counts drop `tasks` and the branch before the bar goes. A draft's rows have no agent or time columns, as it has neither. The keys line says `→ constraints`, and `← constraints` once unfolded; `→ goal` where only the goal folds, the plan having no constraints. The tasks out of sight above say so too (`▴ 2 more`). The accent style of the selection's edges and marks is the cursor's, Focused; the reverse video is a new style, Selected, kept with color off as Section is. The minute timer also runs while a task lands, as its time counts too.
 
-- As built (step 3): the panel at the right says the state, its reason and time on its first line, then the agent, the slot (`slot <worktree>`), the check's terminal and the conflicts (`conflicts a.go, b.go`); `Needs` and `Unblocks` after a blank line; then each text, the prompt, a done task's summary or a plan's goal, under a blank line and its title, the texts sharing the lines left, the first first, each cut at a word with `…+N`, the lines left out; then why a plan waits and what `Enter` does, last. Under the list each is a line, the prompt without its title, the summary as `Summary: …`, and why a plan waits wins over its goal. `Enter` on the others says `read it`: the whole prompt and summary fill the tab under the task's id and state, scrolled with `↑` `↓`, `PgUp` `PgDn` and the wheel, `Esc` back; a revision without the task goes back to the list, and `r` `p` `c` `a` `y` still act. The panel is in its own file, `internal/tide/planpanel.go`.
+- As built (step 3): the panel at the right says the state, its reason and time on its first line, then the aca and model, the agent, the slot (`slot <worktree>`), the check's terminal and the conflicts (`conflicts a.go, b.go`); `Needs` and `Unblocks` after a blank line; then each text, the prompt, a done task's summary or a plan's goal, under a blank line and its title, the texts sharing the lines left, the first first, each cut at a word with `…+N`, the lines left out; then why a plan waits and what `Enter` does, last. Under the list each is a line, the prompt without its title, the summary as `Summary: …`, and why a plan waits wins over its goal. `Enter` on the others says `read it`: the whole prompt and summary fill the tab under the task's id and state, scrolled with `↑` `↓`, `PgUp` `PgDn` and the wheel, `Esc` back; a revision without the task goes back to the list, and `r` `p` `c` `a` `y` still act. The panel is in its own file, `internal/tide/planpanel.go`.
 - As built (step 3), a plan of plans: its plans' glyphs are their badges' (`○` `●` `⏸` `✓` `✗`), a draft's `○` Muted while plans before it are not done; their states in words `waiting for you`, `waiting` (plans before it not done), `ready`, or the plan's state; `2/4` once it runs, `3 tasks` before. There is no agent column, and the header has no branch, as a plan of plans has none, nor a failed count. The parent's content does not carry its plans' goals, so tide reads the plan under the cursor as its tab does, once a revision, saying `loading…` until then. Why a plan waits: `r starts it, once a and b are in the default branch`, naming what it is after, all done when it waits for the person, or `r starts it` with nothing before it; a draft whose plans before it are not done, in a run going on, `it starts once a is done`. The key/value tab is left only for a plan not read yet or that could not be read.
 
 ### The rail
@@ -1041,7 +1056,7 @@ The DAG, drawn as `git log --graph` draws commits, one row per task in DAG order
 ### Widths
 
 - The detail panel is at the right at 90 columns and wider, under the list below.
-- The list drops its columns from the right as the pane narrows: the agent, then the time, then the failure's reason; the rail, the id, the state and the marks stay. The panel still says all of it.
+- The list drops its columns from the right as the pane narrows: the agent, then the time, then the model, then the aca, then the failure's reason; the rail, the id, the state and the marks stay. The panel still says all of it.
 - Changed by the human on 2026-11-06: the panel at the right takes the room the list does not need, in place of a fixed 35 columns that left a wide pane's list half empty and cut the prompt short. On a pane of 90 columns and wider the list is as wide as its widest row with every column, the rail, the id, the state, the agent, the time and the marks (`no tasks` or `no plans` when it has none), and the panel takes all the rest, never less than 35 columns inside. When the list's widest row leaves the panel less than that, the panel keeps its 35 and the list narrows as it did, dropping its columns from the right. The narrow layout, the panel under the list, is unchanged. A plan of plans' tab is drawn the same, its plans the rows.
 
 ### Keys and mouse

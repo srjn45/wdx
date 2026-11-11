@@ -575,7 +575,7 @@ func taskView(t plan.Task, states map[string]plan.TaskRun, slots map[int]string,
 	if !ok {
 		r = plan.TaskRun{ID: t.ID, State: plan.TaskPending}
 	}
-	v := api.PlanTask{Id: t.ID, After: t.After, Prompt: t.Prompt, State: api.PlanTaskState(r.State), WaitingFor: []string{},
+	v := api.PlanTask{Id: t.ID, Aca: t.ACA, Model: t.Model, After: t.After, Prompt: t.Prompt, State: api.PlanTaskState(r.State), WaitingFor: []string{},
 		StartedAt: optionalTime(r.StartedAt), FinishedAt: optionalTime(r.FinishedAt)}
 	if r.Conflicts != nil {
 		v.Conflicts = &r.Conflicts

@@ -29,7 +29,7 @@ func TestPlanRunAnswered(t *testing.T) {
 	t.Parallel()
 	home := newHome(t)
 	repo := planRepo(t, home, "a manual\nb manual\n")
-	newPlan(t, home, repo, "sso", "goal: g\ntasks:\n  - id: a\n    prompt: p\n  - id: b\n    prompt: p\n")
+	newPlan(t, home, repo, "sso", "goal: g\ntasks:\n  - id: a\n    aca: claude_code\n    model: opus\n    prompt: p\n  - id: b\n    aca: claude_code\n    model: opus\n    prompt: p\n")
 	run := func(args ...string) (jsonOutput, int) {
 		t.Helper()
 		return wdxJSONWith(t, home, in(repo), append([]string{"plan"}, args...)...)
@@ -123,7 +123,7 @@ func TestPlanCancelAsks(t *testing.T) {
 	t.Parallel()
 	home := newHome(t)
 	repo := planRepo(t, home, "a manual\n")
-	newPlan(t, home, repo, "sso", "goal: g\ntasks:\n  - id: a\n    prompt: p\n")
+	newPlan(t, home, repo, "sso", "goal: g\ntasks:\n  - id: a\n    aca: claude_code\n    model: opus\n    prompt: p\n")
 	if _, exit := wdxJSONWith(t, home, in(repo), "plan", "run", "--name", "sso"); exit != clikit.ExitOK {
 		t.Fatal("not started")
 	}
@@ -211,7 +211,7 @@ func TestPlanTaskAnswered(t *testing.T) {
 	t.Parallel()
 	home := newHome(t)
 	repo := planRepo(t, home, "a manual\nb manual\n")
-	newPlan(t, home, repo, "sso", "goal: g\ntasks:\n  - id: a\n    prompt: p\n  - id: b\n    after: [a]\n    prompt: p\n")
+	newPlan(t, home, repo, "sso", "goal: g\ntasks:\n  - id: a\n    aca: claude_code\n    model: opus\n    prompt: p\n  - id: b\n    aca: claude_code\n    model: opus\n    after: [a]\n    prompt: p\n")
 	task := func(verb string, args ...string) (jsonOutput, int) {
 		t.Helper()
 		return wdxJSONWith(t, home, in(repo), append([]string{"plan", "task", verb, "--plan", "sso"}, args...)...)
@@ -293,7 +293,7 @@ func TestPlanAnswersText(t *testing.T) {
 	t.Parallel()
 	home := newHome(t)
 	repo := planRepo(t, home, "a manual\n")
-	newPlan(t, home, repo, "sso", "goal: g\ntasks:\n  - id: a\n    prompt: p\n  - id: b\n    after: [a]\n    prompt: p\n")
+	newPlan(t, home, repo, "sso", "goal: g\ntasks:\n  - id: a\n    aca: claude_code\n    model: opus\n    prompt: p\n  - id: b\n    aca: claude_code\n    model: opus\n    after: [a]\n    prompt: p\n")
 	if _, exit := wdxJSONWith(t, home, in(repo), "plan", "run", "--name", "sso"); exit != clikit.ExitOK {
 		t.Fatal("not started")
 	}

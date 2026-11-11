@@ -14,8 +14,8 @@ import (
 	"github.com/srjn45/wdx/internal/telemetry"
 )
 
-const ssoPlan = "goal: g\ntasks:\n  - id: s\n    prompt: p\n"
-const uiPlan = "goal: g\ntasks:\n  - id: u\n    prompt: p\n"
+const ssoPlan = "goal: g\ntasks:\n  - id: s\n    aca: claude_code\n    model: opus\n    prompt: p\n"
+const uiPlan = "goal: g\ntasks:\n  - id: u\n    aca: claude_code\n    model: opus\n    prompt: p\n"
 const bigPlan = "goal: g\nplans:\n  - id: sso\n  - id: ui\n    after: [sso]\n"
 
 // children says what each plan a plan of plans lists is in, as "sso:done ui:draft",

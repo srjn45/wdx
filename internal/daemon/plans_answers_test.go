@@ -116,7 +116,7 @@ func TestPlanCheckFailsThenLands(t *testing.T) {
 	td := start(t)
 	repo := td.planProject(t, "")
 	td.setCheck(t, gitDir+`; test -e "$g/pass"`)
-	td.createPlan(t, "app", "auth", "goal: g\ntasks:\n  - id: a\n    prompt: p\n")
+	td.createPlan(t, "app", "auth", "goal: g\ntasks:\n  - id: a\n    aca: claude_code\n    model: opus\n    prompt: p\n")
 	td.runPlan(t, "auth", 0)
 	c := td.waitPlan(t, "auth", "a running", stateIs("a:running"))
 	agent := taskIn(c, "a").Agent.Id
@@ -180,7 +180,7 @@ func TestPlanBranchMovedDuringTheCheck(t *testing.T) {
 	td := start(t)
 	repo := td.planProject(t, "")
 	td.setCheck(t, gitDir+`; echo >> "$g/checks"; touch "$g/checking"; while [ ! -e "$g/go" ]; do sleep 0.05; done`)
-	td.createPlan(t, "app", "auth", "goal: g\ntasks:\n  - id: a\n    prompt: p\n")
+	td.createPlan(t, "app", "auth", "goal: g\ntasks:\n  - id: a\n    aca: claude_code\n    model: opus\n    prompt: p\n")
 	td.runPlan(t, "auth", 0)
 	td.waitPlan(t, "auth", "a running", stateIs("a:running"))
 	td.finishTask(t, repo, "auth", "a")
@@ -212,7 +212,7 @@ func TestPlanConflictLandedByThePerson(t *testing.T) {
 	t.Parallel()
 	td := start(t)
 	repo := td.planProject(t, "a shared\nb shared\n")
-	td.createPlan(t, "app", "auth", "goal: g\ntasks:\n  - id: a\n    prompt: p\n  - id: b\n    prompt: p\n")
+	td.createPlan(t, "app", "auth", "goal: g\ntasks:\n  - id: a\n    aca: claude_code\n    model: opus\n    prompt: p\n  - id: b\n    aca: claude_code\n    model: opus\n    prompt: p\n")
 	td.runPlan(t, "auth", 2)
 	td.waitPlan(t, "auth", "both running", stateIs("a:running b:running"))
 	td.finishTask(t, repo, "auth", "a")
@@ -247,7 +247,7 @@ func TestPlanTaskRetried(t *testing.T) {
 	t.Parallel()
 	td := start(t)
 	repo := td.planProject(t, "a exit\n")
-	td.createPlan(t, "app", "auth", "goal: g\ntasks:\n  - id: a\n    prompt: p\n")
+	td.createPlan(t, "app", "auth", "goal: g\ntasks:\n  - id: a\n    aca: claude_code\n    model: opus\n    prompt: p\n")
 	td.runPlan(t, "auth", 0)
 	c := td.waitPlan(t, "auth", "a running", stateIs("a:running"))
 	first := *taskIn(c, "a").Agent
@@ -295,7 +295,7 @@ func TestPlanSkippedTaskFreesItsSlot(t *testing.T) {
 	t.Parallel()
 	td := start(t)
 	repo := td.planProject(t, "a exit\n")
-	td.createPlan(t, "app", "auth", "goal: g\ntasks:\n  - id: a\n    prompt: p\n  - id: b\n    after: [a]\n    prompt: p\n")
+	td.createPlan(t, "app", "auth", "goal: g\ntasks:\n  - id: a\n    aca: claude_code\n    model: opus\n    prompt: p\n  - id: b\n    aca: claude_code\n    model: opus\n    after: [a]\n    prompt: p\n")
 	td.runPlan(t, "auth", 0)
 	c := td.waitPlan(t, "auth", "a running", stateIs("a:running b:pending"))
 	slot := *taskIn(c, "a").SlotPath
@@ -317,7 +317,7 @@ func TestPlanSkippedTaskKeepsItsWork(t *testing.T) {
 	t.Parallel()
 	td := start(t)
 	repo := td.planProject(t, "a exit\n")
-	td.createPlan(t, "app", "auth", "goal: g\ntasks:\n  - id: a\n    prompt: p\n  - id: b\n    after: [a]\n    prompt: p\n")
+	td.createPlan(t, "app", "auth", "goal: g\ntasks:\n  - id: a\n    aca: claude_code\n    model: opus\n    prompt: p\n  - id: b\n    aca: claude_code\n    model: opus\n    after: [a]\n    prompt: p\n")
 	td.runPlan(t, "auth", 0)
 	c := td.waitPlan(t, "auth", "a running", stateIs("a:running b:pending"))
 	slot := *taskIn(c, "a").SlotPath
@@ -341,7 +341,7 @@ func TestPlanCancelled(t *testing.T) {
 	t.Parallel()
 	td := start(t)
 	repo := td.planProject(t, "b exit\n")
-	td.createPlan(t, "app", "auth", "goal: g\ntasks:\n  - id: a\n    prompt: p\n  - id: b\n    prompt: p\n")
+	td.createPlan(t, "app", "auth", "goal: g\ntasks:\n  - id: a\n    aca: claude_code\n    model: opus\n    prompt: p\n  - id: b\n    aca: claude_code\n    model: opus\n    prompt: p\n")
 	td.runPlan(t, "auth", 2)
 	c := td.waitPlan(t, "auth", "both running", stateIs("a:running b:running"))
 	a, b := taskIn(c, "a"), taskIn(c, "b")
@@ -372,7 +372,7 @@ func TestPlanSkippedTaskRemovesItsAgent(t *testing.T) {
 	ctx := context.Background()
 	td := start(t)
 	repo := td.planProject(t, "a exit\nb exit\n")
-	td.createPlan(t, "app", "auth", "goal: g\ntasks:\n  - id: a\n    prompt: p\n  - id: b\n    prompt: p\n")
+	td.createPlan(t, "app", "auth", "goal: g\ntasks:\n  - id: a\n    aca: claude_code\n    model: opus\n    prompt: p\n  - id: b\n    aca: claude_code\n    model: opus\n    prompt: p\n")
 	td.runPlan(t, "auth", 2)
 	c := td.waitPlan(t, "auth", "both running", stateIs("a:running b:running"))
 	a := taskIn(c, "a").Agent
@@ -396,7 +396,7 @@ func TestPlanAgentNotRemoved(t *testing.T) {
 	ctx := context.Background()
 	td := start(t)
 	repo := td.planProject(t, "a exit\n")
-	td.createPlan(t, "app", "auth", "goal: g\ntasks:\n  - id: a\n    prompt: p\n")
+	td.createPlan(t, "app", "auth", "goal: g\ntasks:\n  - id: a\n    aca: claude_code\n    model: opus\n    prompt: p\n")
 	td.runPlan(t, "auth", 0)
 	c := td.waitPlan(t, "auth", "a running", stateIs("a:running"))
 	a := taskIn(c, "a").Agent
@@ -426,7 +426,7 @@ func TestPlanCancelledDuringACheck(t *testing.T) {
 	td := start(t)
 	repo := td.planProject(t, "")
 	td.setCheck(t, gitDir+`; touch "$g/checking"; while :; do sleep 0.05; done`)
-	td.createPlan(t, "app", "auth", "goal: g\ntasks:\n  - id: a\n    prompt: p\n")
+	td.createPlan(t, "app", "auth", "goal: g\ntasks:\n  - id: a\n    aca: claude_code\n    model: opus\n    prompt: p\n")
 	td.runPlan(t, "auth", 0)
 	c := td.waitPlan(t, "auth", "a running", stateIs("a:running"))
 	slot := *taskIn(c, "a").SlotPath
@@ -451,7 +451,7 @@ func TestPlanCheckLeftRunningIsStopped(t *testing.T) {
 	td := start(t)
 	repo := td.planProject(t, "")
 	td.setCheck(t, "true")
-	td.createPlan(t, "app", "auth", "goal: g\ntasks:\n  - id: a\n    prompt: p\n")
+	td.createPlan(t, "app", "auth", "goal: g\ntasks:\n  - id: a\n    aca: claude_code\n    model: opus\n    prompt: p\n")
 	td.runPlan(t, "auth", 0)
 	c := td.waitPlan(t, "auth", "a running", stateIs("a:running"))
 	slot := *taskIn(c, "a").SlotPath
@@ -474,7 +474,7 @@ func TestPlanRunAnswers(t *testing.T) {
 	ctx := context.Background()
 	td := start(t)
 	td.planProject(t, "a exit\n")
-	td.createPlan(t, "app", "auth", "goal: g\ntasks:\n  - id: a\n    prompt: p\n  - id: b\n    after: [a]\n    prompt: p\n")
+	td.createPlan(t, "app", "auth", "goal: g\ntasks:\n  - id: a\n    aca: claude_code\n    model: opus\n    prompt: p\n  - id: b\n    aca: claude_code\n    model: opus\n    after: [a]\n    prompt: p\n")
 	params := &api.PausePlanParams{Project: optional("app")}
 	pause := func() (*api.PlanResult, *api.Problem) {
 		r, err := td.client.PausePlanWithResponse(ctx, "auth", params)
@@ -602,7 +602,7 @@ func TestPlanFailedTaskDoneByThePerson(t *testing.T) {
 	t.Parallel()
 	td := start(t)
 	repo := td.planProject(t, "a exit\n")
-	td.createPlan(t, "app", "auth", "goal: g\ntasks:\n  - id: a\n    prompt: p\n  - id: b\n    after: [a]\n    prompt: p\n")
+	td.createPlan(t, "app", "auth", "goal: g\ntasks:\n  - id: a\n    aca: claude_code\n    model: opus\n    prompt: p\n  - id: b\n    aca: claude_code\n    model: opus\n    after: [a]\n    prompt: p\n")
 	td.runPlan(t, "auth", 0)
 	td.waitPlan(t, "auth", "a running", stateIs("a:running b:pending"))
 	touch(t, filepath.Join(repo, ".git", "end-a"))
@@ -624,7 +624,7 @@ func TestPlanMoreRoomStartsTasks(t *testing.T) {
 	ctx := context.Background()
 	td := start(t)
 	td.planProject(t, "a exit\nb exit\nc exit\n")
-	td.createPlan(t, "app", "auth", "goal: g\ntasks:\n  - id: a\n    prompt: p\n  - id: b\n    prompt: p\n  - id: c\n    prompt: p\n")
+	td.createPlan(t, "app", "auth", "goal: g\ntasks:\n  - id: a\n    aca: claude_code\n    model: opus\n    prompt: p\n  - id: b\n    aca: claude_code\n    model: opus\n    prompt: p\n  - id: c\n    aca: claude_code\n    model: opus\n    prompt: p\n")
 	td.runPlan(t, "auth", 1)
 	td.waitPlan(t, "auth", "a running", stateIs("a:running b:pending c:pending"))
 	set := func(n int) {

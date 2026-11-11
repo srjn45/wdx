@@ -7,6 +7,10 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/srjn45/wdx/internal/git"
+	"github.com/srjn45/wdx/internal/gittest"
+	"github.com/srjn45/wdx/internal/sqlite"
 )
 
 func (f fixture) agent(t *testing.T, id string) {
@@ -42,7 +46,7 @@ func TestStart(t *testing.T) {
 	t.Parallel()
 	ctx := context.Background()
 	f := newFixture(t)
-	p := f.create(t, "auth", "goal: g\ntasks:\n  - id: b\n    after: [a]\n    prompt: p\n  - id: a\n    prompt: p\n")
+	p := f.create(t, "auth", "goal: g\ntasks:\n  - id: b\n    aca: claude\n    model: opus\n    after: [a]\n    prompt: p\n  - id: a\n    aca: claude\n    model: opus\n    prompt: p\n")
 	if _, ok, err := f.store.Run(ctx, p.ID); ok || err != nil {
 		t.Errorf("a draft's run: %v, %v", ok, err)
 	}
@@ -379,7 +383,7 @@ func TestARunChangeMovesThePlanOn(t *testing.T) {
 
 func TestFirstMessage(t *testing.T) {
 	t.Parallel()
-	def, problems := Parse([]byte("goal: Users log in.\nconstraints:\n  - Run make check.\n  - No new deps.\ntasks:\n  - id: a\n    prompt: Add it.\n  - id: b\n    prompt: Show it.\n  - id: c\n    after: [a, b]\n    prompt: |-\n      Document it.\n      Both of it.\n"))
+	def, problems := Parse([]byte("goal: Users log in.\nconstraints:\n  - Run make check.\n  - No new deps.\ntasks:\n  - id: a\n    aca: claude\n    model: opus\n    prompt: Add it.\n  - id: b\n    aca: claude\n    model: opus\n    prompt: Show it.\n  - id: c\n    aca: claude\n    model: opus\n    after: [a, b]\n    prompt: |-\n      Document it.\n      Both of it.\n"))
 	if problems != nil {
 		t.Fatal(problems)
 	}
@@ -393,8 +397,44 @@ func TestFirstMessage(t *testing.T) {
 	if got := firstMessage(run, "auth", "c"); got != want {
 		t.Errorf("got\n%s\nwant\n%s", got, want)
 	}
-	if got := firstMessage(Run{Definition: Definition{Goal: "g", Tasks: []Task{{ID: "a", Prompt: "p"}}}}, "x", "a"); strings.Contains(got, "Constraints") || strings.Contains(got, "Done before you") {
+	if got := firstMessage(Run{Definition: Definition{Goal: "g", Tasks: []Task{{ID: "a", ACA: "claude", Model: "opus", Prompt: "p"}}}}, "x", "a"); strings.Contains(got, "Constraints") || strings.Contains(got, "Done before you") {
 		t.Errorf("a first task with no constraints: %s", got)
+	}
+}
+
+func TestStartInPassesACAAndModel(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	f := newFixture(t)
+	repo := gittest.Repo(t, "app")
+	gittest.Git(t, repo, "branch", "-M", "main")
+	gittest.Git(t, repo, "branch", "plan/auth")
+	p := f.create(t, "auth", "goal: g\ntasks:\n  - id: a\n    aca: codex\n    model: gpt-5\n    prompt: p\n")
+	run, err := f.store.Start(ctx, p.ID, "main", "plan/auth", 1, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	f.agent(t, "agent-a")
+	var gotACA, gotModel string
+	r := &Runner{
+		store: f.store,
+		opts: RunnerOptions{
+			AddWorktree: func(ctx context.Context, _, path, branch string) error {
+				return git.AddWorktreeOn(ctx, repo, path, branch)
+			},
+			CheckCommand: func(context.Context, string) (string, error) { return "", nil },
+			CreateAgent: func(ctx context.Context, _, _, _, aca, model, _ string, linked func(ctx context.Context, tx sqlite.Execer, agentID string) error) (string, error) {
+				gotACA, gotModel = aca, model
+				return "agent-a", linked(ctx, f.db, "agent-a")
+			},
+		},
+	}
+	project := ProjectInfo{Clone: repo, WorktreesDir: t.TempDir(), Open: true}
+	if err := r.start(ctx, run, project, "a", 0); err != nil {
+		t.Fatal(err)
+	}
+	if gotACA != "codex" || gotModel != "gpt-5" {
+		t.Errorf("got aca %q, model %q; want codex, gpt-5", gotACA, gotModel)
 	}
 }
 

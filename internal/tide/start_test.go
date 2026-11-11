@@ -158,7 +158,7 @@ func TestRunPlan(t *testing.T) {
 		t.Fatal(err)
 	}
 	gittest.Git(t, got.Project.Worktrees[0].Path, "commit", "-q", "--allow-empty", "-m", "init")
-	created, err := c.CreatePlan(ctx, api.CreatePlan{Project: &got.Project.Name, Name: "auth", Content: "goal: g\ntasks:\n  - id: a\n    prompt: p\n"})
+	created, err := c.CreatePlan(ctx, api.CreatePlan{Project: &got.Project.Name, Name: "auth", Content: "goal: g\ntasks:\n  - id: a\n    aca: claude_code\n    model: opus\n    prompt: p\n"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -174,7 +174,7 @@ func TestRunPlan(t *testing.T) {
 		t.Fatal("still asking")
 	}
 	p.keys("r", "y")
-	p.until(t, "a running, its agent shown", func(m *Model) bool { return strings.Contains(text(m), "a running auth-a ") })
+	p.until(t, "a running, its agent shown", func(m *Model) bool { return strings.Contains(text(m), "a running claude_code opus auth-a") })
 	p.keys("enter")
 	p.until(t, "its agent's tab", func(m *Model) bool {
 		a, ok := m.activeAgent()
@@ -196,7 +196,7 @@ func TestAnswerPlan(t *testing.T) {
 		t.Fatal(err)
 	}
 	gittest.Git(t, got.Project.Worktrees[0].Path, "commit", "-q", "--allow-empty", "-m", "init")
-	created, err := c.CreatePlan(ctx, api.CreatePlan{Project: &got.Project.Name, Name: "auth", Content: "goal: g\ntasks:\n  - id: a\n    prompt: p\n"})
+	created, err := c.CreatePlan(ctx, api.CreatePlan{Project: &got.Project.Name, Name: "auth", Content: "goal: g\ntasks:\n  - id: a\n    aca: claude_code\n    model: opus\n    prompt: p\n"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -207,7 +207,7 @@ func TestAnswerPlan(t *testing.T) {
 	p.until(t, "the plan listed", func(m *Model) bool { _, ok := m.planOf(created.Plan.Id); return ok })
 	p.m.openPlan(created.Plan, true)
 	p.m.layout.setFocus(agent)
-	p.until(t, "a running", func(m *Model) bool { return strings.Contains(text(m), "a running auth-a ") })
+	p.until(t, "a running", func(m *Model) bool { return strings.Contains(text(m), "a running claude_code opus auth-a") })
 	if _, err := c.DeleteAgent(ctx, "auth-a", "api", "", true); err != nil {
 		t.Fatal(err)
 	}
@@ -216,7 +216,7 @@ func TestAnswerPlan(t *testing.T) {
 	p.keys("enter")
 	wantText(t, p.m, "Task a", "r retry")
 	p.keys("r")
-	p.until(t, "a running with a new agent", func(m *Model) bool { return strings.Contains(text(m), "a running auth-a-2") })
+	p.until(t, "a running with a new agent", func(m *Model) bool { return strings.Contains(text(m), "a running claude_code opus auth-a-2") })
 	if p.m.taskBox != nil {
 		t.Error("the box stayed once answered")
 	}

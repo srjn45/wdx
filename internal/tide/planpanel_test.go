@@ -39,7 +39,7 @@ func TestPlanPanel(t *testing.T) {
 	v, _ := ssoRun()
 	v.cursor = "schema"
 	const doneWide = `✓ done · 4m
-claude-a1
+claude · sonnet · claude-a1
 
 Unblocks
   ✓ oidc-client
@@ -57,7 +57,7 @@ Enter read it`
 		t.Errorf("a done task, wide: got\n%s\nwant\n%s", got, doneWide)
 	}
 	const doneShort = `✓ done · 4m
-claude-a1
+claude · sonnet · claude-a1
 
 Unblocks
   ✓ oidc-client
@@ -73,7 +73,7 @@ Enter read it`
 	if got := panelText(v, true, 33, 14); got != doneShort {
 		t.Errorf("a done task, short: got\n%s\nwant\n%s", got, doneShort)
 	}
-	const doneNarrow = `✓ done · 4m · claude-a1
+	const doneNarrow = `✓ done · 4m · claude · sonnet · claude-a1
 Unblocks ✓ oidc-client, ✓ docs
 Add the sessions table.
 Summary: Added sessions, with an index on its user.
@@ -86,7 +86,7 @@ Enter read it`
 	rebase, slot := api.PlanTaskFailureRebase, "/r/.worktrees/sso-login-2"
 	tasks[3].State, tasks[3].Failure, tasks[3].SlotPath, tasks[3].Conflicts = api.PlanTaskStateLandFailed, &rebase, &slot, &[]string{"a.go", "b.go"}
 	v.cursor = "callback"
-	const landFailed = `⚠ land failed: rebase · 6m · claude-c3 · slot sso-login-2 · conflicts a.go, b.go
+	const landFailed = `⚠ land failed: rebase · 6m · claude · sonnet · claude-c3 · slot sso-login-2 · conflicts a.go, b.go
 Needs ✓ oidc-client · Unblocks ○ e2e (also after ui-button)
 Handle the IdP's callback.
 Enter answer it`
@@ -173,7 +173,7 @@ func TestPlanTabReading(t *testing.T) {
 
 	tab.cursor = "schema"
 	keys(m, "enter")
-	wantText(t, m, "✓ done · 4m · claude-a1", "Esc back  ↑↓ scroll", "A line of the prompt.")
+	wantText(t, m, "✓ done · 4m · claude · sonnet · claude-a1", "Esc back  ↑↓ scroll", "A line of the prompt.")
 	if strings.Contains(text(m), "The last line.") || strings.Contains(text(m), "Added sessions") {
 		t.Fatalf("the end shows before scrolling:\n%s", text(m))
 	}

@@ -752,12 +752,12 @@ func (r planStatus) Text(w io.Writer, st style.Style) {
 			table.Row(st.Name(c.Id), childState(st, c, *d.Plans, r.Run != nil), strings.Join(c.After, ", "), childTasks(c))
 		}
 	} else if d.Tasks != nil && r.Run == nil {
-		table.Row(st.Heading("TASK"), st.Heading("AFTER"), st.Heading("STATE"))
+		table.Row(st.Heading("TASK"), st.Heading("ACA"), st.Heading("MODEL"), st.Heading("AFTER"), st.Heading("STATE"))
 		for _, t := range *d.Tasks {
-			table.Row(st.Name(t.Id), strings.Join(t.After, ", "), "")
+			table.Row(st.Name(t.Id), t.Aca, t.Model, strings.Join(t.After, ", "), "")
 		}
 	} else if d.Tasks != nil {
-		table.Row(st.Heading("TASK"), st.Heading("STATE"), st.Heading("AFTER"), st.Heading("AGENT"), st.Heading("SLOT"))
+		table.Row(st.Heading("TASK"), st.Heading("STATE"), st.Heading("ACA"), st.Heading("MODEL"), st.Heading("AFTER"), st.Heading("AGENT"), st.Heading("SLOT"))
 		for _, t := range *d.Tasks {
 			agent, slot := "", ""
 			if t.Agent != nil {
@@ -766,7 +766,7 @@ func (r planStatus) Text(w io.Writer, st style.Style) {
 			if t.SlotPath != nil {
 				slot = filepath.Base(*t.SlotPath)
 			}
-			table.Row(st.Name(t.Id), taskState(st, t), strings.Join(t.After, ", "), agent, slot)
+			table.Row(st.Name(t.Id), taskState(st, t), t.Aca, t.Model, strings.Join(t.After, ", "), agent, slot)
 		}
 	}
 	table.Write(w)

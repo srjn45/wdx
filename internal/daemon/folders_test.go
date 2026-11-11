@@ -60,7 +60,7 @@ func TestPlanFolder(t *testing.T) {
 	td := start(t)
 	td.create(t, "app")
 	in := &api.UpdatePlanParams{Project: optional("app")}
-	tasks := "goal: g\ntasks:\n  - id: a\n    prompt: p\n"
+	tasks := "goal: g\ntasks:\n  - id: a\n    aca: claude_code\n    model: opus\n    prompt: p\n"
 	td.createPlan(t, "app", "auth-a", tasks)
 	td.createPlan(t, "app", "auth-b", tasks)
 	r, err := td.client.CreatePlanWithResponse(ctx, api.CreatePlan{Project: optional("app"), Name: "auth", Folder: optional("hub"), Content: "goal: g\nplans:\n  - id: auth-a\n"})

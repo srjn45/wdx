@@ -25,12 +25,12 @@ func ssoRun() (*planView, time.Time) {
 	terminal := "t-91"
 	summary := func(s string) *string { return &s }
 	tasks := []api.PlanTask{
-		{Id: "schema", After: []string{}, Prompt: "Add the sessions table.", State: api.PlanTaskStateDone, Summary: summary("Added sessions, with an index on its user."), Agent: agent("claude-a1"), StartedAt: at(0), FinishedAt: at(4)},
-		{Id: "oidc-client", After: []string{"schema"}, Prompt: "Add an OIDC client.", State: api.PlanTaskStateDone, Summary: summary("Added it."), Agent: agent("claude-b2"), StartedAt: at(4), FinishedAt: at(13)},
-		{Id: "docs", After: []string{"schema"}, Prompt: "Document the sessions.", State: api.PlanTaskStateDone, Summary: summary("Documented them."), Agent: agent("claude-e5"), StartedAt: at(4), FinishedAt: at(6)},
-		{Id: "callback", After: []string{"oidc-client"}, Prompt: "Handle the IdP's callback.", State: api.PlanTaskStateRunning, Agent: agent("claude-c3"), StartedAt: at(17)},
-		{Id: "ui-button", After: []string{"oidc-client"}, Prompt: "Add a \"Sign in with SSO\" button to the login page, next to the password form, styled as its other buttons are, and shown only when SSO is set up.", State: api.PlanTaskStateFailed, Failure: &check, CheckTerminal: &terminal, Agent: agent("codex-d4"), StartedAt: at(13), FinishedAt: at(16)},
-		{Id: "e2e", After: []string{"callback", "ui-button"}, Prompt: "Test signing in end to end.", State: api.PlanTaskStatePending, WaitingFor: []string{"callback", "ui-button"}},
+		{Id: "schema", Aca: "claude", Model: "sonnet", After: []string{}, Prompt: "Add the sessions table.", State: api.PlanTaskStateDone, Summary: summary("Added sessions, with an index on its user."), Agent: agent("claude-a1"), StartedAt: at(0), FinishedAt: at(4)},
+		{Id: "oidc-client", Aca: "claude", Model: "sonnet", After: []string{"schema"}, Prompt: "Add an OIDC client.", State: api.PlanTaskStateDone, Summary: summary("Added it."), Agent: agent("claude-b2"), StartedAt: at(4), FinishedAt: at(13)},
+		{Id: "docs", Aca: "claude", Model: "haiku", After: []string{"schema"}, Prompt: "Document the sessions.", State: api.PlanTaskStateDone, Summary: summary("Documented them."), Agent: agent("claude-e5"), StartedAt: at(4), FinishedAt: at(6)},
+		{Id: "callback", Aca: "claude", Model: "sonnet", After: []string{"oidc-client"}, Prompt: "Handle the IdP's callback.", State: api.PlanTaskStateRunning, Agent: agent("claude-c3"), StartedAt: at(17)},
+		{Id: "ui-button", Aca: "codex", Model: "gpt-5", After: []string{"oidc-client"}, Prompt: "Add a \"Sign in with SSO\" button to the login page, next to the password form, styled as its other buttons are, and shown only when SSO is set up.", State: api.PlanTaskStateFailed, Failure: &check, CheckTerminal: &terminal, Agent: agent("codex-d4"), StartedAt: at(13), FinishedAt: at(16)},
+		{Id: "e2e", Aca: "claude", Model: "sonnet", After: []string{"callback", "ui-button"}, Prompt: "Test signing in end to end.", State: api.PlanTaskStatePending, WaitingFor: []string{"callback", "ui-button"}},
 	}
 	p := api.Plan{Id: "doc-sso", Name: "sso-login", State: api.PlanStateRunning, Revision: 3}
 	c := &api.PlanContent{Plan: p, Revision: 3, Run: &api.PlanRun{State: api.PlanStateRunning, Branch: "plan/sso-login", StartedAt: start},
@@ -74,7 +74,7 @@ func ssoDraft() *planView {
 	c := *v.content
 	tasks := slices.Clone(*c.Definition.Tasks)
 	for i, t := range tasks {
-		tasks[i] = api.PlanTask{Id: t.Id, After: t.After, Prompt: t.Prompt, State: api.PlanTaskStatePending, WaitingFor: t.After}
+		tasks[i] = api.PlanTask{Id: t.Id, Aca: t.Aca, Model: t.Model, After: t.After, Prompt: t.Prompt, State: api.PlanTaskStatePending, WaitingFor: t.After}
 	}
 	c.Definition.Tasks, c.Run = &tasks, nil
 	c.Plan.State = api.PlanStateDraft
@@ -121,39 +121,39 @@ func TestPlanTabDrawn(t *testing.T) {
 │ Enter open it                                                        │
 └──────────────────────────────────────────────────────────────────────┘
  p pause  c cancel  y copy  ↑↓ select  Enter open it  → goal`
-	const ssoRunWide = ` sso-login                                                                         ● running   rev 3
+	const ssoRunWide = ` sso-login                                                                                       ● running   rev 3
  ━━━━━━━━━━━━━━━━━━━━▬▬▬▬▬▬──────────────  3/6 tasks · 1 failed · on plan/sso-login · 23m
  ▸ goal and 3 constraints
-┌─ Tasks ───────────────────────────────────────────────────┬─ ui-button ───────────────────────────┐
-│ ✓       schema      done          claude-a1 4m            │ ✗ failed: check · 3m                  │
-│ ├─╮                                                       │ codex-d4 · terminal t-91              │
-│ ✓ │     oidc-client done          claude-b2 9m    ▲ needs │                                       │
-│ ├─┼─╮                                                     │ Needs                                 │
-│ │ ✓ │   docs        done          claude-e5 2m            │   ✓ oidc-client                       │
-│ ●   │   callback    running       claude-c3 6m            │ Unblocks                              │
-│▌│   ✗   ui-button   failed: check codex-d4  3m  needs you │   ○ e2e, also after callback          │
-│ ├───╯                                                     │                                       │
-│ ○       e2e         waiting       —         —  ▼ unblocks │ Prompt                                │
-│                                                           │   Add a "Sign in with SSO" button to  │
-│                                                           │   the login page, next to the …+3     │
-│                                                           │                                       │
-│                                                           │ Enter answer it                       │
-└───────────────────────────────────────────────────────────┴───────────────────────────────────────┘
+┌─ Tasks ─────────────────────────────────────────────────────────────────┬─ ui-button ───────────────────────────┐
+│ ✓       schema      done          claude sonnet claude-a1 4m            │ ✗ failed: check · 3m                  │
+│ ├─╮                                                                     │ codex · gpt-5 · codex-d4 · terminal   │
+│ ✓ │     oidc-client done          claude sonnet claude-b2 9m    ▲ needs │ t-91                                  │
+│ ├─┼─╮                                                                   │                                       │
+│ │ ✓ │   docs        done          claude haiku  claude-e5 2m            │ Needs                                 │
+│ ●   │   callback    running       claude sonnet claude-c3 6m            │   ✓ oidc-client                       │
+│▌│   ✗   ui-button   failed: check codex  gpt-5  codex-d4  3m  needs you │ Unblocks                              │
+│ ├───╯                                                                   │   ○ e2e, also after callback          │
+│ ○       e2e         waiting       claude sonnet —         —  ▼ unblocks │                                       │
+│                                                                         │ Prompt                                │
+│                                                                         │   Add a "Sign in with SSO" button …+4 │
+│                                                                         │                                       │
+│                                                                         │ Enter answer it                       │
+└─────────────────────────────────────────────────────────────────────────┴───────────────────────────────────────┘
  p pause  c cancel  y copy  ↑↓ select  Enter answer it  → constraints`
 	const ssoRunNarrow = ` sso-login                                            ● running   rev 3
  ━━━━━━━━━━━▬▬▬────────  3/6 tasks · 1 failed · on plan/sso-login · 23m
  ▸ goal and 3 constraints
 ┌─ Tasks ──────────────────────────────────────────────────────────────┐
-│ ✓       schema      done          claude-a1 4m                       │
+│ ✓       schema      done          claude sonnet 4m                   │
 │ ├─╮                                                                  │
-│ ✓ │     oidc-client done          claude-b2 9m               ▲ needs │
+│ ✓ │     oidc-client done          claude sonnet 9m           ▲ needs │
 │ ├─┼─╮                                                                │
-│ │ ✓ │   docs        done          claude-e5 2m                       │
-│ ●   │   callback    running       claude-c3 6m                       │
-│▌│   ✗   ui-button   failed: check codex-d4  3m             needs you │
+│ │ ✓ │   docs        done          claude haiku  2m                   │
+│ ●   │   callback    running       claude sonnet 6m                   │
+│▌│   ✗   ui-button   failed: check codex  gpt-5  3m         needs you │
 │ ▾ 1 more                                                             │
 ├─ ui-button ──────────────────────────────────────────────────────────┤
-│ ✗ failed: check · 3m · codex-d4 · terminal t-91                      │
+│ ✗ failed: check · 3m · codex · gpt-5 · codex-d4 · terminal t-91      │
 │ Needs ✓ oidc-client · Unblocks ○ e2e (also after callback)           │
 │ Add a "Sign in with SSO" button to the login page, next to the …+2   │
 │ Enter answer it                                                      │
@@ -162,28 +162,28 @@ func TestPlanTabDrawn(t *testing.T) {
 	const ssoDraftWide = ` sso-login                                                                          ○ draft   rev 3
  6 tasks, not run yet
  ▸ goal and 3 constraints
-┌─ Tasks ────────────────────────────────┬─ schema ────────────────────────────────────────────────┐
-│▌○       schema      ready              │ ○ ready                                                 │
-│ ├─╮                                    │                                                         │
-│ ○ │     oidc-client waiting ▼ unblocks │ Unblocks                                                │
-│ ├─┼─╮                                  │   ○ oidc-client                                         │
-│ │ ○ │   docs        waiting ▼ unblocks │   ○ docs                                                │
-│ ○   │   callback    waiting            │                                                         │
-│ │   ○   ui-button   waiting            │ Enter read it                                           │
-│ ▾ 1 more                               │                                                         │
-└────────────────────────────────────────┴─────────────────────────────────────────────────────────┘
+┌─ Tasks ──────────────────────────────────────────────┬─ schema ──────────────────────────────────┐
+│▌○       schema      ready   claude sonnet            │ ○ ready                                   │
+│ ├─╮                                                  │ claude · sonnet                           │
+│ ○ │     oidc-client waiting claude sonnet ▼ unblocks │                                           │
+│ ├─┼─╮                                                │ Unblocks                                  │
+│ │ ○ │   docs        waiting claude haiku  ▼ unblocks │   ○ oidc-client                           │
+│ ○   │   callback    waiting claude sonnet            │   ○ docs                                  │
+│ │   ○   ui-button   waiting codex  gpt-5             │                                           │
+│ ▾ 1 more                                             │ Enter read it                             │
+└──────────────────────────────────────────────────────┴───────────────────────────────────────────┘
  r run  y copy  ↑↓ select  Enter read it  → constraints`
 	const ssoDraftNarrow = ` sso-login                                  ○ draft   rev 3
  6 tasks, not run yet
  ▸ goal and 3 constraints
 ┌─ Tasks ──────────────────────────────────────────────────┐
-│▌○       schema      ready                                │
+│▌○       schema      ready   claude sonnet                │
 │ ├─╮                                                      │
-│ ○ │     oidc-client waiting                   ▼ unblocks │
+│ ○ │     oidc-client waiting claude sonnet     ▼ unblocks │
 │ ├─┼─╮                                                    │
 │ ▾ 4 more                                                 │
 ├─ schema ─────────────────────────────────────────────────┤
-│ ○ ready                                                  │
+│ ○ ready · claude · sonnet                                │
 │ Unblocks ○ oidc-client, ○ docs                           │
 │ Add the sessions table.                                  │
 │ Enter read it                                            │
@@ -198,7 +198,7 @@ func TestPlanTabDrawn(t *testing.T) {
 		width, height int
 		want          string
 	}{
-		{"a run, wide", run(), 101, 19, ssoRunWide},
+		{"a run, wide", run(), 115, 19, ssoRunWide},
 		{"a run, narrow", run(), 72, 19, ssoRunNarrow},
 		{"a draft, wide", ssoDraft(), 100, 14, ssoDraftWide},
 		{"a draft, narrow", ssoDraft(), 60, 16, ssoDraftNarrow},
@@ -365,24 +365,34 @@ func TestPlanTabKeys(t *testing.T) {
 }
 
 // TestPlanTabColumnsDropped: as the pane narrows the list drops the agent, then
-// the time, then the failure's reason; the rail, the ids, the states and the
-// marks stay.
+// the time, then the model, then the aca, then the failure's reason; the rail,
+// the ids, the states and the marks stay.
 func TestPlanTabColumnsDropped(t *testing.T) {
 	t.Parallel()
 	for _, c := range []struct {
-		width               int
-		agent, time, reason bool
+		width                           int
+		agent, time, model, aca, reason bool
 	}{
-		{61, true, true, true},
-		{60, false, true, true},
-		{50, false, false, true},
-		{46, false, false, false},
+		{75, true, true, true, true, true},
+		{74, false, true, true, true, true},
+		{64, false, false, true, true, true},
+		{61, false, false, false, true, true},
+		{54, false, false, false, false, true},
+		{46, false, false, false, false, false},
 	} {
 		v, now := ssoRun()
 		got := planTabText(v, c.width, 19, now)
 		row := got[strings.Index(got, "│▌"):]
 		row = row[:strings.Index(row, "\n")]
-		for what, want := range map[string]bool{"codex-d4": c.agent, " 3m": c.time, "failed: check": c.reason, "│▌│   ✗   ui-button   failed": true, "needs you": true} {
+		for what, want := range map[string]bool{
+			"codex-d4":                     c.agent,
+			" 3m":                          c.time,
+			"gpt-5":                        c.model,
+			"codex":                        c.aca,
+			"failed: check":                c.reason,
+			"│▌│   ✗   ui-button   failed": true,
+			"needs you":                    true,
+		} {
 			if strings.Contains(row, what) != want {
 				t.Errorf("%d wide: %q shown %v, want %v: %q", c.width, what, !want, want, row)
 			}
@@ -412,7 +422,7 @@ func TestPlanTabPanelTakesTheRest(t *testing.T) {
 		v    func() (*planView, time.Time)
 		list int
 	}{
-		{"a plan", ssoRun, 59},
+		{"a plan", ssoRun, 73},
 		{"a plan of plans", authRun, 52},
 	} {
 		for _, width := range []int{120, 160} {
@@ -510,6 +520,7 @@ func now0() time.Time { return time.Unix(0, 0) }
 func TestPlanTabMinute(t *testing.T) {
 	t.Parallel()
 	m := plansModel(t)
+	m.Update(tea.WindowSizeMsg{Width: 150, Height: 24})
 	var asked []time.Duration
 	var next func(time.Time) tea.Msg
 	m.tick = func(d time.Duration, fn func(time.Time) tea.Msg) tea.Cmd {
@@ -521,14 +532,14 @@ func TestPlanTabMinute(t *testing.T) {
 	m.moveToPlan(4) // sso
 	keys(m, "enter")
 	loadPlan(m, "doc-sso", *v.content)
-	wantText(t, m, "callback    running       6m")
+	wantText(t, m, "callback    running       claude sonnet claude-c3 6m")
 	m.Update(nil)
 	if len(asked) != 1 || asked[0] != time.Minute {
 		t.Fatalf("ticks asked: %v", asked)
 	}
 	now = now.Add(time.Minute)
 	m.Update(next(now))
-	wantText(t, m, "callback    running       7m")
+	wantText(t, m, "callback    running       claude sonnet claude-c3 7m")
 	if len(asked) != 2 {
 		t.Errorf("the tick not asked again once it came: %v", asked)
 	}

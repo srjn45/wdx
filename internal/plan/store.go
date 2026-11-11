@@ -15,11 +15,25 @@ import (
 	"github.com/srjn45/wdx/internal/logging"
 )
 
+// ModelsFunc returns the model ids the ACA named aca offers, or an *ACAError
+// when aca cannot run a task, or another error when reading them failed.
+type ModelsFunc func(ctx context.Context, aca string) ([]string, error)
+
+// ACAError is returned by a ModelsFunc when the ACA a task names is unknown,
+// cannot be run, or is not ready; its message is reported at the task's aca line.
+type ACAError struct {
+	Err error
+}
+
+func (e *ACAError) Error() string { return e.Err.Error() }
+func (e *ACAError) Unwrap() error { return e.Err }
+
 // Store keeps plans as docs of the kind plan, which share docs' revisions and
 // copies, and checks every revision before it is kept.
 type Store struct {
-	db   *sql.DB
-	docs *doc.Store
+	db     *sql.DB
+	docs   *doc.Store
+	models ModelsFunc
 
 	mu        sync.Mutex
 	summaries map[string]summary // by plan id
@@ -44,6 +58,10 @@ type summary struct {
 func NewStore(database *sql.DB, dir string) *Store {
 	return &Store{db: database, docs: doc.NewKindStore(database, dir, doc.KindPlan), summaries: map[string]summary{}, waiting: map[string][]string{}}
 }
+
+// SetModels sets how the store checks each task's aca and model before keeping a
+// plan.
+func (s *Store) SetModels(fn ModelsFunc) { s.models = fn }
 
 // Saved is what Create and Update did: the plan, the afters reduction dropped,
 // whether a revision was made, and the plans it lists whose folder became its.
@@ -303,10 +321,7 @@ func (s *Store) check(ctx context.Context, projectID, name, self string, content
 		return Reduced{}, nil, &InvalidError{Problems: problems}
 	}
 	children := r.Definition.Plans
-	if children == nil && r.Definition.prLine == 0 {
-		return r, nil, nil
-	}
-	if self != "" {
+	if self != "" && (children != nil || r.Definition.prLine != 0) {
 		d, err := s.docs.Get(ctx, self)
 		if err != nil {
 			return Reduced{}, nil, s.translate(ctx, err)
@@ -323,6 +338,13 @@ func (s *Store) check(ctx context.Context, projectID, name, self string, content
 				problems = append(problems, Problem{Line: r.Definition.prLine, Message: fmt.Sprintf("%s is one of the plans of %s, so it cannot set pr: set pr on the plan of plans", name, parent.Name)})
 			}
 		}
+	}
+	if s.models != nil && len(r.Definition.Tasks) > 0 {
+		taskProblems, err := s.checkTasks(ctx, r.Definition.Tasks)
+		if err != nil {
+			return Reduced{}, nil, err
+		}
+		problems = append(problems, taskProblems...)
 	}
 	if children == nil {
 		if problems != nil {
@@ -372,6 +394,40 @@ func (s *Store) check(ctx context.Context, projectID, name, self string, content
 		return Reduced{}, nil, &InvalidError{Problems: problems}
 	}
 	return r, ids, nil
+}
+
+// checkTasks checks each task's aca and model with s.models, calling it at most
+// once per distinct aca in the plan.
+func (s *Store) checkTasks(ctx context.Context, tasks []Task) ([]Problem, error) {
+	type acaModels struct {
+		models []string
+		err    *ACAError
+	}
+	byACA := map[string]acaModels{}
+	var problems []Problem
+	for _, t := range tasks {
+		m, ok := byACA[t.ACA]
+		if !ok {
+			models, err := s.models(ctx, t.ACA)
+			if err != nil {
+				acaErr, ok := errors.AsType[*ACAError](err)
+				if !ok {
+					return nil, err
+				}
+				m.err = acaErr
+			} else {
+				m.models = models
+			}
+			byACA[t.ACA] = m
+		}
+		switch {
+		case m.err != nil:
+			problems = append(problems, Problem{Line: t.acaLine, Message: m.err.Error()})
+		case !slices.Contains(m.models, t.Model):
+			problems = append(problems, Problem{Line: t.modelLine, Message: fmt.Sprintf("model %q is not one %s offers (%s)", t.Model, t.ACA, strings.Join(m.models, ", "))})
+		}
+	}
+	return problems, nil
 }
 
 // Get returns the plan with id.

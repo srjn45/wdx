@@ -14,11 +14,17 @@ import (
 const planYAML = `goal: Keep sessions in the database.
 tasks:
   - id: schema
+    aca: claude_code
+    model: sonnet
     prompt: Add the table.
   - id: api
+    aca: claude_code
+    model: opus
     after: [schema]
     prompt: Use it.
   - id: docs
+    aca: claude_code
+    model: haiku
     after: [api, schema]
     prompt: Document it.
 `
@@ -78,14 +84,23 @@ func TestPlanProblemsText(t *testing.T) {
 	t.Parallel()
 	home := newHome(t)
 	app := newProjectDir(t, home, "app")
-	file := writeDocFile(t, "bad.yaml", "goal: g\ntasks:\n  - id: a_b\n    prompt: p\n  - id: c\n")
+	file := writeDocFile(t, "bad.yaml", "goal: g\ntasks:\n  - id: a_b\n    aca: claude_code\n    model: opus\n    prompt: p\n  - id: c\n    aca: claude_code\n    model: opus\n")
 	out := wdxWith(t, home, in(app), "plan", "create", "--name", "bad", "--path", file)
 	want := "wdx: not created: the plan in " + file + " has 2 problems  [invalid_plan]\n" +
 		"  " + file + ":3: id \"a_b\" can only have letters, numbers and -, at most 50\n" +
-		"  " + file + ":5: task c has no prompt\n" +
+		"  " + file + ":7: task c has no prompt\n" +
 		"  hint: wdx help plans says how to write a plan\n"
 	if out.Exit != clikit.ExitRejected || !strings.HasPrefix(out.Stderr, want) {
 		t.Fatalf("got %q\nwant it to start with %q", out.Stderr, want)
+	}
+	acaFile := writeDocFile(t, "aca.yaml", "goal: g\ntasks:\n  - id: a\n    aca: nowhere\n    model: opus\n    prompt: p\n  - id: b\n    aca: claude_code\n    model: gpt\n    prompt: p\n")
+	out = wdxWith(t, home, in(app), "plan", "create", "--name", "bad", "--path", acaFile)
+	wantACA := "wdx: not created: the plan in " + acaFile + " has 2 problems  [invalid_plan]\n" +
+		"  " + acaFile + ":4: no such AI coding agent here: \"nowhere\"\n" +
+		"  " + acaFile + ":9: model \"gpt\" is not one claude_code offers (fable, opus, sonnet, haiku)\n" +
+		"  hint: wdx help plans says how to write a plan\n"
+	if out.Exit != clikit.ExitRejected || !strings.HasPrefix(out.Stderr, wantACA) {
+		t.Fatalf("got %q\nwant it to start with %q", out.Stderr, wantACA)
 	}
 	out = wdxWith(t, home, both(in(app), stdin("goal: g\n")), "plan", "create", "--name", "bad", "--path", "-")
 	if !strings.Contains(out.Stderr, "the plan in stdin has 1 problem  [invalid_plan]\n  stdin:1: no tasks or plans\n") {
@@ -102,7 +117,7 @@ func TestPlanGet(t *testing.T) {
 	t.Parallel()
 	home := newHome(t)
 	app := newProjectDir(t, home, "app")
-	p := newPlan(t, home, app, "sso", "goal: g\ntasks:\n  - id: a\n    prompt: p\n")
+	p := newPlan(t, home, app, "sso", "goal: g\ntasks:\n  - id: a\n    aca: claude_code\n    model: opus\n    prompt: p\n")
 
 	v, exit := wdxJSONWith(t, home, in(app), "plan", "get", "--name", "sso")
 	if exit != clikit.ExitOK || !strings.HasPrefix(*v.Content, "goal: g") || *v.Revision != 1 || v.Plan.Id != p.Id {
@@ -131,7 +146,7 @@ func TestPlanUpdate(t *testing.T) {
 	t.Parallel()
 	home := newHome(t)
 	app := newProjectDir(t, home, "app")
-	newPlan(t, home, app, "sso", "goal: g\ntasks:\n  - id: a\n    prompt: p\n")
+	newPlan(t, home, app, "sso", "goal: g\ntasks:\n  - id: a\n    aca: claude_code\n    model: opus\n    prompt: p\n")
 
 	v, exit := wdxJSONWith(t, home, both(in(app), stdin(planYAML)), "plan", "update", "--name", "sso", "--path", "-", "--base", "1")
 	if exit != clikit.ExitOK || v.Result != "updated" || v.Plan.Revision != 2 || *v.Plan.Tasks != 3 || len(v.Dropped) != 1 {
@@ -181,8 +196,12 @@ func TestPlanStatus(t *testing.T) {
 	app := newProjectDir(t, home, "app")
 	newPlan(t, home, app, "sso", planYAML)
 	v, exit := wdxJSONWith(t, home, in(app), "plan", "status", "--name", "sso")
-	if exit != clikit.ExitOK || v.Definition == nil || v.Definition.Goal != "Keep sessions in the database." || len(*v.Definition.Tasks) != 3 || (*v.Definition.Tasks)[2].Id != "docs" {
+	if exit != clikit.ExitOK || v.Definition == nil || v.Definition.Goal != "Keep sessions in the database." || len(*v.Definition.Tasks) != 3 || (*v.Definition.Tasks)[0].Aca != "claude_code" || (*v.Definition.Tasks)[0].Model != "sonnet" || (*v.Definition.Tasks)[2].Id != "docs" {
 		t.Fatalf("status: exit %d, %+v", exit, v)
+	}
+	out := wdxWith(t, home, in(app), "plan", "status", "--name", "sso")
+	if out.Exit != clikit.ExitOK || !hasRow(out.Stdout, "TASK", "ACA", "MODEL", "AFTER", "STATE") || !hasRow(out.Stdout, "schema", "claude_code", "sonnet") {
+		t.Fatalf("status text:\n%s", out.Stdout)
 	}
 	v, exit = wdxJSONWith(t, home, in(app), "plan", "status", "--name", "nowhere")
 	wantError(t, v, exit, api.ErrorCodeNotFound, clikit.ExitRejected)
@@ -305,8 +324,8 @@ func TestPlanText(t *testing.T) {
 		{[]string{"plan", "create", "--name", "sso", "--path", file}, "plan sso created, with 3 tasks\ndropped docs after schema: api already waits for it\n"},
 		{[]string{"plan", "list"}, "FOLDER  NAME"},
 		{[]string{"plan", "status", "--name", "sso"}, "sso: draft, 3 tasks\n  goal        Keep sessions in the database.\n"},
-		{[]string{"plan", "update", "--name", "sso", "--path", writeDocFile(t, "one.yaml", "goal: g\ntasks:\n  - id: a\n    prompt: p\n"), "--base", "1"}, "sso is at revision 2, with 1 task\n"},
-		{[]string{"plan", "update", "--name", "sso", "--path", writeDocFile(t, "same.yaml", "goal: g\ntasks:\n  - id: a\n    prompt: p\n"), "--base", "2"}, "sso is unchanged at revision 2\n"},
+		{[]string{"plan", "update", "--name", "sso", "--path", writeDocFile(t, "one.yaml", "goal: g\ntasks:\n  - id: a\n    aca: claude_code\n    model: opus\n    prompt: p\n"), "--base", "1"}, "sso is at revision 2, with 1 task\n"},
+		{[]string{"plan", "update", "--name", "sso", "--path", writeDocFile(t, "same.yaml", "goal: g\ntasks:\n  - id: a\n    aca: claude_code\n    model: opus\n    prompt: p\n"), "--base", "2"}, "sso is unchanged at revision 2\n"},
 		{[]string{"plan", "history", "--name", "sso"}, "REVISION"},
 		{[]string{"plan", "get", "--name", "sso"}, "goal: g\n"},
 		{[]string{"plan", "get", "--name", "sso", "--out", filepath.Join(t.TempDir(), "a.yaml")}, "revision 2 of sso written to "},
@@ -327,7 +346,7 @@ func TestPlanTextNotLogged(t *testing.T) {
 	t.Parallel()
 	home := newHome(t)
 	app := newProjectDir(t, home, "app")
-	newPlan(t, home, app, "sso", "goal: goal-secret\ntasks:\n  - id: a\n    prompt: prompt-secret\n")
+	newPlan(t, home, app, "sso", "goal: goal-secret\ntasks:\n  - id: a\n    aca: claude_code\n    model: opus\n    prompt: prompt-secret\n")
 	for _, args := range [][]string{{"plan", "get", "--name", "sso"}, {"plan", "status", "--name", "sso"}} {
 		if out := wdxWith(t, home, in(app), args...); out.Exit != clikit.ExitOK || !strings.Contains(out.Stdout, "-secret") {
 			t.Fatalf("%v: %+v", args, out)
@@ -371,7 +390,7 @@ func TestPlanCompletions(t *testing.T) {
 	app := newProjectDir(t, home, "app")
 	p := newPlan(t, home, app, "sso", planYAML)
 	newPlan(t, home, app, "auth", "goal: g\nplans:\n  - id: sso\n")
-	if _, exit := wdxJSONWith(t, home, both(in(app), stdin(planYAML+"  - id: more\n    prompt: p\n")), "plan", "update", "--name", "sso", "--path", "-", "--base", "1"); exit != clikit.ExitOK {
+	if _, exit := wdxJSONWith(t, home, both(in(app), stdin(planYAML+"  - id: more\n    aca: claude_code\n    model: opus\n    prompt: p\n")), "plan", "update", "--name", "sso", "--path", "-", "--base", "1"); exit != clikit.ExitOK {
 		t.Fatalf("update: exit %d", exit)
 	}
 	newDoc(t, home, app, "notes", "")

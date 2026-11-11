@@ -134,7 +134,13 @@ func agentsTopic(st style.Style) string {
 
 ` + heading("Plans") + `  A plan breaks a feature into tasks for agents, each with the tasks it waits
   for, or a big plan into smaller ones. ` + st.Command(w+" help plans") + ` says how to write one.
-  Send it on stdin, with no file to write:
+  Before writing one, check which ACAs, models and limits are available, to
+  choose each task's aca and model:
+` + commands(
+		w+" agent acas", "installed and enabled ACAs",
+		w+" agent models --aca <aca>", "the models an ACA offers",
+		w+" usage", "each account's usage and limits",
+	) + `  Send it on stdin, with no file to write:
 ` + commands(w+" plan create --name <plan> --path -", "") + `  ` + st.Name("invalid_plan") + ` lists every problem with its line: fix them all and send
   it again. To change a plan, as a doc, get a copy and write it back naming
   the revision you read:
@@ -158,17 +164,25 @@ constraints:
   - The public API does not change.
 tasks:
   - id: schema
+    aca: claude_code
+    model: sonnet
     prompt: |
       Add a sessions table with id, user_id and expires_at.
   - id: store
+    aca: claude_code
+    model: opus
     after: [schema]
     prompt: |
       Write the session store on top of the table.
   - id: api
+    aca: claude_code
+    model: sonnet
     after: [schema]
     prompt: |
       Change the login and logout handlers to use sessions.
   - id: docs
+    aca: claude_code
+    model: haiku
     after: [store, api]
     prompt: |
       Document the session lifetime in docs/AUTH.md.
@@ -203,11 +217,18 @@ line, and nothing is saved until there are none.
 		key("stacked", "a plan of plans only, with pr: true: true to stack its plans' PRs") +
 		key("tasks", "the tasks, each:") +
 		key("  id", "letters, numbers and -, at most 50, unique whatever the case") +
+		key("  aca", "required: the ACA that runs it, from "+st.Command(w+" agent acas")) +
+		key("  model", "required: the model it runs on, from "+st.Command(w+" agent models --aca <aca>")) +
 		key("  prompt", "what the task's agent is asked to do") +
 		key("  after", "a list of the tasks it waits for") +
 		key("plans", "in place of tasks, for a plan of plans: plans of the project, each:") +
 		key("  id", "the plan's name") +
 		key("  after", "a list of the plans it waits for") + `
+Every task's aca and model are checked when the plan is created, updated or
+copied. Before writing a plan, check ` + st.Command(w+" agent acas") + `, ` + st.Command(w+" agent models --aca <aca>") + `
+and ` + st.Command(w+" usage") + ` to pick the ACA and model that fit each task and the account
+limits.
+
 A task with no after starts at once: nothing waits unless after says so. Tasks
 are listed in DAG order, after everything they wait for, keeping the order they
 are written in where they are free to go in either.

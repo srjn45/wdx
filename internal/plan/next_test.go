@@ -9,7 +9,7 @@ import (
 // diamond is a run of a, then b and c, then d after both, every task pending and
 // no slot made.
 func diamond() Run {
-	def := Definition{Tasks: []Task{{ID: "a"}, {ID: "b", After: []string{"a"}}, {ID: "c", After: []string{"a"}}, {ID: "d", After: []string{"b", "c"}}}}
+	def := Definition{Tasks: []Task{{ID: "a", ACA: "claude", Model: "opus"}, {ID: "b", ACA: "claude", Model: "opus", After: []string{"a"}}, {ID: "c", ACA: "claude", Model: "opus", After: []string{"a"}}, {ID: "d", ACA: "claude", Model: "opus", After: []string{"b", "c"}}}}
 	r := Run{State: StateRunning, Definition: def}
 	for _, t := range def.Tasks {
 		r.Tasks = append(r.Tasks, TaskRun{ID: t.ID, State: TaskPending})

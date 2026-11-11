@@ -19,9 +19,13 @@ constraints:
   - Keep each file to one or two lines.
 tasks:
   - id: contributing
+    aca: claude_code
+    model: sonnet
     prompt: |
       Create CONTRIBUTING.md saying "Open a PR against main." and commit it.
   - id: notes
+    aca: claude_code
+    model: sonnet
     after: [contributing]
     prompt: |
       Create NOTES.md with the line "TODO: write notes" and commit it.
@@ -41,9 +45,9 @@ $ wdx plan status --name first-release
 first-release: draft, 2 tasks
   goal        Get app ready for its first contributors.
   constraint  Keep each file to one or two lines.
-TASK          AFTER         STATE
-contributing
-notes         contributing
+TASK          ACA          MODEL   AFTER         STATE
+contributing  claude_code  sonnet
+notes         claude_code  sonnet  contributing
 $ wdx plan list
 FOLDER  NAME           STATE  TASKS    REVISION  UPDATED
 /       first-release  draft  2 tasks  1         2026-11-08 02:06:13
@@ -76,7 +80,7 @@ The Plans section of the left pane lists the project's plans, plans of plans wit
 
 ## How it behaves
 
-- **The format.** `wdx help plans` is the reference: `goal` (required), `constraints`, `tasks` (each an `id`, a `prompt` and `after`), or `plans` in place of tasks for a plan of plans, and `pr` and `stacked` for its PRs. A task with no `after` starts at once.
+- **The format.** `wdx help plans` is the reference: `goal` (required), `constraints`, `tasks` (each an `id`, an `aca`, a `model`, a `prompt` and `after`), or `plans` in place of tasks for a plan of plans, and `pr` and `stacked` for its PRs. A task with no `after` starts at once.
 - **Checked on every save.** Every problem is reported with its line, and nothing is saved until there are none (`invalid_plan`).
 - **Afters already covered are dropped:** with `docs` after `store` and `schema`, and `store` after `schema`, `docs`' `after: [schema]` goes, and wdx says so. Tasks are listed in DAG order, after everything they wait for, keeping the order written where they are free to go either way.
 - **Revisions.** `--base` is the revision your change was made on; a newer one refuses yours (`doc_changed`), so nothing is lost. A plan that has run cannot be changed.

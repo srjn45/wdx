@@ -38,7 +38,7 @@ func tasks(ids ...string) string {
 	var b strings.Builder
 	b.WriteString("goal: g\ntasks:\n")
 	for _, id := range ids {
-		b.WriteString("  - id: " + id + "\n    prompt: p\n")
+		b.WriteString("  - id: " + id + "\n    aca: claude\n    model: opus\n    prompt: p\n")
 	}
 	return b.String()
 }
@@ -80,7 +80,7 @@ func TestCreate(t *testing.T) {
 	t.Parallel()
 	ctx := context.Background()
 	f := newFixture(t)
-	content := "goal: g\ntasks:\n  - id: a\n    prompt: p\n  - id: b\n    after: [a]\n    prompt: p\n  - id: c\n    after: [a, b]\n    prompt: p\n"
+	content := "goal: g\ntasks:\n  - id: a\n    aca: claude\n    model: opus\n    prompt: p\n  - id: b\n    aca: claude\n    model: opus\n    after: [a]\n    prompt: p\n  - id: c\n    aca: claude\n    model: opus\n    after: [a, b]\n    prompt: p\n"
 	s, err := f.store.Create(ctx, f.project, "auth", "", []byte(content))
 	if err != nil {
 		t.Fatal(err)
@@ -118,7 +118,7 @@ func TestPRSetOnTheParent(t *testing.T) {
 	t.Parallel()
 	ctx := context.Background()
 	f := newFixture(t)
-	f.create(t, "auth-a", "goal: g\npr: true\ntasks:\n  - id: x\n    prompt: p\n")
+	f.create(t, "auth-a", "goal: g\npr: true\ntasks:\n  - id: x\n    aca: claude\n    model: opus\n    prompt: p\n")
 	b := f.create(t, "auth-b", tasks("y"))
 	got := problems(t, func() error {
 		_, err := f.store.Create(ctx, f.project, "auth", "", []byte("goal: g\npr: true\nplans:\n  - id: auth-b\n  - id: auth-a\n"))
@@ -130,11 +130,74 @@ func TestPRSetOnTheParent(t *testing.T) {
 
 	f.create(t, "auth", "goal: g\npr: true\nplans:\n  - id: auth-b\n")
 	got = problems(t, func() error {
-		_, err := f.store.Update(ctx, b.ID, 1, []byte("goal: g\npr: false\ntasks:\n  - id: y\n    prompt: p\n"))
+		_, err := f.store.Update(ctx, b.ID, 1, []byte("goal: g\npr: false\ntasks:\n  - id: y\n    aca: claude\n    model: opus\n    prompt: p\n"))
 		return err
 	}())
 	if want := []string{"line 2: auth-b is one of the plans of auth, so it cannot set pr: set pr on the plan of plans"}; !reflect.DeepEqual(got, want) {
 		t.Errorf("a listed plan setting pr: %q", got)
+	}
+}
+
+func TestCheckACAsAndModels(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	f := newFixture(t)
+	calls := map[string]int{}
+	boom := errors.New("boom")
+	f.store.SetModels(func(_ context.Context, aca string) ([]string, error) {
+		calls[aca]++
+		switch aca {
+		case "claude":
+			return []string{"opus", "sonnet"}, nil
+		case "codex":
+			return []string{"gpt-5"}, nil
+		case "cursor":
+			return nil, &ACAError{Err: errors.New("cursor is not installed")}
+		case "broken":
+			return nil, boom
+		default:
+			return nil, &ACAError{Err: errors.New("unknown AI coding agent " + aca)}
+		}
+	})
+
+	p := f.create(t, "valid", "goal: g\ntasks:\n  - id: a\n    aca: claude\n    model: opus\n    prompt: p\n  - id: b\n    aca: claude\n    model: sonnet\n    prompt: p\n  - id: c\n    aca: codex\n    model: gpt-5\n    prompt: p\n")
+	if want := map[string]int{"claude": 1, "codex": 1}; !reflect.DeepEqual(calls, want) {
+		t.Errorf("calls %+v, want %+v", calls, want)
+	}
+
+	clear(calls)
+	bad := "goal: g\ntasks:\n" +
+		"  - id: a\n    aca: nope\n    model: x\n    prompt: p\n" +
+		"  - id: b\n    aca: cursor\n    model: x\n    prompt: p\n" +
+		"  - id: c\n    aca: cursor\n    model: y\n    prompt: p\n" +
+		"  - id: d\n    aca: claude\n    model: haiku\n    prompt: p\n"
+	got := problems(t, func() error {
+		_, err := f.store.Create(ctx, f.project, "bad", "", []byte(bad))
+		return err
+	}())
+	want := []string{
+		"line 4: unknown AI coding agent nope",
+		"line 8: cursor is not installed",
+		"line 12: cursor is not installed",
+		`line 17: model "haiku" is not one claude offers (opus, sonnet)`,
+	}
+	if !reflect.DeepEqual(got, want) {
+		t.Errorf("got %q\nwant %q", got, want)
+	}
+	if wantCalls := map[string]int{"nope": 1, "cursor": 1, "claude": 1}; !reflect.DeepEqual(calls, wantCalls) {
+		t.Errorf("calls %+v, want %+v", calls, wantCalls)
+	}
+
+	got = problems(t, func() error {
+		_, err := f.store.Update(ctx, p.ID, 1, []byte("goal: g\ntasks:\n  - id: a\n    aca: claude\n    model: haiku\n    prompt: p\n"))
+		return err
+	}())
+	if want := []string{`line 5: model "haiku" is not one claude offers (opus, sonnet)`}; !reflect.DeepEqual(got, want) {
+		t.Errorf("update got %q, want %q", got, want)
+	}
+
+	if _, err := f.store.Create(ctx, f.project, "broken", "", []byte("goal: g\ntasks:\n  - id: a\n    aca: broken\n    model: x\n    prompt: p\n")); !errors.Is(err, boom) {
+		t.Errorf("broken models error: %v, want %v", err, boom)
 	}
 }
 

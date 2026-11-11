@@ -13,7 +13,7 @@ import (
 	"github.com/srjn45/wdx/internal/waittest"
 )
 
-const prPlan = "goal: g\npr: true\ntasks:\n  - id: a\n    prompt: p\n"
+const prPlan = "goal: g\npr: true\ntasks:\n  - id: a\n    aca: claude_code\n    model: opus\n    prompt: p\n"
 
 // prProject is planProject with an origin to push to, served by the gh fake, and
 // following the project's worktrees.

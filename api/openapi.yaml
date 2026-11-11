@@ -4203,9 +4203,11 @@ components:
 
     PlanTask:
       type: object
-      required: [id, after, prompt, state, waiting_for, failure, conflicts, check_terminal, agent, slot_path, summary, started_at, finished_at]
+      required: [id, aca, model, after, prompt, state, waiting_for, failure, conflicts, check_terminal, agent, slot_path, summary, started_at, finished_at]
       properties:
         id: { type: string }
+        aca: { type: string }
+        model: { type: string }
         after:
           type: array
           items: { type: string }

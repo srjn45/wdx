@@ -38,9 +38,9 @@ type RunnerOptions struct {
 	// and records it; RemoveWorktree removes it, never by force, and forgets it.
 	AddWorktree    func(ctx context.Context, projectID, path, branch string) error
 	RemoveWorktree func(ctx context.Context, projectID, path string) error
-	// CreateAgent starts an agent told first, and has linked write what points at it
-	// in the transaction that adds it. It returns the agent's id.
-	CreateAgent func(ctx context.Context, projectID, name, dir, first string, linked func(ctx context.Context, tx sqlite.Execer, agentID string) error) (string, error)
+	// CreateAgent starts an agent on aca and model, told first, and has linked write
+	// what points at it in the transaction that adds it. It returns the agent's id.
+	CreateAgent func(ctx context.Context, projectID, name, dir, aca, model, first string, linked func(ctx context.Context, tx sqlite.Execer, agentID string) error) (string, error)
 	// ResumeAgent goes on with an agent in its session, told text, with linked
 	// written in the transaction that tells it, and starts it if it is not running.
 	ResumeAgent func(ctx context.Context, agentID, text string, linked func(ctx context.Context, tx sqlite.Execer, agentID string) error) error
@@ -397,7 +397,9 @@ func (r *Runner) startIn(ctx context.Context, run Run, project ProjectInfo, task
 		}
 		first = previousAttempt(run, branch, why) + first
 	}
-	_, err = r.opts.CreateAgent(ctx, run.ProjectID, agentName, path, first, linked)
+	i := slices.IndexFunc(run.Definition.Tasks, func(t Task) bool { return t.ID == taskID })
+	def := run.Definition.Tasks[i]
+	_, err = r.opts.CreateAgent(ctx, run.ProjectID, agentName, path, def.ACA, def.Model, first, linked)
 	return err
 }
 

@@ -619,6 +619,22 @@ func (it planItem) time(now time.Time) string {
 	return taskTime(*it.task, now)
 }
 
+// aca is a task's AI coding agent; a plan has none.
+func (it planItem) aca() string {
+	if it.task == nil {
+		return ""
+	}
+	return it.task.Aca
+}
+
+// model is a task's model; a plan has none.
+func (it planItem) model() string {
+	if it.task == nil {
+		return ""
+	}
+	return it.task.Model
+}
+
 // agent is a task's agent's name; a plan has none.
 func (it planItem) agent() string {
 	if it.task == nil {
@@ -628,12 +644,13 @@ func (it planItem) agent() string {
 }
 
 // taskColumns are the columns of the list a width keeps, dropped from the
-// right as it narrows: the agent, then the time, then the failure's reason. A
-// plan not run has neither agents nor times; a plan of plans has no agents,
-// and its plans' progress in place of the time.
+// right as it narrows: the agent, then the time, then the model, then the aca,
+// then the failure's reason. A plan not run has neither agents nor times; a
+// plan of plans has no aca, model or agents, and its plans' progress in place
+// of the time.
 type taskColumns struct {
-	id, words, agent, time int // their widths; 0 for one dropped
-	reason                 bool
+	id, words, aca, model, agent, time int // their widths; 0 for one dropped
+	reason                             bool
 }
 
 func fitColumns(items []planItem, ran bool, room int, now time.Time) taskColumns {
@@ -644,6 +661,8 @@ func fitColumns(items []planItem, ran bool, room int, now time.Time) taskColumns
 		c.id = max(c.id, ansi.StringWidth(it.id))
 		c.words = max(c.words, ansi.StringWidth(it.words(true)))
 		short = max(short, ansi.StringWidth(it.words(false)))
+		c.aca = max(c.aca, ansi.StringWidth(it.aca()))
+		c.model = max(c.model, ansi.StringWidth(it.model()))
 		c.agent = max(c.agent, ansi.StringWidth(it.agent()))
 		c.time = max(c.time, ansi.StringWidth(it.time(now)))
 		plans = plans || it.child != nil
@@ -659,6 +678,12 @@ func fitColumns(items []planItem, ran bool, room int, now time.Time) taskColumns
 		c.time = 0
 	}
 	if c.need() > room {
+		c.model = 0
+	}
+	if c.need() > room {
+		c.aca = 0
+	}
+	if c.need() > room {
 		c.words, c.reason = short, false
 	}
 	return c
@@ -667,6 +692,12 @@ func fitColumns(items []planItem, ran bool, room int, now time.Time) taskColumns
 // need is the room the columns take, a space between each.
 func (c taskColumns) need() int {
 	n := c.id + 1 + c.words
+	if c.aca > 0 {
+		n += 1 + c.aca
+	}
+	if c.model > 0 {
+		n += 1 + c.model
+	}
 	if c.agent > 0 {
 		n += 1 + c.agent
 	}
@@ -742,6 +773,12 @@ func (v *planView) listLines(cursor planItem, columns, lines int, now time.Time,
 		}
 		row += strings.Repeat(" ", planRailGap)
 		cells := []string{padTo(it.id, cols.id), paint(padTo(it.words(cols.reason), cols.words))}
+		if cols.aca > 0 {
+			cells = append(cells, padTo(it.aca(), cols.aca))
+		}
+		if cols.model > 0 {
+			cells = append(cells, padTo(it.model(), cols.model))
+		}
 		if cols.agent > 0 {
 			cells = append(cells, padTo(it.agent(), cols.agent))
 		}

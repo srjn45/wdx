@@ -16,7 +16,7 @@ func TestPlanLifecycle(t *testing.T) {
 	ctx := context.Background()
 	td := start(t)
 	td.planProject(t, "a manual\n")
-	td.createPlan(t, "app", "auth", "goal: g\ntasks:\n  - id: a\n    prompt: p\n")
+	td.createPlan(t, "app", "auth", "goal: g\ntasks:\n  - id: a\n    aca: claude_code\n    model: opus\n    prompt: p\n")
 	archive := func() (*api.PlanResult, *api.Problem) {
 		t.Helper()
 		r, err := td.client.ArchivePlanWithResponse(ctx, "auth", &api.ArchivePlanParams{Project: optional("app")})

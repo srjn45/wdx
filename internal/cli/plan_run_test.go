@@ -83,7 +83,7 @@ func TestPlanRunsThroughItsAgents(t *testing.T) {
 	t.Parallel()
 	home := newHome(t)
 	repo := planRepo(t, home, "")
-	newPlan(t, home, repo, "sso", "goal: g\ntasks:\n  - id: a\n    prompt: p\n  - id: b\n    after: [a]\n    prompt: p\n")
+	newPlan(t, home, repo, "sso", "goal: g\ntasks:\n  - id: a\n    aca: claude_code\n    model: opus\n    prompt: p\n  - id: b\n    aca: claude_code\n    model: opus\n    after: [a]\n    prompt: p\n")
 	v, exit := wdxJSONWith(t, home, in(repo), "plan", "run", "--name", "sso", "--parallel", "1")
 	if exit != clikit.ExitOK || v.Result != "started" || v.Plan.State != api.PlanStateRunning {
 		t.Fatalf("run: exit %d, %+v", exit, v)
@@ -99,7 +99,7 @@ func TestPlanRunsThroughItsAgents(t *testing.T) {
 		t.Errorf("status: %+v, %+v", v.Run, v.Plan)
 	}
 	v, exit = wdxJSONWith(t, home, in(repo), "plan", "task", "get", "--plan", "sso", "--task", "b")
-	if exit != clikit.ExitOK || v.Task == nil || v.Task.Summary == nil || *v.Task.Summary != "did b" || v.Task.Prompt != "p" || v.Task.Agent != nil || v.Plan.Name != "sso" {
+	if exit != clikit.ExitOK || v.Task == nil || v.Task.Aca != "claude_code" || v.Task.Model != "opus" || v.Task.Summary == nil || *v.Task.Summary != "did b" || v.Task.Prompt != "p" || v.Task.Agent != nil || v.Plan.Name != "sso" {
 		t.Errorf("task get: exit %d, %+v", exit, v.Task)
 	}
 	v, exit = wdxJSONWith(t, home, in(repo), "plan", "task", "get", "--plan", "sso", "--task", "nowhere")
@@ -113,9 +113,9 @@ func TestPlanRun(t *testing.T) {
 	t.Parallel()
 	home := newHome(t)
 	repo := planRepo(t, home, "a manual\n")
-	newPlan(t, home, repo, "child", "goal: g\ntasks:\n  - id: a\n    prompt: p\n")
+	newPlan(t, home, repo, "child", "goal: g\ntasks:\n  - id: a\n    aca: claude_code\n    model: opus\n    prompt: p\n")
 	newPlan(t, home, repo, "parent", "goal: g\nplans:\n  - id: child\n")
-	newPlan(t, home, repo, "sso", "goal: g\ntasks:\n  - id: a\n    prompt: p\n")
+	newPlan(t, home, repo, "sso", "goal: g\ntasks:\n  - id: a\n    aca: claude_code\n    model: opus\n    prompt: p\n")
 
 	v, exit := wdxJSONWith(t, home, in(repo), "plan", "run", "--name", "sso", "--parallel", "0")
 	wantError(t, v, exit, api.ErrorCodeUsage, clikit.ExitUsage)
@@ -127,7 +127,7 @@ func TestPlanRun(t *testing.T) {
 	v, exit = wdxJSONWith(t, home, in(repo), "plan", "run", "--name", "nowhere")
 	wantError(t, v, exit, api.ErrorCodeNotFound, clikit.ExitRejected)
 	gittest.Git(t, repo, "branch", "plan/taken")
-	newPlan(t, home, repo, "taken", "goal: g\ntasks:\n  - id: a\n    prompt: p\n")
+	newPlan(t, home, repo, "taken", "goal: g\ntasks:\n  - id: a\n    aca: claude_code\n    model: opus\n    prompt: p\n")
 	v, exit = wdxJSONWith(t, home, in(repo), "plan", "run", "--name", "taken")
 	wantError(t, v, exit, api.ErrorCodeBranchExists, clikit.ExitRejected)
 	wantHint(t, v, "remove or rename the branch, or rename the plan")
@@ -145,7 +145,7 @@ func TestPlanRun(t *testing.T) {
 	if v, exit := wdxJSON(t, home, "project", "close", "--name", "app", "--stop-running"); exit != clikit.ExitOK {
 		t.Fatalf("close: exit %d, %+v", exit, v)
 	}
-	newPlan(t, home, repo, "later", "goal: g\ntasks:\n  - id: a\n    prompt: p\n")
+	newPlan(t, home, repo, "later", "goal: g\ntasks:\n  - id: a\n    aca: claude_code\n    model: opus\n    prompt: p\n")
 	v, exit = wdxJSONWith(t, home, in(repo), "plan", "run", "--name", "later")
 	wantError(t, v, exit, api.ErrorCodeProjectClosed, clikit.ExitRejected)
 }
@@ -154,7 +154,7 @@ func TestPlanTaskDone(t *testing.T) {
 	t.Parallel()
 	home := newHome(t)
 	repo := planRepo(t, home, "a manual\nb manual\n")
-	newPlan(t, home, repo, "sso", "goal: g\ntasks:\n  - id: a\n    prompt: p\n  - id: b\n    after: [a]\n    prompt: p\n")
+	newPlan(t, home, repo, "sso", "goal: g\ntasks:\n  - id: a\n    aca: claude_code\n    model: opus\n    prompt: p\n  - id: b\n    aca: claude_code\n    model: opus\n    after: [a]\n    prompt: p\n")
 	done := func(args ...string) (jsonOutput, int) {
 		t.Helper()
 		return wdxJSONWith(t, home, in(repo), append([]string{"plan", "task", "done"}, args...)...)
@@ -218,7 +218,7 @@ func TestPlanRunText(t *testing.T) {
 	// b is manual too: its agent would say it is done by itself, so the list at
 	// the end could show 2/2, running or done.
 	repo := planRepo(t, home, "a manual\nb manual\n")
-	newPlan(t, home, repo, "sso", "goal: g\ntasks:\n  - id: a\n    prompt: Add the table.\n  - id: b\n    after: [a]\n    prompt: p\n")
+	newPlan(t, home, repo, "sso", "goal: g\ntasks:\n  - id: a\n    aca: claude_code\n    model: opus\n    prompt: Add the table.\n  - id: b\n    aca: claude_code\n    model: sonnet\n    after: [a]\n    prompt: p\n")
 	out := wdxWith(t, home, in(repo), "plan", "run", "--name", "sso", "--parallel", "2")
 	if out.Exit != clikit.ExitOK || !strings.HasPrefix(out.Stdout, "plan sso running on plan/sso, up to 2 tasks at once\n") {
 		t.Errorf("run: %+v", out)
@@ -226,13 +226,13 @@ func TestPlanRunText(t *testing.T) {
 	waitTasks(t, home, repo, "sso", "a:running b:pending")
 	waitCommitted(t, repo, "a")
 	out = wdxWith(t, home, in(repo), "plan", "status", "--name", "sso")
-	for _, want := range []string{"sso: running, 0/2 tasks done, on plan/sso\n", "TASK", "AGENT", "sso-a", "sso-1", "waiting for a"} {
+	for _, want := range []string{"sso: running, 0/2 tasks done, on plan/sso\n", "TASK", "ACA", "MODEL", "AGENT", "claude_code", "opus", "sonnet", "sso-a", "sso-1", "waiting for a"} {
 		if !strings.Contains(out.Stdout, want) {
 			t.Errorf("status: want %q in\n%s", want, out.Stdout)
 		}
 	}
 	out = wdxWith(t, home, in(repo), "plan", "task", "get", "--plan", "sso", "--task", "a")
-	if !strings.HasPrefix(out.Stdout, "a of sso: running\n") || !strings.Contains(out.Stdout, "PROMPT\nAdd the table.\n") {
+	if !strings.HasPrefix(out.Stdout, "a of sso: running\n  aca      claude_code\n  model    opus\n") || !strings.Contains(out.Stdout, "PROMPT\nAdd the table.\n") {
 		t.Errorf("task get: %+v", out)
 	}
 	out = wdxWith(t, home, in(repo), "plan", "task", "done", "--plan", "sso", "--task", "a", "--summary", "did a")
@@ -256,8 +256,8 @@ func TestPlanOfPlansRun(t *testing.T) {
 	t.Parallel()
 	home := newHome(t)
 	repo := planRepo(t, home, "a manual\n")
-	newPlan(t, home, repo, "sso", "goal: g\ntasks:\n  - id: a\n    prompt: p\n")
-	newPlan(t, home, repo, "ui", "goal: g\ntasks:\n  - id: b\n    prompt: p\n")
+	newPlan(t, home, repo, "sso", "goal: g\ntasks:\n  - id: a\n    aca: claude_code\n    model: opus\n    prompt: p\n")
+	newPlan(t, home, repo, "ui", "goal: g\ntasks:\n  - id: b\n    aca: claude_code\n    model: opus\n    prompt: p\n")
 	newPlan(t, home, repo, "big", "goal: g\nplans:\n  - id: sso\n  - id: ui\n    after: [sso]\n")
 	v, exit := wdxJSONWith(t, home, in(repo), "plan", "run", "--name", "big")
 	if exit != clikit.ExitOK || v.Result != "started" || v.Plan.PlansDone == nil || *v.Plan.PlansDone != 0 || v.Plan.TasksDone != nil {
@@ -296,7 +296,7 @@ func TestPlanOfPlansRunText(t *testing.T) {
 	t.Parallel()
 	home := newHome(t)
 	repo := planRepo(t, home, "a manual\n")
-	newPlan(t, home, repo, "sso", "goal: g\ntasks:\n  - id: a\n    prompt: p\n")
+	newPlan(t, home, repo, "sso", "goal: g\ntasks:\n  - id: a\n    aca: claude_code\n    model: opus\n    prompt: p\n")
 	newPlan(t, home, repo, "big", "goal: g\nplans:\n  - id: sso\n")
 	out := wdxWith(t, home, in(repo), "plan", "run", "--name", "big")
 	if out.Exit != clikit.ExitOK || !strings.HasPrefix(out.Stdout, "plan big running, each of its plans once those before it have landed\n") || !strings.Contains(out.Stdout, "sso") {

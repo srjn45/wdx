@@ -45,8 +45,8 @@ func TestWorktreeRebaseStacked(t *testing.T) {
 	if v, exit := wdxJSON(t, home, "project", "landing", "--name", "app", "--no-check"); exit != clikit.ExitOK {
 		t.Fatalf("landing: exit %d, %+v", exit, v)
 	}
-	newPlan(t, home, repo, "sso", "goal: g\ntasks:\n  - id: s\n    prompt: p\n")
-	newPlan(t, home, repo, "ui", "goal: g\ntasks:\n  - id: u\n    prompt: p\n")
+	newPlan(t, home, repo, "sso", "goal: g\ntasks:\n  - id: s\n    aca: claude_code\n    model: opus\n    prompt: p\n")
+	newPlan(t, home, repo, "ui", "goal: g\ntasks:\n  - id: u\n    aca: claude_code\n    model: opus\n    prompt: p\n")
 	newPlan(t, home, repo, "big", "goal: g\npr: true\nstacked: true\nplans:\n  - id: sso\n  - id: ui\n    after: [sso]\n")
 	if v, exit := wdxJSONWith(t, home, in(repo), "plan", "run", "--name", "big"); exit != clikit.ExitOK {
 		t.Fatalf("run: exit %d, %+v", exit, v)

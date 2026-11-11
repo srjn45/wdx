@@ -313,6 +313,8 @@ func (r planTask) Text(w io.Writer, st style.Style) {
 	t := r.Task
 	fmt.Fprintf(w, "%s of %s: %s\n", st.Name(t.Id), st.Name(r.Plan.Name), taskState(st, t))
 	field := clikit.FieldPrinter(w, st, 8)
+	field("aca", t.Aca)
+	field("model", t.Model)
 	if len(t.After) > 0 {
 		field("after", strings.Join(t.After, ", "))
 	}

@@ -10,6 +10,8 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/srjn45/wdx/internal/aca"
+	"github.com/srjn45/wdx/internal/aca/acatest"
 	"github.com/srjn45/wdx/internal/api"
 	"github.com/srjn45/wdx/internal/identity"
 	"github.com/srjn45/wdx/internal/telemetry"
@@ -28,11 +30,17 @@ func (td *testDaemon) createPlan(t *testing.T, project, name, content string) ap
 const planOfTasks = `goal: Keep sessions in the database.
 tasks:
   - id: schema
+    aca: claude_code
+    model: sonnet
     prompt: Add the table.
   - id: docs
+    aca: claude_code
+    model: haiku
     after: [api, schema]
     prompt: Document it.
   - id: api
+    aca: claude_code
+    model: opus
     after: [schema]
     prompt: Use it.
 `
@@ -65,16 +73,16 @@ func TestPlanCreate(t *testing.T) {
 		Goal:        "Keep sessions in the database.",
 		Constraints: []string{},
 		Tasks: &[]api.PlanTask{
-			{Id: "schema", After: []string{}, Prompt: "Add the table.", State: api.PlanTaskStatePending, WaitingFor: []string{}},
-			{Id: "api", After: []string{"schema"}, Prompt: "Use it.", State: api.PlanTaskStatePending, WaitingFor: []string{"schema"}},
-			{Id: "docs", After: []string{"api"}, Prompt: "Document it.", State: api.PlanTaskStatePending, WaitingFor: []string{"api"}},
+			{Id: "schema", Aca: "claude_code", Model: "sonnet", After: []string{}, Prompt: "Add the table.", State: api.PlanTaskStatePending, WaitingFor: []string{}},
+			{Id: "api", Aca: "claude_code", Model: "opus", After: []string{"schema"}, Prompt: "Use it.", State: api.PlanTaskStatePending, WaitingFor: []string{"schema"}},
+			{Id: "docs", Aca: "claude_code", Model: "haiku", After: []string{"api"}, Prompt: "Document it.", State: api.PlanTaskStatePending, WaitingFor: []string{"api"}},
 		},
 	}
 	if !reflect.DeepEqual(def, want) || got.JSON200.Revision != 1 {
 		t.Errorf("definition: %+v", def)
 	}
 
-	invalid, err := td.client.CreatePlanWithResponse(ctx, api.CreatePlan{Project: optional("app"), Name: "bad", Content: "goal: g\ntasks:\n  - id: a_b\n"})
+	invalid, err := td.client.CreatePlanWithResponse(ctx, api.CreatePlan{Project: optional("app"), Name: "bad", Content: "goal: g\ntasks:\n  - id: a_b\n    aca: claude_code\n    model: opus\n"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -118,7 +126,7 @@ func TestPlanContent(t *testing.T) {
 	ctx := context.Background()
 	td := start(t)
 	td.create(t, "app")
-	td.createPlan(t, "app", "auth", "goal: g\ntasks:\n  - id: a\n    prompt: p\n")
+	td.createPlan(t, "app", "auth", "goal: g\ntasks:\n  - id: a\n    aca: claude_code\n    model: opus\n    prompt: p\n")
 	in := &api.UpdatePlanContentParams{Project: optional("app")}
 
 	up, err := td.client.UpdatePlanContentWithResponse(ctx, "auth", in, api.DocContentChange{Base: 1, Content: planOfTasks})
@@ -177,7 +185,7 @@ func TestPlansOfPlansThroughTheAPI(t *testing.T) {
 	ctx := context.Background()
 	td := start(t)
 	td.create(t, "app")
-	child := td.createPlan(t, "app", "auth-a", "goal: g\ntasks:\n  - id: a\n    prompt: p\n").Plan
+	child := td.createPlan(t, "app", "auth-a", "goal: g\ntasks:\n  - id: a\n    aca: claude_code\n    model: opus\n    prompt: p\n").Plan
 	parent := td.createPlan(t, "app", "auth", "goal: g\nplans:\n  - id: auth-a\n").Plan
 	if parent.Tasks != nil || parent.Plans == nil || !reflect.DeepEqual(*parent.Plans, []string{"auth-a"}) {
 		t.Errorf("the parent: %+v", parent)
@@ -232,7 +240,7 @@ func TestPlanTextNotLogged(t *testing.T) {
 	td := start(t)
 	td.create(t, "app")
 	secret := func(word string) string {
-		return "goal: goal-secret\nconstraints: [constraint-secret]\ntasks:\n  - id: a\n    prompt: " + word + "-secret\n"
+		return "goal: goal-secret\nconstraints: [constraint-secret]\ntasks:\n  - id: a\n    aca: claude_code\n    model: opus\n    prompt: " + word + "-secret\n"
 	}
 	td.createPlan(t, "app", "auth", secret("created"))
 	if r, err := td.client.UpdatePlanContentWithResponse(ctx, "auth", &api.UpdatePlanContentParams{Project: optional("app")}, api.DocContentChange{Base: 1, Content: secret("updated")}); err != nil || r.JSON200 == nil {
@@ -298,4 +306,41 @@ func TestPlanCopiesCaughtUpOnStart(t *testing.T) {
 	if err != nil || !strings.Contains(string(got), "Keep sessions") {
 		t.Errorf("the copy after a start: %q, %v", got, err)
 	}
+}
+
+func TestPlanTaskACAAndModel(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	td := startOn(t, shortDir(t), telemetry.Options{}, func(o *Options) {
+		o.ACAs = []aca.AiCodingAgent{&acatest.ACA{}, &acatest.Bare{Name: "codex"}}
+		o.ACAEnabled = map[string]bool{"codex": false}
+	})
+	td.create(t, "app")
+	td.createPlan(t, "app", "auth", planOfTasks)
+	yaml := "goal: g\ntasks:\n" +
+		"  - id: a\n    aca: nowhere\n    model: opus\n    prompt: p\n" +
+		"  - id: b\n    aca: codex\n    model: bare-1\n    prompt: p\n" +
+		"  - id: c\n    aca: claude_code\n    model: gpt\n    prompt: p\n"
+	want := []any{
+		map[string]any{"line": float64(4), "message": `no such AI coding agent here: "nowhere"`},
+		map[string]any{"line": float64(8), "message": "the AI coding agent codex is disabled for new agents"},
+		map[string]any{"line": float64(13), "message": `model "gpt" is not one claude_code offers (fable, opus, sonnet, haiku)`},
+	}
+	created, err := td.client.CreatePlanWithResponse(ctx, api.CreatePlan{Project: optional("app"), Name: "bad", Content: yaml})
+	if err != nil {
+		t.Fatal(err)
+	}
+	wantProblem(t, created.ApplicationproblemJSONDefault, http.StatusUnprocessableEntity, api.ErrorCodeInvalidPlan)
+	if got := (*created.ApplicationproblemJSONDefault.Details)["problems"]; !reflect.DeepEqual(got, want) {
+		t.Errorf("create problems: %v, want %v", got, want)
+	}
+	updated, err := td.client.UpdatePlanContentWithResponse(ctx, "auth", &api.UpdatePlanContentParams{Project: optional("app")}, api.DocContentChange{Base: 1, Content: yaml})
+	if err != nil {
+		t.Fatal(err)
+	}
+	wantProblem(t, updated.ApplicationproblemJSONDefault, http.StatusUnprocessableEntity, api.ErrorCodeInvalidPlan)
+	if got := (*updated.ApplicationproblemJSONDefault.Details)["problems"]; !reflect.DeepEqual(got, want) {
+		t.Errorf("update problems: %v, want %v", got, want)
+	}
+	wantRequestsLogged(t, td.home)
 }

@@ -23,9 +23,9 @@ $ wdx plan status --name first-release
 first-release: running, 0/2 tasks done, on plan/first-release
   goal        Get app ready for its first contributors.
   constraint  Keep each file to one or two lines.
-TASK          STATE                     AFTER         AGENT                       SLOT
-contributing  running                                 first-release-contributing  first-release-1
-notes         waiting for contributing  contributing
+TASK          STATE                     ACA          MODEL   AFTER         AGENT                       SLOT
+contributing  running                                claude_code  sonnet                first-release-contributing  first-release-1
+notes         waiting for contributing  claude_code  sonnet  contributing
 ```
 
 Each agent commits its work and says so, with `wdx plan task done --agent-id $WDX_AGENT_ID --summary <text>`. Here the project's landing check refuses any `TODO`, and the second task wrote one, so its landing failed and waits for you:
@@ -35,9 +35,9 @@ $ wdx plan status --name first-release
 first-release: running, 1/2 tasks done, 1 failed, on plan/first-release
   goal        Get app ready for its first contributors.
   constraint  Keep each file to one or two lines.
-TASK          STATE                                               AFTER         AGENT                SLOT
-contributing  done
-notes         land failed: check (terminal land-first-release-1)  contributing  first-release-notes  first-release-1
+TASK          STATE                                               ACA          MODEL   AFTER         AGENT                SLOT
+contributing  done                                                claude_code  sonnet
+notes         land failed: check (terminal land-first-release-1)  claude_code  sonnet  contributing  first-release-notes  first-release-1
 $ wdx plan task get --plan first-release --task notes
 notes of first-release: land failed: check (terminal land-first-release-1)
   after    contributing
