@@ -87,7 +87,9 @@ down() {
   WDX_HOME=$DEMO/home wdx daemon stop >/dev/null 2>&1 || true
   # The holders, and the shells and AI CLIs in them, outlive the daemon by
   # design: stop every process whose environment names the demo's home.
-  pids=$(grep -lzx "WDX_HOME=$DEMO/home" /proc/[0-9]*/environ 2>/dev/null | cut -d/ -f3 || true)
+  # Not this script, nor the one that ran it (a record.sh exports WDX_HOME too):
+  # it would stop before removing the demo.
+  pids=$(grep -lzx "WDX_HOME=$DEMO/home" /proc/[0-9]*/environ 2>/dev/null | cut -d/ -f3 | grep -vx -e "$$" -e "$PPID" || true)
   [ -z "$pids" ] || kill $pids 2>/dev/null || true
   for pid in $pids; do
     n=0

@@ -1,0 +1,51 @@
+---
+// Two AI CLIs in one checkout, beside the same two each in a worktree of its
+// own, landing one after the other.
+import Diagram from '../diagrams/Diagram.astro';
+---
+<Diagram id="oc" width={720} height={360}
+  label="Left, one checkout: Claude Code and Codex both edit notes.py in the same notes folder, on main, and git status mixes their changes. Right, a worktree each: notes is the clone, on main; .worktrees/notes-delete is on the branch notes-delete with Claude Code in it; .worktrees/notes-search is on the branch notes-search with Codex in it. Each lands in turn: rebase if main moved, the check, then main fast-forwards."
+  caption="Left, two agents share one working tree and one index. Right, each has a checkout and a branch of its own in the same clone, and lands in turn.">
+  <text class="ttl" x="10" y="20">One checkout</text>
+  <rect class="bx" x="10" y="36" width="150" height="44" rx="8" /><text x="26" y="63">Claude Code</text>
+  <rect class="bx" x="180" y="36" width="150" height="44" rx="8" /><text x="196" y="63">Codex</text>
+  <rect class="grp" x="10" y="130" width="320" height="188" rx="10" />
+    <rect class="bx oc-bad" x="26" y="152" width="288" height="40" rx="6" /><text class="sm oc-bad" x="42" y="177">notes.py   edited by both at once</text>
+  <rect class="bx" x="26" y="204" width="288" height="56" rx="6" />
+  <text x="26" y="304">notes/</text><text class="sm" x="84" y="304">one checkout, on main</text>
+  <text class="sm" x="42" y="227">$ git status</text>
+  <text class="sm oc-bad" x="42" y="247">  M notes.py   whose change is this?</text>
+  <path class="ar oc-bad" d="M85 80 V148" marker-end="url(#oc-bad)" />
+  <path class="ar oc-bad" d="M255 80 V148" marker-end="url(#oc-bad)" />
+
+  <text class="ttl" x="380" y="20">A worktree each</text>
+  <rect class="bx" x="380" y="36" width="330" height="44" rx="8" />
+  <text x="396" y="63">notes/</text><text class="sm" x="460" y="63">the clone, on main</text>
+  <rect class="bx hot" x="380" y="92" width="330" height="56" rx="8" />
+  <text x="396" y="116">.worktrees/notes-delete</text><text class="sm" x="396" y="136">branch notes-delete · Claude Code</text>
+  <rect class="bx hot" x="380" y="160" width="330" height="56" rx="8" />
+  <text x="396" y="184">.worktrees/notes-search</text><text class="sm" x="396" y="204">branch notes-search · Codex</text>
+
+  <text class="sm" x="380" y="250">each lands in turn: wdx worktree land</text>
+  <rect class="bx" x="380" y="262" width="96" height="40" rx="6" /><text class="sm" x="394" y="287">rebase</text>
+  <rect class="bx" x="497" y="262" width="96" height="40" rx="6" /><text class="sm" x="514" y="287">check</text>
+  <rect class="bx hot" x="614" y="262" width="96" height="40" rx="6" /><text class="sm hot" x="626" y="280">fast-</text><text class="sm hot" x="626" y="294">forward</text>
+  <path class="ar hot" d="M476 282 H493" marker-end="url(#oc-h)" />
+  <path class="ar hot" d="M593 282 H610" marker-end="url(#oc-h)" />
+  <text class="sm" x="380" y="326">if main moved on</text>
+  <text class="sm" x="598" y="326">no merge commit</text>
+  <text class="sm" x="380" y="346">a conflict is undone: main stays as it was</text>
+
+  <defs>
+    <marker id="oc-bad" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path class="oc-badhd" d="M0 0L10 5L0 10z" /></marker>
+  </defs>
+</Diagram>
+
+<style is:global>
+  .wdx-diagram { --oc-bad: #e5747a; }
+  :root[data-theme="light"] .wdx-diagram { --oc-bad: #b8323a; }
+  @media (prefers-color-scheme: light) { :root:not([data-theme="dark"]) .wdx-diagram { --oc-bad: #b8323a; } }
+  .wdx-diagram .bx.oc-bad, .wdx-diagram .ar.oc-bad { stroke: var(--oc-bad); }
+  .wdx-diagram text.oc-bad { fill: var(--oc-bad); }
+  .wdx-diagram .oc-badhd { fill: var(--oc-bad); }
+</style>
