@@ -7,10 +7,9 @@ What is coming next, in no order and with no dates. An item is here once it is d
 
 ## Planned
 
-- **Open sign-up on the central hub:** invite-only now, opened once the first version is complete.
 - **Teams:** share a project's docs and plans with people you choose. A team never gives access to a machine.
 - **Docs and plans on all your nodes:** pushed docs coming back down to your other nodes and a team's, with a conflict kept for a person to resolve, never overwritten.
-- **Single sign-on** (OpenID Connect) for a company's own hub.
+- **Single sign-on** (OpenID Connect) for an organisation's hub.
 - **Signed releases.**
 - **Agents' prompts on every AI CLI:** reading the question a waiting agent asks on Codex, Cursor and Antigravity, as on Claude Code, and wdx answering them.
 - **Agents resumed by themselves:** an agent running when the machine went down comes back on its own, in the same conversation.
@@ -18,7 +17,7 @@ What is coming next, in no order and with no dates. An item is here once it is d
 
 ## Shipped
 
-- **The hub**, in 0.5.0: your machines as nodes of one account, with who is online; remote access with an authenticator code on each machine; `--node` for commands, attach and TIDE; a project's docs pushed to the hub; and running your own, on Linux or Fly.io. See [Hub](/wdx/docs/guides/hub/) and [Running a hub](/wdx/docs/guides/running-a-hub/). The central hub, wdx-hub.fly.dev, is invite-only for now; it opens to everyone in a later release, once the first version is complete. Until then, [run your own](/wdx/docs/guides/running-a-hub/).
+- **The hub**, in 0.5.0: your machines as nodes of one account, with who is online; remote access with an authenticator code on each machine; `--node` for commands, attach and TIDE; a project's docs pushed to the hub; all self-hosted, on Linux or Fly.io, for yourself or an organisation. See [Hub](/wdx/docs/guides/hub/) and [Running a hub](/wdx/docs/guides/running-a-hub/).
 - **Usage and limits**, in 0.5.0: each AI CLI's usage in `wdx usage` and TIDE's stats tab, and an agent marked `limited` while a limit its model draws on is reached. See [Agents](/wdx/docs/guides/agents/).
 
 ## Not planned
