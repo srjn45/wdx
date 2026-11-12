@@ -5,6 +5,8 @@ sidebar:
   order: 1
 ---
 
+import Since from '../../../../components/Since.astro';
+
 Claude Code is the default ACA when it is installed, and the one wdx reads the most from: besides its state, model and context, the question it asks and its options. Its id is `claude_code`.
 
 ## Install
@@ -25,9 +27,9 @@ wdx agent create --aca claude_code --model opus
 
 ## What wdx reads
 
-- **Its state**, from the input box and footer: working, idle, or waiting, and a draft in the box.
+- **Its state**, from the input box and footer: working, idle, or waiting, and a draft in the box. With a draft in the box <Since v="0.5.1" />, the line above the box tells whether a turn runs, so an agent at rest no longer flashes working.
 - **The question it asks**, only Claude Code's so far: `yes/no` for a permission or trust question, `decision` for a choice, with the question, its detail and its options, in `wdx agent get` and TIDE's info tab.
-- **Its model**, from its banner and `/model`.
+- **Its model**, from its banner and `/model`, and from the status line's file <Since v="0.5.1" />, so a resumed agent, whose screen shows no banner, shows its model too, and is marked limited when its own model's limit runs out.
 - **How full its context is**, from a status line wdx gives it, which writes a small file in the agent's backup. Your own status line still runs, after wdx's.
 - **Its conversation**, copied from its transcripts as they grow, with `/clear` followed through a hook, so `wdx agent transcript` and `--brief` have it all, and a transcript Claude Code deleted is put back.
 

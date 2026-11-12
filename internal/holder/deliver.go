@@ -133,9 +133,9 @@ func (h *holder) pasteShown(m message, pastedAt time.Time) (shown time.Duration,
 
 // submitted waits until the screen reads no draft, up to the submit settle after
 // the draft last changed (a change of any other part of the state, as a Codex
-// turn makes several times a second, does not restart it), and presses the submit key again while the draft is what
-// the paste put there: a person's text is never submitted. It says whether the
-// draft went.
+// turn makes several times a second, does not restart it), and presses the
+// submit key again while the draft is what the paste put there: a person's text
+// is never submitted. It says whether the draft went.
 func (h *holder) submitted(m message, pasted string) bool {
 	settle := time.NewTimer(h.sendTimes.SubmitSettle)
 	defer settle.Stop()

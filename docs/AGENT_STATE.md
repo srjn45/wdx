@@ -28,8 +28,13 @@ From the recordings (2.1.314), looking only at the bottom of the screen. The foo
 | footer has `esc to interrupt` | `working` |
 | footer has `1 shell` (any number) or `↓ to manage`, or a `◯` row is below it | `working`: the turn ended, but a background shell or subagent still runs |
 | footer has `? for shortcuts`, `← 1 agent` or `← for agents` | `idle` |
-| an input box with any other footer | `unknown` with `InputBox`, decided by the motion fallback |
+| any other footer, and the line just above the box's top rule, past blank lines, is the logo's last line (`▝▝   <dir>` under the `▝▜` and `▐▛` lines): no turn has run yet | `idle` |
+| any other footer, and that line is a turn's end at the left edge, `✻ <Verb>ed for <time>` | `idle` |
+| any other footer, and that line is a spinner at the left edge with its time, `✶ <Verb>… (3s · thinking)` | `working`, in a turn |
+| an input box with any other footer and any other line above it, as an answer streaming, a spinner with no time yet, or a `⎿ Tip:` line under the spinner | `unknown` with `InputBox`, decided by the motion fallback |
 | anything else | `unknown` |
+
+The line above the box (the wdx doc STATE_LEFTOVERS, from Claude Code 2.1.322) is read whenever the footer tells no activity, with or without a draft: with text in the box the footer is the bare mode, `⏵⏵ auto mode on (shift+tab to cycle)`, at rest and in a turn alike, and at 40 columns an empty box's footer can be cut off. The verbs are random, so the rules go by shape. While an answer streams no spinner shows, so a missing spinner is never read as `idle`. One false `idle` is known: the turn's end stays above the box until the next turn draws under it, so a draft in the box during the moment between a submit and the spinner's first frame reads `idle` (once in the recordings, 640 ms after the Enter, `2.1.322/rest-60x24`).
 
 A box's prompt line starts with `❯` and a no-break space, or `!` in bash mode. A prompt's option, as `❯ 1. Red`, has a plain space after `❯`, in every recording, so it is not a box, while a draft reading `1. buy milk` is. If Claude changes that spacing, this check breaks.
 
@@ -96,7 +101,7 @@ The longest still gap in a turn is 1.12 s at normal settings, and 3.36 s with `p
 
 Known wrong answers, all on unreadable footers:
 
-- Anything that moves on an idle screen shows `working` for up to the still time: a hint clearing, as `Ctrl+Y`, the effort hint or `/tasks` under a draft. 15 episodes in about 22 minutes of recording.
+- Anything that moves on an idle screen shows `working` for up to the still time, where the line above the box does not decide: as `Press Ctrl-C again to exit` going above a long draft, or a suggestion filling the box at 40 columns. 15 episodes in about 22 minutes of recording before the line above the box was read; of the seven the motion test keeps, five (`Ctrl+Y`, the effort hint, `/tasks` under a draft in both renderers and tmux's notice going) read `idle` since (the wdx doc STATE_LEFTOVERS).
 - At 40 columns, a prompt suggestion filling the box after a turn kept `working` until 44.2 s in one recording, and 7.3 s past the turn's end in another.
 - A stall past the still time during a turn reads `idle`.
 - Typing within the still time of any screen change reads `working` until it is up, as right after startup. A change more than the echo after input counts as motion, as `Press Ctrl-C again to exit` going away. Neither is a false `idle`.
@@ -337,8 +342,10 @@ The conditions are there because old names do show:
 | a command being typed, as `/model` | its suggestions cover the newest confirmation at a narrow width, leaving an older one lowest | a draft: not read |
 | the `/model` menu | every model's name | a prompt, with no input box |
 
+- **Also read from Claude Code's status file** (the wdx doc STATE_LEFTOVERS), as a resumed session's screen fills with the old conversation and shows no banner. Claude Code gives its status line `model.display_name`, in the banner's form, and wdx keeps that input in `claude-status.json` in the agent's folder (docs/AGENT.md, Context size). The daemon reads it with the context size, at every change of the file (`aca.ContextSize.Model`, filled by `readStatusLine`; only Claude Code's `ContextSize` passes it on, Cursor's screen giving its model on every read), and writes it to `agents.model` with the size in one transaction. Only from a file written at or after the terminal's `started_at`, as the file stays in the folder across a restart, and only a name of the parser's form (`aca.IsModelName`). A name passed over is logged at debug with its size only; the file is never logged.
+- **Two sources, one column: whichever told a name last is kept, and no name never clears one.** The screen tells a `/model` first, the file a moment later with the same name. So the holder's `""` keeps the name stored, and the model is cleared when the agent's terminal starts (`Launches`), so a restart with another `--model` never shows the old name.
 - **Its shape is checked.** The screen's text never leaves the holder, and this is the one exception, so a value must be a word and a version, as `Opus 5.5` or `Fable 5`. Anything else is not read, the last name staying. That also stops a name cut by a wrap being read as a shorter one.
-- **Synced as `activity` is.** A `model` field of `Status`, so no new protocol version: a holder too old to send it shows null. Then `ALTER TABLE agents ADD COLUMN model TEXT;`, null unless the process is running, and `model` in the API and the project stream.
+- **Synced as `activity` is.** A `model` field of `Status`, so no new protocol version: a holder too old to send it shows null. Then `ALTER TABLE agents ADD COLUMN model TEXT;`, null until a name is read in the agent's run, and `model` in the API and the project stream.
 - **Where it shows:** `wdx agent get`, a `MODEL` column in `wdx agent list`, and tide's agent info tab (docs/TIDE_INFO.md), next to `aca` in all three, not the Agents row, which is narrow.
 
 ### What the recordings found
