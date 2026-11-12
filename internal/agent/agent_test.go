@@ -669,8 +669,11 @@ func TestSetStatus(t *testing.T) {
 	if got := setModel("Haiku 5.5", false); got != "Haiku 5.5" {
 		t.Errorf("the model after a repeat: %q", got)
 	}
-	if got := setModel("", true); got != "" {
-		t.Errorf("a holder that has read none, as after a relaunch, leaves %q", got)
+	if got := setModel("", false); got != "Haiku 5.5" {
+		t.Errorf("a holder that has read none, as on a resumed session's screen, leaves %q", got)
+	}
+	if got := setModel("Opus 5.5", true); got != "Opus 5.5" {
+		t.Errorf("a new model not kept: %q", got)
 	}
 	if got := set("limited", true, 2, true); got.Activity != "unknown" {
 		t.Errorf("a value not known reads %q", got.Activity)
@@ -723,6 +726,29 @@ func TestSetStatus(t *testing.T) {
 	}
 	if changed, err := store.SetStatus(ctx, "term-none", "idle", false, 0, "", nil); err != nil || changed {
 		t.Errorf("no agent: changed %v, %v", changed, err)
+	}
+}
+
+// TestAStartClearsTheModel: the model read in the last run is gone once the agent's
+// terminal starts again, as it may start with another, and a holder telling no name
+// never clears one.
+func TestAStartClearsTheModel(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	f := newFixture(t, "")
+	a := f.create(t, "helper")
+	store := f.agents.Store()
+	if _, err := store.SetStatus(ctx, a.Terminal.ID, "idle", false, 0, "Opus 5.5", nil); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := f.agents.Stop(ctx, a.ID); err != nil {
+		t.Fatal(err)
+	}
+	if _, _, err := f.agents.Start(ctx, a.ID); err != nil {
+		t.Fatal(err)
+	}
+	if got := f.waitState(t, a.ID, terminal.StateRunning); got.Model != "" {
+		t.Errorf("started again, the agent shows the last run's model %q", got.Model)
 	}
 }
 

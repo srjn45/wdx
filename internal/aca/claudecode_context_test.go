@@ -52,24 +52,52 @@ func statusInput(t *testing.T, name string) []byte {
 }
 
 // TestClaudeCodeContextSize reads the status line's input as 2.1.319 gives it.
-// Before the first message and after /clear it tells no tokens, and the window.
+// Before the first message and after /clear it tells no tokens, and the window. The
+// model's display name comes with it, at the file's time.
 func TestClaudeCodeContextSize(t *testing.T) {
 	t.Parallel()
 	for _, tc := range []struct {
 		file string
 		want aca.ContextSize
 	}{
-		{"before-first-message.json", aca.ContextSize{Tokens: 0, Window: 1_000_000}},
-		{"mid-session.json", aca.ContextSize{Tokens: 44_139, Window: 1_000_000}},
-		{"after-clear.json", aca.ContextSize{Tokens: 0, Window: 1_000_000}},
+		{"before-first-message.json", aca.ContextSize{Tokens: 0, Window: 1_000_000, Model: "Haiku 5.5"}},
+		{"mid-session.json", aca.ContextSize{Tokens: 44_139, Window: 1_000_000, Model: "Haiku 5.5"}},
+		{"after-clear.json", aca.ContextSize{Tokens: 0, Window: 1_000_000, Model: "Haiku 5.5"}},
 	} {
 		b := newClaudeBackup(t)
 		if out := statusLine(t, b.launch, statusInput(t, tc.file)); out != "" {
 			t.Errorf("%s: status line printed %q", tc.file, out)
 		}
+		info, err := os.Stat(filepath.Join(b.launch.BackupDir, "claude-status.json"))
+		if err != nil {
+			t.Fatal(err)
+		}
+		tc.want.ModelAt = info.ModTime()
 		got, follow, err := aca.ClaudeCode{}.ContextSize(b.launch)
 		if err != nil || got != tc.want || follow != nil {
 			t.Errorf("%s: context size = %+v, %v, following %q; want %+v and nothing to follow", tc.file, got, err, follow, tc.want)
+		}
+	}
+}
+
+// TestClaudeCodeContextSizeModel: only a display name of the screen parser's form, a
+// word and a version, is given as the model; anything else, or none, is "".
+func TestClaudeCodeContextSizeModel(t *testing.T) {
+	t.Parallel()
+	for model, want := range map[string]string{
+		`{"id": "claude-opus-5-5", "display_name": "Opus 5.5"}`:      "Opus 5.5",
+		`{"id": "claude-fable-5-2", "display_name": "Fable 5"}`:      "Fable 5",
+		`{"id": "claude-opus-5-5", "display_name": "Opus 5.5 (1M)"}`: "",
+		`{"id": "claude-opus-5-5", "display_name": "claude-opus"}`:   "",
+		`{"id": "claude-opus-5-5", "display_name": "Opus 5.5\nrm"}`:  "",
+		`{"id": "claude-opus-5-5"}`:                                  "",
+		`null`:                                                       "",
+	} {
+		b := newClaudeBackup(t)
+		statusLine(t, b.launch, []byte(`{"model": `+model+`, "context_window": {"total_input_tokens": 3, "context_window_size": 200000}}`))
+		got, _, err := aca.ClaudeCode{}.ContextSize(b.launch)
+		if err != nil || got.Model != want || got.Tokens != 3 || (want == "") != got.ModelAt.IsZero() {
+			t.Errorf("%s: context size = %+v, %v; want the model %q", model, got, err, want)
 		}
 	}
 }

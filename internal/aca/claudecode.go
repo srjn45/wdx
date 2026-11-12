@@ -137,6 +137,13 @@ var (
 
 const claudeCodeModelName = `([A-Z][a-z]+ \d+(?:\.\d+)?)`
 
+var modelName = regexp.MustCompile(`^` + claudeCodeModelName + `$`)
+
+// IsModelName says whether name has the form the screen parsers read a model's name
+// in, a word and a version, as Opus 5.5: so that nothing else an ACA's files hold is
+// stored as one.
+func IsModelName(name string) bool { return modelName.MatchString(name) }
+
 // Parse implements ScreenParser.
 func (ClaudeCodeScreenParser) Parse(lines, undimmed []string) screen.ScreenState {
 	for len(lines) > 0 && strings.TrimSpace(lines[len(lines)-1]) == "" {

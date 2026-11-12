@@ -23,6 +23,7 @@ import (
 	"github.com/srjn45/wdx/internal/identity"
 	"github.com/srjn45/wdx/internal/logging"
 	"github.com/srjn45/wdx/internal/runtest"
+	"github.com/srjn45/wdx/internal/terminal"
 	"github.com/srjn45/wdx/internal/waittest"
 )
 
@@ -228,4 +229,36 @@ func TestUsageFetchOnlyForAFetcher(t *testing.T) {
 	if f.done != nil {
 		t.Error("a fetch started for an ACA with nothing to fetch")
 	}
+}
+
+// TestRecordSizeKeepsTheModel: a model the ACA's files name is recorded and told, but
+// not from a file written before the agent's terminal started, which may be the last
+// run's, nor a name not of a model's form; none keeps the one recorded.
+func TestRecordSizeKeepsTheModel(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	f := newFixture(t, "")
+	a := f.create(t, "helper")
+	running := f.waitState(t, a.ID, terminal.StateRunning)
+	started := running.Terminal.StartedAt
+	var told int
+	c := &StatusReads{store: f.agents.Store(), OnChange: func() { told++ }}
+	record := func(size aca.ContextSize, want string, wantTold int) {
+		t.Helper()
+		c.recordSize(ctx, a.ID, started, size, nil)
+		got, err := f.agents.Store().Get(ctx, a.ID)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if got.Model != want || told != wantTold {
+			t.Errorf("after %+v: model %q, told %d times; want %q, %d", size, got.Model, told, want, wantTold)
+		}
+	}
+	after := started.Add(time.Millisecond)
+	record(aca.ContextSize{Tokens: 1, Model: "Opus 5.5", ModelAt: started.Add(-time.Second)}, "", 1)
+	record(aca.ContextSize{Tokens: 1, Model: "Opus 5.5", ModelAt: after}, "Opus 5.5", 2)
+	record(aca.ContextSize{Tokens: 1, Model: "Opus 5.5", ModelAt: after}, "Opus 5.5", 2)
+	record(aca.ContextSize{Tokens: 1}, "Opus 5.5", 2)
+	record(aca.ContextSize{Tokens: 1, Model: "opus\nrm -rf", ModelAt: after}, "Opus 5.5", 2)
+	record(aca.ContextSize{Tokens: 1, Model: "Fable 5.2", ModelAt: started}, "Fable 5.2", 3)
 }

@@ -133,7 +133,8 @@ func (a *ACA) StopDetached(_ context.Context, _ aca.Launch, d aca.DetachedSessio
 }
 
 // ContextFile is the file in an agent's backup ACA's ContextSize reads: the tokens
-// and the window, as two numbers.
+// and the window, as two numbers, then the model's name, if any, as the rest of the
+// line, given as it is, with the file's time.
 const ContextFile = "context-size"
 
 // ContextSize implements aca.AiCodingAgent: what ContextFile in the backup says, or
@@ -204,9 +205,17 @@ func readContextSize(path string) (aca.ContextSize, error) {
 	if text == "" {
 		return aca.ContextSize{}, aca.ErrNoContextSize
 	}
+	fields := strings.SplitN(text[strings.LastIndexByte(text, '\n')+1:], " ", 3)
 	var size aca.ContextSize
-	if _, err := fmt.Sscan(text[strings.LastIndexByte(text, '\n')+1:], &size.Tokens, &size.Window); err != nil {
+	if _, err := fmt.Sscan(strings.Join(fields[:min(2, len(fields))], " "), &size.Tokens, &size.Window); err != nil {
 		return aca.ContextSize{}, fmt.Errorf("read %s: %w", path, err)
+	}
+	if len(fields) == 3 && fields[2] != "" {
+		info, err := os.Stat(path)
+		if err != nil {
+			return aca.ContextSize{}, err
+		}
+		size.Model, size.ModelAt = fields[2], info.ModTime()
 	}
 	return size, nil
 }
@@ -224,6 +233,9 @@ func AppendContextSize(path string, size aca.ContextSize) error {
 }
 
 func contextLine(size aca.ContextSize) []byte {
+	if size.Model != "" {
+		return fmt.Appendf(nil, "%d %d %s\n", size.Tokens, size.Window, size.Model)
+	}
 	return fmt.Appendf(nil, "%d %d\n", size.Tokens, size.Window)
 }
 

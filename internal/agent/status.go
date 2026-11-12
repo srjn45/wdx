@@ -135,12 +135,13 @@ func (c *StatusReads) watch(ctx context.Context, terminalID string) {
 		delete(c.asked, a.ID)
 		c.mu.Unlock()
 	}()
+	started := a.Terminal.StartedAt
 	read := func() bool {
 		var ok bool
-		if l, ok = c.launch(ctx, terminalID, l); !ok {
+		if l, started, ok = c.launch(ctx, terminalID, l, started); !ok {
 			return false
 		}
-		c.read(ctx, known, a.ID, l, w)
+		c.read(ctx, known, a.ID, l, started, w)
 		return true
 	}
 	if !read() {
@@ -212,36 +213,41 @@ func (w *statusWatch) Lost() {
 }
 
 // launch is l with what the agent's row says now, its session above all, which a
-// backup changes when the AI coding agent names a new one; false once the agent is
-// gone.
-func (c *StatusReads) launch(ctx context.Context, terminalID string, l aca.Launch) (aca.Launch, bool) {
+// backup changes when the AI coding agent names a new one, and when its terminal
+// started, started until the row is read; false once the agent is gone.
+func (c *StatusReads) launch(ctx context.Context, terminalID string, l aca.Launch, started time.Time) (aca.Launch, time.Time, bool) {
 	a, err := c.store.GetByTerminal(ctx, terminalID)
 	if errors.Is(err, ErrNotFound) {
-		return l, false
+		return l, started, false
 	}
 	if err != nil {
 		logging.FromContext(ctx).Error("agent status read in its last session", "err", err)
-		return l, true
+		return l, started, true
 	}
 	l.SessionID = a.SessionID
-	return l, true
+	return l, a.Terminal.StartedAt, true
 }
 
-// read records what known says of the context size of the agent with id and of its
-// account's usage, and has w follow the files it read. A file followed only now is
-// read again, for what was written to it between the read and the follow.
-func (c *StatusReads) read(ctx context.Context, known aca.AiCodingAgent, id string, l aca.Launch, w *statusWatch) {
+// read records what known says of the context size of the agent with id, whose
+// terminal started at started, and of its account's usage, and has w follow the
+// files it read. A file followed only now is read again, for what was written to it
+// between the read and the follow.
+func (c *StatusReads) read(ctx context.Context, known aca.AiCodingAgent, id string, l aca.Launch, started time.Time, w *statusWatch) {
 	size, followSize, sizeErr := known.ContextSize(l)
 	rows, followUsage, usageErr := known.Usage(l)
 	if c.follow(ctx, w, slices.Concat(followSize, followUsage)) {
 		size, _, sizeErr = known.ContextSize(l)
 		rows, _, usageErr = known.Usage(l)
 	}
-	c.recordSize(ctx, id, size, sizeErr)
+	c.recordSize(ctx, id, started, size, sizeErr)
 	c.recordUsage(ctx, known.ID(), id, rows, usageErr)
 }
 
-func (c *StatusReads) recordSize(ctx context.Context, id string, size aca.ContextSize, err error) {
+// recordSize records size as the context size of the agent with id, and the model it
+// names, if any, when its file was written after the agent's terminal started at
+// started: the file stays in the backup across a restart, and the last run's model
+// may not be this one's. A name not of the screen parsers' form is passed over.
+func (c *StatusReads) recordSize(ctx context.Context, id string, started time.Time, size aca.ContextSize, err error) {
 	log := logging.FromContext(ctx)
 	switch {
 	case errors.Is(err, aca.ErrNoContextSize), errors.Is(err, aca.ErrNotSupported):
@@ -251,7 +257,17 @@ func (c *StatusReads) recordSize(ctx context.Context, id string, size aca.Contex
 		return
 	}
 	log.Debug("context size read", "tokens", size.Tokens, "window", size.Window)
-	changed, err := c.store.setContext(ctx, id, size)
+	model := size.Model
+	switch {
+	case model == "":
+	case !aca.IsModelName(model):
+		log.Debug("agent model not of a model's form, passed over", "size", len(model))
+		model = ""
+	case size.ModelAt.Before(started):
+		log.Debug("agent model of the last run passed over")
+		model = ""
+	}
+	changed, err := c.store.setContext(ctx, id, size, model)
 	if err != nil {
 		log.Error("agent context size not recorded", "err", err)
 		return

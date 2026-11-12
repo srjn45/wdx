@@ -7,6 +7,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"time"
 
 	"github.com/srjn45/wdx/internal/logging"
 )
@@ -84,5 +85,7 @@ func (Antigravity) ContextSize(l Launch) (ContextSize, []string, error) {
 		return ContextSize{}, nil, ErrNoContextSize
 	}
 	size, err := readStatusLine(l.BackupDir, antigravityStatusFile)
+	// Its screen gives the model on every read.
+	size.Model, size.ModelAt = "", time.Time{}
 	return size, nil, err
 }

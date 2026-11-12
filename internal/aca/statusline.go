@@ -35,6 +35,9 @@ type statusLineInput struct {
 		TotalInputTokens  int64 `json:"total_input_tokens"`
 		ContextWindowSize int64 `json:"context_window_size"`
 	} `json:"context_window"`
+	Model *struct {
+		DisplayName string `json:"display_name"`
+	} `json:"model"`
 	// RateLimits is by window: whatever windows the ACA gives, which may grow.
 	RateLimits map[string]struct {
 		UsedPercentage float64 `json:"used_percentage"`
@@ -91,7 +94,8 @@ func readStatusUsage(dir, name string) ([]Usage, error) {
 }
 
 // readStatusLine is the context size a status line last wrote to the file name in
-// dir: the tokens in the context and the model's window. No file, or none of the
+// dir: the tokens in the context, the model's window, and the model's display name
+// when it has the screen parser's form, with the file's time. No file, or none of the
 // context in it, is ErrNoContextSize; a file that does not parse an error. A null
 // count or window is 0: Cursor writes both null before the first message and after
 // /clear, where Claude Code writes 0 tokens and the window.
@@ -106,5 +110,13 @@ func readStatusLine(dir, name string) (ContextSize, error) {
 	if input.ContextWindow == nil {
 		return ContextSize{}, ErrNoContextSize
 	}
-	return ContextSize{Tokens: input.ContextWindow.TotalInputTokens, Window: input.ContextWindow.ContextWindowSize}, nil
+	size := ContextSize{Tokens: input.ContextWindow.TotalInputTokens, Window: input.ContextWindow.ContextWindowSize}
+	if input.Model != nil && IsModelName(input.Model.DisplayName) {
+		info, err := os.Stat(filepath.Join(dir, name))
+		if err != nil {
+			return ContextSize{}, err
+		}
+		size.Model, size.ModelAt = input.Model.DisplayName, info.ModTime()
+	}
+	return size, nil
 }

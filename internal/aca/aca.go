@@ -101,6 +101,11 @@ type Usage struct {
 type ContextSize struct {
 	Tokens int64 // in the context now
 	Window int64 // the model's window; 0 when the ACA does not tell
+	// Model is the model's name as the ACA's own files give it, in the form its
+	// screen parser reads (IsModelName); "" when they give none. ModelAt is when
+	// they gave it: the file's time, zero with no Model.
+	Model   string
+	ModelAt time.Time
 }
 
 // Model is one model an AI coding agent offers.

@@ -121,7 +121,9 @@ func (s *Store) one(ctx context.Context, where string, args ...any) (Agent, erro
 // SetStatus records what the process of the agent on terminalID is doing, and
 // reports whether that changes anything. A running holder can be newer than this
 // daemon, so an activity it does not know is unknown. The prompt is kept only
-// with waiting, as JSON, and its text is never logged.
+// with waiting, as JSON, and its text is never logged. A model of "" keeps the name
+// recorded: the screen and the ACA's files both tell it, and the last told wins
+// (the wdx doc STATE_LEFTOVERS); clearModel forgets it at each start.
 func (s *Store) SetStatus(ctx context.Context, terminalID, activity string, draft bool, queued int, model string, prompt *screen.Prompt) (bool, error) {
 	switch screen.Activity(activity) {
 	case screen.ActivityWorking, screen.ActivityIdle, screen.ActivityWaiting, screen.ActivityUnknown:
@@ -140,7 +142,7 @@ func (s *Store) SetStatus(ctx context.Context, terminalID, activity string, draf
 		}
 		promptJSON = sql.NullString{String: string(b), Valid: true}
 	}
-	rows, err := sqlite.Exec(ctx, s.db, "UPDATE agents SET activity = ?1, draft = ?2, queued = ?3, model = NULLIF(?4, ''), prompt = ?6 WHERE terminal_id = ?5 AND (activity IS NOT ?1 OR draft IS NOT ?2 OR queued IS NOT ?3 OR model IS NOT NULLIF(?4, '') OR prompt IS NOT ?6)", activity, draft, queued, model, terminalID, promptJSON)
+	rows, err := sqlite.Exec(ctx, s.db, "UPDATE agents SET activity = ?1, draft = ?2, queued = ?3, model = COALESCE(NULLIF(?4, ''), model), prompt = ?6 WHERE terminal_id = ?5 AND (activity IS NOT ?1 OR draft IS NOT ?2 OR queued IS NOT ?3 OR (?4 != '' AND model IS NOT ?4) OR prompt IS NOT ?6)", activity, draft, queued, model, terminalID, promptJSON)
 	if err != nil {
 		return false, err
 	}
@@ -174,13 +176,44 @@ func (s *Store) ClearEndedPrompts(ctx context.Context) error {
 	return err
 }
 
-// setContext records how full the context of the agent with id is, and reports
-// whether that changed anything. A window of 0, which its ACA does not tell, is
-// kept as null.
-func (s *Store) setContext(ctx context.Context, id string, size aca.ContextSize) (bool, error) {
-	n, err := sqlite.Exec(ctx, s.db, "UPDATE agents SET context_tokens = ?1, context_window = NULLIF(?2, 0) WHERE id = ?3 AND (context_tokens IS NOT ?1 OR context_window IS NOT NULLIF(?2, 0))",
+// setContext records how full the context of the agent with id is, and model as its
+// model unless it is "", in one transaction, so that no read sees the size without
+// the model told with it. It reports whether that changed anything. A window of 0,
+// which its ACA does not tell, is kept as null.
+func (s *Store) setContext(ctx context.Context, id string, size aca.ContextSize, model string) (bool, error) {
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return false, err
+	}
+	defer tx.Rollback()
+	n, err := sqlite.Exec(ctx, tx, "UPDATE agents SET context_tokens = ?1, context_window = NULLIF(?2, 0) WHERE id = ?3 AND (context_tokens IS NOT ?1 OR context_window IS NOT NULLIF(?2, 0))",
 		size.Tokens, size.Window, id)
-	return n > 0, err
+	if err != nil {
+		return false, err
+	}
+	var m int64
+	if model != "" {
+		if m, err = sqlite.Exec(ctx, tx, "UPDATE agents SET model = ?1 WHERE id = ?2 AND model IS NOT ?1", model, id); err != nil {
+			return false, err
+		}
+	}
+	if err := tx.Commit(); err != nil {
+		return false, err
+	}
+	if m > 0 {
+		logging.FromContext(ctx).Info("agent model recorded", "agent_id", id, "model", model)
+	}
+	return n > 0 || m > 0, nil
+}
+
+// clearModel forgets the model of the agent on terminalID, whose terminal starts, so
+// that a start with another model never shows the last run's.
+func (s *Store) clearModel(ctx context.Context, terminalID string) error {
+	n, err := sqlite.Exec(ctx, s.db, "UPDATE agents SET model = NULL WHERE terminal_id = ? AND model IS NOT NULL", terminalID)
+	if n > 0 {
+		logging.FromContext(ctx).Info("agent model cleared", "terminal_id", terminalID)
+	}
+	return err
 }
 
 // worktreeOfDir finds the deepest worktree of an agent's project holding its

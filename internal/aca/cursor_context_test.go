@@ -122,6 +122,18 @@ func TestCursorContextSize(t *testing.T) {
 	}
 }
 
+// TestCursorContextSizeGivesNoModel: Cursor's screen gives its model on every read,
+// so its ContextSize gives none, even of a name the screen parsers' form has.
+func TestCursorContextSizeGivesNoModel(t *testing.T) {
+	t.Parallel()
+	l := cursorLaunch(t)
+	cursorStatusLine(t, l, []byte(`{"model": {"id": "opus", "display_name": "Opus 5.5"}, "context_window": {"total_input_tokens": 3, "context_window_size": 200000}}`))
+	got, _, err := aca.Cursor{}.ContextSize(l)
+	if err != nil || got != (aca.ContextSize{Tokens: 3, Window: 200_000}) {
+		t.Errorf("context size = %+v, %v; want no model", got, err)
+	}
+}
+
 // TestCursorContextSizeUnknown: nothing is known before the status line first ran, or
 // without a backup, nor from a file that does not parse, which is an error to log.
 func TestCursorContextSizeUnknown(t *testing.T) {

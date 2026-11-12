@@ -7,6 +7,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"time"
 	"unicode"
 
 	"github.com/srjn45/wdx/internal/atomicfile"
@@ -225,5 +226,7 @@ func (Cursor) ContextSize(l Launch) (ContextSize, []string, error) {
 		return ContextSize{}, nil, ErrNoContextSize
 	}
 	size, err := readStatusLine(l.BackupDir, cursorStatusFile)
+	// Its screen gives the model on every read.
+	size.Model, size.ModelAt = "", time.Time{}
 	return size, nil, err
 }

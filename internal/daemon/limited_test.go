@@ -2,6 +2,8 @@ package daemon
 
 import (
 	"context"
+	"os"
+	"path/filepath"
 	"slices"
 	"sync"
 	"testing"
@@ -299,4 +301,64 @@ func TestLimitResets(t *testing.T) {
 		t.Fatal("told twice")
 	default:
 	}
+}
+
+// TestAResumedAgentGetsItsModelFromItsFiles: an agent resumed, whose screen shows no
+// banner, gets its model from what its ACA's files say once they are written in this
+// run, not from the last run's, and is then limited by its own model's bucket.
+func TestAResumedAgentGetsItsModelFromItsFiles(t *testing.T) {
+	t.Parallel()
+	td := startOn(t, shortDir(t), telemetry.Options{}, func(o *Options) {
+		o.ACAs = []aca.AiCodingAgent{&acatest.ACA{Buckets: map[string][]string{"Opus 5.5": {"opus"}}}}
+		o.StatusInterval = time.Millisecond
+	})
+	ctx := context.Background()
+	app := td.create(t, "app").Worktrees[0].Path
+	a := td.createAgent(t, "", app, "helper")
+	backup := identity.AgentDir(td.home, a.Id)
+	if _, err := td.daemon.agents.Stop(ctx, a.Id); err != nil {
+		t.Fatal(err)
+	}
+	resets := time.Now().Add(2 * time.Hour).Truncate(time.Millisecond)
+	rows := []aca.Usage{
+		{Window: "week", UsedPercent: 50, ResetsAt: resets.Add(time.Hour), ObservedAt: time.Now()},
+		{Window: "week", Bucket: "opus", UsedPercent: 100, ResetsAt: resets, ObservedAt: time.Now()},
+	}
+	if err := acatest.WriteUsage(backup, rows); err != nil {
+		t.Fatal(err)
+	}
+	// The last run's file, which stays in the backup across the restart.
+	if err := acatest.WriteContextSize(backup, aca.ContextSize{Tokens: 1, Window: 200_000, Model: "Opus 5.5"}); err != nil {
+		t.Fatal(err)
+	}
+	old := time.Now().Add(-time.Hour)
+	if err := os.Chtimes(filepath.Join(backup, acatest.ContextFile), old, old); err != nil {
+		t.Fatal(err)
+	}
+	if r, err := td.client.StartAgentWithResponse(ctx, "id:"+a.Id, nil); err != nil || r.JSON200 == nil {
+		t.Fatalf("start: %v, %v", err, r)
+	}
+	text := func(e event) string {
+		got, ok := agentNamed(e, "helper")
+		if !ok {
+			return "no agent"
+		}
+		return contextText(got.Context) + ", model " + modelText(got.Model) + ", limited " + limitText(got.Limited, resets)
+	}
+	td.waitProject(t, "app", "the last run's size read, not its model", func(e event) bool {
+		return text(e) == "1 of 200000, model null, limited none"
+	})
+	if err := acatest.WriteContextSize(backup, aca.ContextSize{Tokens: 2, Window: 200_000, Model: "Opus 5.5"}); err != nil {
+		t.Fatal(err)
+	}
+	td.waitProject(t, "app", "the model read and the agent limited by its bucket", func(e event) bool {
+		return text(e) == "2 of 200000, model Opus 5.5, limited [opus] 0s"
+	})
+}
+
+func modelText(s *string) string {
+	if s == nil {
+		return "null"
+	}
+	return *s
 }

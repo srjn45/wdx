@@ -124,6 +124,9 @@ func Launches(b *Backups) func(context.Context, terminal.Terminal) (terminal.Age
 		if err != nil {
 			return terminal.AgentLaunch{}, err
 		}
+		if err := b.store.clearModel(ctx, t.ID); err != nil {
+			return terminal.AgentLaunch{}, err
+		}
 		if candidate := b.known(a.ACA); candidate != nil {
 			session, err := b.up(ctx, a)
 			if err != nil {
