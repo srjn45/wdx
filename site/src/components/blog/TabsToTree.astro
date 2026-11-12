@@ -1,0 +1,96 @@
+---
+// Five terminal tabs with context switching confusion, beside the same work
+// in TIDE: named agents, a parent-child tree, an amber question prompt, and
+// multiple AI CLIs orchestrated on one screen.
+import Diagram from '../diagrams/Diagram.astro';
+---
+<Diagram id="t2t" width={720} height={330}
+  label="Left, five unlabelled terminal tabs: confusion over which tab is doing what and which agent is waiting on input. Right, the same work in TIDE: named agents in a tree, children indented under their parent, amber highlight when an agent asks a question, and multiple AI CLIs running side by side."
+  caption="Left, terminal tabs lose context and stick to one AI CLI. Right, TIDE groups named agents into a tree, highlights questions in amber, and orchestrates multiple AI CLIs on one screen.">
+  
+  <!-- Left side: Before wdx -->
+  <text class="ttl" x="10" y="20">Terminal tabs (before)</text>
+  
+  <!-- Tab strip -->
+  <rect class="bx t2t-bad" x="10" y="36" width="310" height="34" rx="6" />
+  <g class="sm">
+    <rect class="bx t2t-bad" x="14" y="40" width="56" height="26" rx="4" /><text class="sm t2t-bad" x="22" y="58">tab 1 <tspan font-weight="bold">?</tspan></text>
+    <rect class="bx t2t-bad" x="74" y="40" width="56" height="26" rx="4" /><text class="sm t2t-bad" x="82" y="58">tab 2 <tspan font-weight="bold">?</tspan></text>
+    <rect class="bx t2t-bad" x="134" y="40" width="56" height="26" rx="4" /><text class="sm t2t-bad" x="142" y="58">tab 3 <tspan font-weight="bold">?</tspan></text>
+    <rect class="bx t2t-bad" x="194" y="40" width="56" height="26" rx="4" /><text class="sm t2t-bad" x="202" y="58">tab 4 <tspan font-weight="bold">?</tspan></text>
+    <rect class="bx t2t-bad" x="254" y="40" width="60" height="26" rx="4" /><text class="sm t2t-bad" x="262" y="58">tab 5 <tspan font-weight="bold">?</tspan></text>
+  </g>
+
+  <!-- Confusion box -->
+  <rect class="grp" x="10" y="86" width="310" height="228" rx="8" />
+  <rect class="bx t2t-bad" x="22" y="102" width="286" height="42" rx="6" />
+  <text class="sm t2t-bad" x="34" y="128">Which tab was that again?</text>
+
+  <rect class="bx t2t-bad" x="22" y="156" width="286" height="42" rx="6" />
+  <text class="sm t2t-bad" x="34" y="182">Stuck to a single AI CLI</text>
+
+  <rect class="bx t2t-bad" x="22" y="210" width="286" height="42" rx="6" />
+  <text class="sm t2t-bad" x="34" y="236">Is this tab waiting or still working?</text>
+
+  <rect class="bx t2t-bad" x="22" y="264" width="286" height="38" rx="6" />
+  <text class="sm t2t-bad" x="34" y="288">Sessions lost on reboot</text>
+
+  <!-- Transition arrow -->
+  <path class="ar hot" d="M332 170 H368" marker-end="url(#t2t-h)" />
+
+  <!-- Right side: After wdx (TIDE) -->
+  <text class="ttl" x="380" y="20">TIDE: one screen (after)</text>
+  
+  <rect class="bx hot" x="380" y="36" width="330" height="278" rx="8" />
+  
+  <!-- Header bar -->
+  <rect class="bx" x="380" y="36" width="330" height="30" rx="8" />
+  <rect class="bx" x="380" y="56" width="330" height="10" />
+  <text class="sm" x="394" y="56">wdx tide · notes</text>
+
+  <!-- Agent 1 parent -->
+  <text x="396" y="94">▼ notes-cli</text>
+  <text class="sm" x="520" y="94">Claude Code</text>
+  <circle cx="640" cy="90" r="4" fill="var(--brand)" />
+  <text class="sm hot" x="650" y="94">working</text>
+
+  <!-- Child 1 -->
+  <text class="sm" x="414" y="128">├ delete</text>
+  <text class="sm" x="520" y="128">notes-delete</text>
+  <circle cx="640" cy="124" r="4" fill="var(--brand)" />
+  <text class="sm hot" x="650" y="128">working</text>
+
+  <!-- Child 2: amber yes/no -->
+  <rect class="bx t2t-amb" x="392" y="142" width="306" height="32" rx="4" />
+  <text class="sm t2t-amb" x="414" y="162">├ search</text>
+  <text class="sm t2t-amb" x="520" y="162">notes-search</text>
+  <text class="sm t2t-amb" font-weight="bold" x="640" y="162">? yes/no</text>
+
+  <!-- Child 3 -->
+  <text class="sm" x="414" y="198">└ tests</text>
+  <text class="sm" x="520" y="198">notes-tests</text>
+  <circle cx="640" cy="194" r="4" fill="var(--brand)" />
+  <text class="sm hot" x="650" y="198">working</text>
+
+  <!-- Agent 2: Codex -->
+  <text x="396" y="234">● docs</text>
+  <text class="sm" x="520" y="234">Codex</text>
+  <circle cx="640" cy="230" r="4" fill="var(--brand)" />
+  <text class="sm hot" x="650" y="234">working</text>
+
+  <!-- Bottom stats bar info -->
+  <line class="ar" x1="392" y1="256" x2="698" y2="256" />
+  <text class="sm hot" x="396" y="278">C-q S</text>
+  <text class="sm" x="444" y="278">stats: Claude 98% · Codex 16%</text>
+  <text class="sm" x="396" y="298">named agents · parents &amp; children · multi-ACA</text>
+</Diagram>
+
+<style is:global>
+  .wdx-diagram { --t2t-bad: #e5747a; --t2t-amb: #e2b75e; }
+  :root[data-theme="light"] .wdx-diagram { --t2t-bad: #b8323a; --t2t-amb: #a86c00; }
+  @media (prefers-color-scheme: light) { :root:not([data-theme="dark"]) .wdx-diagram { --t2t-bad: #b8323a; --t2t-amb: #a86c00; } }
+  .wdx-diagram .bx.t2t-bad { stroke: var(--t2t-bad); }
+  .wdx-diagram text.t2t-bad { fill: var(--t2t-bad); }
+  .wdx-diagram .bx.t2t-amb { fill: rgba(226, 183, 94, 0.12); stroke: var(--t2t-amb); }
+  .wdx-diagram text.t2t-amb { fill: var(--t2t-amb); }
+</style>

@@ -1,0 +1,126 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="630" viewBox="0 0 1200 630">
+  <!-- The cover of "From one agent to five: what changed in my day":
+       Left: a strip of unlabelled terminal tabs marked "?".
+       Right: a TIDE-style list of named agents, one parent with three indented children, one amber row.
+       Fonts: Bricolage Grotesque and JetBrains Mono; render.sh loads them. -->
+  <defs>
+    <pattern id="dots" width="24" height="24" patternUnits="userSpaceOnUse"><circle cx="2" cy="2" r="1.2" fill="#232836" /></pattern>
+    <marker id="cov-ar" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 0L10 5L0 10z" fill="#6fd3c1" /></marker>
+  </defs>
+  <rect width="1200" height="630" fill="#13161c" />
+  <rect width="1200" height="630" fill="url(#dots)" />
+
+  <text x="72" y="98" fill="#e9ecf2" font-family="Bricolage Grotesque" font-weight="800" font-size="54">From one agent to five:</text>
+  <text x="72" y="160" fill="#e9ecf2" font-family="Bricolage Grotesque" font-weight="800" font-size="54">what changed in my day</text>
+  <text x="74" y="206" fill="#98a1b3" font-family="JetBrains Mono" font-size="21">named agents, parent-child trees and multiple AI CLIs on one screen</text>
+
+  <!-- Left: Unlabelled terminal tabs (before) -->
+  <g transform="translate(72, 238)">
+    <rect width="470" height="346" rx="10" fill="#181b24" stroke="#2e3443" stroke-width="1.5" />
+    <!-- tab bar -->
+    <rect width="470" height="38" rx="10" fill="#13161f" />
+    <rect y="28" width="470" height="10" fill="#13161f" />
+    <line x1="0" y1="38" x2="470" y2="38" stroke="#2a3040" stroke-width="1" />
+    
+    <!-- tabs with ? -->
+    <g font-family="JetBrains Mono" font-size="13">
+      <rect x="8" y="6" width="84" height="32" rx="4" fill="#202532" stroke="#373e52" stroke-width="1" />
+      <text x="24" y="27" fill="#8d97ab">tab 1 <tspan fill="#e5747a" font-weight="700">?</tspan></text>
+      
+      <rect x="98" y="6" width="84" height="32" rx="4" fill="#1a1e29" stroke="#2a3040" stroke-width="1" />
+      <text x="114" y="27" fill="#6c768a">tab 2 <tspan fill="#e5747a" font-weight="700">?</tspan></text>
+      
+      <rect x="188" y="6" width="84" height="32" rx="4" fill="#1a1e29" stroke="#2a3040" stroke-width="1" />
+      <text x="204" y="27" fill="#6c768a">tab 3 <tspan fill="#e5747a" font-weight="700">?</tspan></text>
+
+      <rect x="278" y="6" width="84" height="32" rx="4" fill="#1a1e29" stroke="#2a3040" stroke-width="1" />
+      <text x="294" y="27" fill="#6c768a">tab 4 <tspan fill="#e5747a" font-weight="700">?</tspan></text>
+
+      <rect x="368" y="6" width="84" height="32" rx="4" fill="#1a1e29" stroke="#2a3040" stroke-width="1" />
+      <text x="384" y="27" fill="#6c768a">tab 5 <tspan fill="#e5747a" font-weight="700">?</tspan></text>
+    </g>
+
+    <!-- Terminal content showing confusion -->
+    <g font-family="JetBrains Mono" font-size="15" fill="#8d97ab">
+      <text x="22" y="74" fill="#6c768a">$ which tab was that again?</text>
+      <text x="22" y="112" fill="#e5747a">✕ lost track of agent roles</text>
+      <text x="22" y="150" fill="#6c768a"># Is tab 3 waiting on input?</text>
+      <text x="22" y="188" fill="#6c768a"># Is tab 2 still working?</text>
+      <text x="22" y="234" fill="#e5747a">✕ stuck to a single AI CLI</text>
+      <text x="22" y="276" fill="#6c768a"># Reboots lose the sessions...</text>
+      <text x="22" y="318" fill="#525b6e">$ _</text>
+    </g>
+  </g>
+
+  <!-- Arrow transition -->
+  <path d="M558 411 H586" stroke="#6fd3c1" stroke-width="3" stroke-linecap="round" marker-end="url(#cov-ar)" />
+
+  <!-- Right: TIDE-style named agents tree (after) -->
+  <g transform="translate(606, 238)">
+    <rect width="522" height="346" rx="10" fill="#181b24" stroke="#2e3443" stroke-width="1.5" />
+    <!-- TIDE bar -->
+    <rect width="522" height="38" rx="10" fill="#13161f" />
+    <rect y="28" width="522" height="10" fill="#13161f" />
+    <line x1="0" y1="38" x2="522" y2="38" stroke="#2a3040" stroke-width="1" />
+    <circle cx="20" cy="19" r="5" fill="#3b4252" />
+    <circle cx="36" cy="19" r="5" fill="#3b4252" />
+    <circle cx="52" cy="19" r="5" fill="#3b4252" />
+    <text x="74" y="24" fill="#8d97ab" font-family="JetBrains Mono" font-size="13">wdx tide · notes</text>
+
+    <!-- TIDE Agents list -->
+    <g font-family="JetBrains Mono" font-size="15">
+      <!-- notes-cli parent -->
+      <g transform="translate(18, 54)">
+        <text x="6" y="24" fill="#6fd3c1" font-weight="700">▼</text>
+        <text x="24" y="24" fill="#e9ecf2" font-weight="700">notes-cli</text>
+        <text x="200" y="24" fill="#6c768a" font-size="13">claude_code</text>
+        <circle cx="356" cy="19" r="4" fill="#6fd3c1" />
+        <text x="368" y="24" fill="#6fd3c1">working</text>
+      </g>
+
+      <!-- child 1: delete -->
+      <g transform="translate(18, 98)">
+        <text x="24" y="24" fill="#6c768a">├</text>
+        <text x="40" y="24" fill="#b7bfcf">delete</text>
+        <text x="200" y="24" fill="#525b6e" font-size="13">notes-delete</text>
+        <circle cx="356" cy="19" r="4" fill="#6fd3c1" />
+        <text x="368" y="24" fill="#6fd3c1">working</text>
+      </g>
+
+      <!-- child 2: search (amber row!) -->
+      <g transform="translate(18, 142)">
+        <rect x="0" y="0" width="486" height="36" rx="6" fill="#2d2618" stroke="#e2b75e" stroke-width="1.5" />
+        <text x="24" y="24" fill="#e2b75e">├</text>
+        <text x="40" y="24" fill="#e2b75e" font-weight="700">search</text>
+        <text x="200" y="24" fill="#c49e4d" font-size="13">notes-search</text>
+        <text x="350" y="24" fill="#e2b75e" font-weight="700">?</text>
+        <text x="368" y="24" fill="#e2b75e" font-weight="700">yes/no</text>
+      </g>
+
+      <!-- child 3: tests -->
+      <g transform="translate(18, 186)">
+        <text x="24" y="24" fill="#6c768a">└</text>
+        <text x="40" y="24" fill="#b7bfcf">tests</text>
+        <text x="200" y="24" fill="#525b6e" font-size="13">notes-tests</text>
+        <circle cx="356" cy="19" r="4" fill="#6fd3c1" />
+        <text x="368" y="24" fill="#6fd3c1">working</text>
+      </g>
+
+      <!-- codex agent: docs -->
+      <g transform="translate(18, 230)">
+        <circle cx="10" cy="19" r="4" fill="#6fd3c1" />
+        <text x="24" y="24" fill="#e9ecf2" font-weight="700">docs</text>
+        <text x="200" y="24" fill="#6c768a" font-size="13">codex</text>
+        <circle cx="356" cy="19" r="4" fill="#6fd3c1" />
+        <text x="368" y="24" fill="#6fd3c1">working</text>
+      </g>
+
+      <!-- divider & stats hint -->
+      <line x1="10" y1="282" x2="486" y2="282" stroke="#2a3040" stroke-width="1" />
+      <g transform="translate(18, 296)">
+        <text x="6" y="20" fill="#6fd3c1" font-size="13">C-q S</text>
+        <text x="56" y="20" fill="#8d97ab" font-size="13">stats: claude 98% (resets 8h) · codex 16%</text>
+      </g>
+    </g>
+  </g>
+</svg>
