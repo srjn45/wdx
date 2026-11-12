@@ -157,6 +157,34 @@ idle five`, first-1, atRest, first+1, first+1+second, atRest, first+second+2)), 
 	}
 }
 
+// TestDeliverSubmitsAgainWhileOtherStateChanges: the footer flips in_turn every
+// 100 ms, the draft unchanged, and Enter still comes after one settle, not when
+// the flipping ends.
+func TestDeliverSubmitsAgainWhileOtherStateChanges(t *testing.T) {
+	t.Parallel()
+	f := newFixture(t)
+	const id = "term-00000907"
+	p := len(pasted("hello"))
+	dir, _ := f.watched(t, id, program(fmt.Sprintf(`idle one
+got_bytes %d
+while [ "$( (wc -c < got) 2>/dev/null || echo 0)" -le %d ]; do
+boxed two hello '%s'
+sleep 0.1
+boxed two hello '%s'
+sleep 0.1
+done
+idle three`, p, p+1, inTurn, atRest)), sendTimesEnv(waittest.Limit(t), 500*time.Millisecond)...)
+	conn := f.dial(t, id)
+	waitParsed(t, dir, "one")
+	if err := conn.SendAgent("hello", false); err != nil {
+		t.Fatal(err)
+	}
+	waitGot(t, dir, paste("hello")+"\r")
+	if n := f.count(t, "message submitted again"); n != 1 {
+		t.Errorf("submitted again %d times, want once", n)
+	}
+}
+
 // TestDeliverNotSubmitted: a draft that stays gets Enter again as many times as
 // the retries allow, and no more.
 func TestDeliverNotSubmitted(t *testing.T) {
