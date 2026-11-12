@@ -133,6 +133,11 @@ var (
 	claudeCodeBannerModel  = regexp.MustCompile(`^▝▜[^A-Za-z]*` + claudeCodeModelName + `(?:\s+\(.*\))?(?:\s+·.*)?$`)
 	claudeCodeChangedModel = regexp.MustCompile(`^⎿\s+(?:Set model to|Kept model as) ` + claudeCodeModelName + `(?:\s|$)`)
 	claudeCodeModelCommand = regexp.MustCompile(`^❯[ \x{00a0}]/model(?:\s|$)`)
+	// The verbs are random, so these two go by shape: a spinner's glyph, a word
+	// and "… (" with a time, and a turn's end, "✻ <Verb>ed for <time>". Both
+	// start at the left edge, where a reply's lines never do.
+	claudeCodeSpinner   = regexp.MustCompile(`^[·✢*✶✻✽] \p{L}+… \(\d+[smh]\b`)
+	claudeCodeTurnEnded = regexp.MustCompile(`^✻ \p{L}+ed for \d+[smh](?: \d+[smh])*(?: · .*)?$`)
 )
 
 const claudeCodeModelName = `([A-Z][a-z]+ \d+(?:\.\d+)?)`
@@ -179,8 +184,36 @@ func (ClaudeCodeScreenParser) Parse(lines, undimmed []string) screen.ScreenState
 		state.Activity = screen.ActivityWorking
 	case claudeCodeAtRest.MatchString(box.footer):
 		state.Activity = screen.ActivityIdle
+	default:
+		state.Activity = claudeCodeAboveBox(lines[:box.first-1])
+		state.InTurn = state.Activity == screen.ActivityWorking
 	}
 	return state
+}
+
+// claudeCodeAboveBox reads the activity from the line just above the box, for
+// when the footer tells nothing, as with text in the box. The logo's last line
+// means no turn has run yet, a turn's end that none runs since: the next turn
+// draws under it. A spinner is a turn thinking or running a tool. While an
+// answer streams none shows, so anything else is unknown.
+func claudeCodeAboveBox(above []string) screen.Activity {
+	i := len(above) - 1
+	for i >= 0 && strings.TrimSpace(above[i]) == "" {
+		i--
+	}
+	if i < 0 {
+		return screen.ActivityUnknown
+	}
+	line := strings.TrimRight(above[i], " ")
+	switch {
+	case claudeCodeSpinner.MatchString(line):
+		return screen.ActivityWorking
+	case claudeCodeTurnEnded.MatchString(line),
+		i >= 2 && strings.HasPrefix(strings.TrimSpace(line), "▝▝") &&
+			strings.HasPrefix(strings.TrimSpace(above[i-1]), "▝▜") && strings.HasPrefix(strings.TrimSpace(above[i-2]), "▐▛"):
+		return screen.ActivityIdle
+	}
+	return screen.ActivityUnknown
 }
 
 // claudeCodeModel reads the model from what is above the input box, lowest

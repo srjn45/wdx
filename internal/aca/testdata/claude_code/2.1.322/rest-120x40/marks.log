@@ -1,0 +1,11 @@
+6.634 01_idle_start
+10.374 02_draft_start
+17.888 03_draft_start_later
+20.900 04_cleared_start
+24.329 05_draft_in_turn
+32.176 06_draft_after_turn
+38.705 07_draft_after_turn_later
+41.767 08_cleared_after_turn
+47.576 09_draft_in_tool
+59.874 10_draft_after_tool
+64.387 11_idle_end

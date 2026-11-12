@@ -60,7 +60,7 @@ var claudeCodeRecordings = []claudeCodeRecording{
 	{
 		dir: "prompts",
 		screens: map[string]screen.Activity{
-			"01_trust": waiting, "02_idle_start": idle, "03_typing": inputBox,
+			"01_trust": waiting, "02_idle_start": idle, "03_typing": idle,
 			"04_permission_bash": waiting, "05_permission_bash_moved": waiting, "06_after_deny": idle,
 			"08_permission_write": waiting, "10_permission_ping": waiting, "11_working_tool": working,
 			"12_after_interrupt": idle, "14_decision_radio": waiting, "15_radio_answered": idle,
@@ -68,16 +68,16 @@ var claudeCodeRecordings = []claudeCodeRecording{
 			"21_working_stream": working, "22_after_stream_interrupt": idle, "24_idle_end": idle,
 		},
 		sequence: []screen.Activity{
-			waiting, unknown, idle, inputBox, idle, inputBox, working, waiting, idle, inputBox, working, waiting,
-			idle, inputBox, working, waiting, working, idle, inputBox, working, waiting, working, idle, inputBox,
-			working, waiting, idle, inputBox, working, idle, inputBox, unknown,
+			waiting, unknown, idle, inputBox, working, waiting, idle, working, waiting, idle, working, waiting,
+			working, idle, inputBox, working, waiting, working, idle, working, waiting, idle, working, idle,
+			inputBox, unknown,
 		},
 	},
 	{
 		dir:     "background-auto-80x24",
 		screens: backgroundAutoScreens,
 		sequence: []screen.Activity{
-			waiting, unknown, idle, inputBox, working, idle, inputBox, working, inputBox, idle, inputBox, unknown,
+			waiting, unknown, idle, inputBox, working, idle, working, inputBox, idle, inputBox, unknown,
 		},
 	},
 	{
@@ -87,7 +87,7 @@ var claudeCodeRecordings = []claudeCodeRecording{
 			"10_after_decision", "11_bg_ended", "12_idle_end"),
 		sequence: []screen.Activity{
 			waiting, unknown, idle, inputBox, working, waiting, working, waiting, working, waiting, working, waiting,
-			working, idle, inputBox, unknown,
+			working, idle, unknown,
 		},
 	},
 	{
@@ -97,7 +97,7 @@ var claudeCodeRecordings = []claudeCodeRecording{
 			"10_after_decision", "11_bg_ended", "12_idle_end"),
 		sequence: []screen.Activity{
 			waiting, unknown, idle, inputBox, working, waiting, working, waiting, working, waiting, working, waiting,
-			working, inputBox, idle, inputBox, unknown,
+			working, inputBox, idle, unknown,
 		},
 	},
 	{
@@ -107,7 +107,7 @@ var claudeCodeRecordings = []claudeCodeRecording{
 			"09_after_decision", "10_bg_ended", "11_idle_end"),
 		sequence: []screen.Activity{
 			waiting, unknown, idle, inputBox, working, waiting, working, waiting, working, waiting, working, waiting,
-			working, idle, inputBox,
+			working, idle,
 		},
 	},
 	{
@@ -116,11 +116,11 @@ var claudeCodeRecordings = []claudeCodeRecording{
 			"01_approval_1": waiting, "02_approval_2": waiting, "03_two_shells": working,
 			"04_shells_ended": idle, "05_idle_after_shells": idle,
 			"06_fg1_backgrounded": working, "07_fg1_approval_1": waiting, "08_fg1_approval_2": waiting,
-			"09_fg1_after": working, "10_fg2_backgrounded": inputBox, "11_fg2_approval_1": waiting, "12_fg2_after": working,
+			"09_fg1_after": working, "10_fg2_backgrounded": idle, "11_fg2_approval_1": waiting, "12_fg2_after": working,
 		},
 		sequence: []screen.Activity{
-			waiting, unknown, idle, inputBox, working, waiting, working, waiting, working, idle, inputBox, working,
-			waiting, working, idle, inputBox, working, waiting, working, idle, inputBox, unknown,
+			waiting, unknown, idle, inputBox, working, waiting, working, waiting, working, idle, working, waiting,
+			working, idle, working, waiting, working, idle, unknown,
 		},
 	},
 	{
@@ -134,60 +134,87 @@ var claudeCodeRecordings = []claudeCodeRecording{
 		dir:     "classic-plan",
 		screens: planScreens,
 		sequence: []screen.Activity{
-			waiting, unknown, idle, inputBox, working, waiting, idle, inputBox,
+			waiting, unknown, idle, inputBox, working, waiting, idle,
 		},
 	},
 	{
 		dir:     "../2.1.319/prompts-120x40",
 		screens: promptScreens2319,
 		sequence: []screen.Activity{
-			waiting, unknown, idle, inputBox, working, waiting, idle, inputBox, working, waiting, idle, inputBox,
-			working, waiting, working, idle, inputBox, working, waiting, idle, inputBox,
+			waiting, unknown, idle, inputBox, working, waiting, idle, working, waiting, idle, working, waiting,
+			working, idle, working, waiting, idle,
 		},
 	},
 	{
 		dir:     "../2.1.319/prompts-60x24",
 		screens: promptScreens2319,
 		sequence: []screen.Activity{
-			waiting, unknown, idle, inputBox, working, waiting, idle, inputBox, working, waiting, idle, inputBox,
-			working, waiting, working, idle, inputBox, working, waiting, idle, inputBox,
+			waiting, unknown, idle, inputBox, working, waiting, idle, working, waiting, idle, working, waiting,
+			working, idle, working, waiting, idle,
 		},
 	},
 	{
 		dir:     "../2.1.319/prompts-40x24",
 		screens: promptScreens2319,
 		sequence: []screen.Activity{
-			waiting, unknown, idle, inputBox, working, waiting, idle, inputBox, working, waiting, idle, inputBox,
-			working, waiting, working, idle, inputBox, working, waiting, idle, inputBox,
+			waiting, unknown, idle, inputBox, working, waiting, idle, working, waiting, idle, working, waiting,
+			working, idle, working, waiting, idle,
 		},
 	},
 	{
 		dir:      "../2.1.319/plan-120x40",
-		screens:  planScreens2319(idle),
-		sequence: []screen.Activity{waiting, unknown, idle, inputBox, working, waiting, idle, inputBox},
+		screens:  planScreens2319(idle, idle),
+		sequence: []screen.Activity{waiting, unknown, idle, inputBox, working, waiting, idle},
 	},
 	{
 		dir:      "../2.1.319/plan-60x24",
-		screens:  planScreens2319(idle),
-		sequence: []screen.Activity{waiting, unknown, idle, inputBox, working, waiting, idle, inputBox},
+		screens:  planScreens2319(idle, idle),
+		sequence: []screen.Activity{waiting, unknown, idle, inputBox, working, waiting, idle},
 	},
 	{
 		// At 40 columns the footer at rest is the mode alone, so the box's
-		// activity is not read from it.
+		// activity is not read from it, only from a turn's end above it.
 		dir:      "../2.1.319/plan-40x24",
-		screens:  planScreens2319(inputBox),
-		sequence: []screen.Activity{waiting, unknown, inputBox, waiting, inputBox},
+		screens:  planScreens2319(inputBox, idle),
+		sequence: []screen.Activity{waiting, unknown, inputBox, working, waiting, idle},
+	},
+	{
+		// A draft at startup, under safe mode's notice, then one typed as a
+		// turn starts, read working from the spinner where it shows above the
+		// box, and one while a tool runs, each left after its turn.
+		dir:     "../2.1.322/rest-120x40",
+		screens: restDraftScreens,
+		sequence: []screen.Activity{
+			waiting, unknown, idle, inputBox, idle, inputBox, working, inputBox, working, inputBox, idle, working,
+			inputBox, idle,
+		},
+	},
+	{
+		dir:     "../2.1.322/rest-60x24",
+		screens: restDraftScreens,
+		sequence: []screen.Activity{
+			unknown, waiting, unknown, idle, inputBox, idle, inputBox, working, inputBox, working, inputBox, idle,
+			working, inputBox, idle,
+		},
+	},
+	{
+		dir:     "../2.1.322/rest-40x24",
+		screens: restDraftScreens,
+		sequence: []screen.Activity{
+			unknown, waiting, unknown, idle, inputBox, idle, inputBox, working, inputBox, idle, working, inputBox,
+			idle,
+		},
 	},
 	{
 		dir: "narrow-40x24",
 		screens: map[string]screen.Activity{
 			"01_idle": idle, "02_typing_wrapped": inputBox, "03_working": working, "04_idle_after_story": idle,
 			"05_permission": waiting, "06_after_deny": idle, "07_decision": waiting, "08_after_timeout": idle,
-			"09_bg_shell_footer": idle, "10_bg_sub_early": working, "11_bg_sub_footer": working, "12_idle_end": inputBox,
+			"09_bg_shell_footer": idle, "10_bg_sub_early": working, "11_bg_sub_footer": working, "12_idle_end": idle,
 		},
 		sequence: []screen.Activity{
 			waiting, unknown, idle, inputBox, working, idle, inputBox, working, waiting, idle, inputBox, working,
-			waiting, working, idle, inputBox, working, inputBox, unknown,
+			waiting, working, idle, working, inputBox, working, idle, unknown,
 		},
 	},
 }
@@ -202,6 +229,14 @@ var (
 		"01_idle_plan_mode": idle, "02_working_plan_mode": working, "03_plan_approval": waiting,
 		"04_after_plan_esc": idle, "05_idle_end": idle,
 	}
+	// restDraftScreens names the screens of the 2.1.322 recordings of drafts at
+	// rest: a turn's end above the box reads a draft idle, safe mode's notice and
+	// a tip under the spinner leave it to the fallback.
+	restDraftScreens = map[string]screen.Activity{
+		"01_idle_start": idle, "02_draft_start": inputBox, "03_draft_start_later": inputBox, "04_cleared_start": idle,
+		"05_draft_in_turn": inputBox, "06_draft_after_turn": idle, "07_draft_after_turn_later": idle,
+		"08_cleared_after_turn": idle, "09_draft_in_tool": inputBox, "10_draft_after_tool": idle, "11_idle_end": idle,
+	}
 	// promptScreens2319 names the screens of the 2.1.319 prompts recordings, the
 	// prompts of 2.1.314's without the ping and the long turns.
 	promptScreens2319 = map[string]screen.Activity{
@@ -213,11 +248,12 @@ var (
 )
 
 // planScreens2319 names the screens of a 2.1.319 plan recording, which starts at
-// the trust prompt; atRest is what its box reads with nothing going on.
-func planScreens2319(atRest screen.Activity) map[string]screen.Activity {
+// the trust prompt; atStart and afterTurn are what its box reads with nothing
+// going on, before the turn and after it.
+func planScreens2319(atStart, afterTurn screen.Activity) map[string]screen.Activity {
 	return map[string]screen.Activity{
-		"01_trust": waiting, "02_idle_plan_mode": atRest, "03_plan_approval": waiting,
-		"04_after_plan_esc": atRest, "05_idle_end": atRest,
+		"01_trust": waiting, "02_idle_plan_mode": atStart, "03_plan_approval": waiting,
+		"04_after_plan_esc": afterTurn, "05_idle_end": afterTurn,
 	}
 }
 
@@ -283,7 +319,7 @@ func TestClaudeCodeActivityReplay(t *testing.T) {
 // TestClaudeCodeActivityCutOffFooters holds the moments of the replays where
 // Claude cut a footer that did not fit with an ellipsis, or dropped it to the
 // mode while the box held text: the words are gone, so the table says so and
-// reads idle only from words it sees.
+// reads idle only from words it sees, there or just above the box.
 func TestClaudeCodeActivityCutOffFooters(t *testing.T) {
 	t.Parallel()
 	cases := []struct {
@@ -297,7 +333,7 @@ func TestClaudeCodeActivityCutOffFooters(t *testing.T) {
 		{"background-prompts-60x24", 115 * time.Second, "⏸ manual mode on · /tasks to see subagents · esc to int…", inputBox},
 		{"classic-motion-80x24", 25 * time.Second, "⏵⏵ auto mode on (shift+tab to cycle) · /tasks to see subagents · esc to int…", inputBox},
 		{"narrow-40x24", 131500 * time.Millisecond, "⏸ manual mode on · ? for shortcuts …", working},
-		{"motion-120x40", 117 * time.Second, "⏵⏵ auto mode on (shift+tab to cycle)", inputBox},
+		{"motion-120x40", 117 * time.Second, "⏵⏵ auto mode on (shift+tab to cycle)", idle},
 		{"draft-120x40", 88612 * time.Millisecond, "⏸ manual mode on", inputBox},
 	}
 	for _, c := range cases {
@@ -380,6 +416,72 @@ func TestClaudeCodeActivityFalseMatches(t *testing.T) {
 				t.Errorf("Parse changed its lines: %q", lines)
 			}
 		})
+	}
+}
+
+// TestClaudeCodeAboveTheBox holds the rows of the line just above the box, which
+// decide when the footer tells nothing, as with a draft in the box: the lines
+// are those Claude Code 2.1.322 drew at each width, by hand where no recording
+// has them, as the logo, which safe mode's notice covers in a recording.
+func TestClaudeCodeAboveTheBox(t *testing.T) {
+	t.Parallel()
+	logo := func(dir string) []string {
+		return []string{" ▐▛███▛█   Claude Code v2.1.322", "▝▜██████▀  Haiku 5.5 · Claude Max", " ▝▝   ▝▝   " + dir}
+	}
+	widths := []struct {
+		cols int
+		// logo, spinner and tip are the width's own lines.
+		logo          []string
+		spinner, tip  string
+		answerWrapped string
+	}{
+		{120, logo("/…/xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx/xxxxxxxxxx/r/work/w-xxxxxxxx"), "· Sautéing… (3s · ↓ 27 tokens)",
+			"  ⎿  Tip: Run claude --continue or claude --resume to resume a conversation", "  yet all of them return to shore."},
+		{60, logo("/…/xxxxxxxxxx/r/work/w-xxxxxxxx"), "* Schlepping… (4s · ↓ 20 tokens)",
+			"  ⎿  Tip: Use /theme to change the color theme", "  Gallow Point at dusk, lit the great lamp, and wound the"},
+		{40, logo("/…/r/work/w-xxxxxxxx"), "✻ Caramelizing… (1s · thinking)",
+			"     real-time", "  humming its old and unhurried hymn."},
+	}
+	for _, w := range widths {
+		rule := strings.Repeat("─", w.cols)
+		box := func(footer string, above ...string) []string {
+			return append(slices.Clone(above), "", rule, "❯ hello there", rule, footer)
+		}
+		const mode = "  ⏸ manual mode on"
+		cases := []struct {
+			name   string
+			lines  []string
+			want   screen.Activity
+			inTurn bool
+		}{
+			{"the logo: no turn has run", box(mode, w.logo...), idle, false},
+			{"a turn's end", box(mode, w.answerWrapped, "", "✻ Sautéed for 1s · done 4:49 PM"), idle, false},
+			{"a turn's end, in minutes", box(mode, "✻ Crunched for 1m 50s · done 10:53 AM"), idle, false},
+			{"a turn's end with no clock", box(mode, "✻ Worked for 5s"), idle, false},
+			{"a spinner", box(mode, w.spinner), working, true},
+			{"a spinner with its time alone", box(mode, "✶ Tinkering… (26s)"), working, true},
+			{"an answer streaming", box(mode, "● The Keeper's Last Light"), inputBox, false},
+			{"a wrapped answer", box(mode, w.answerWrapped), inputBox, false},
+			{"a tip under the spinner", box(mode, w.spinner, w.tip), inputBox, false},
+			{"a spinner not yet timed", box(mode, "✻ Puttering…"), inputBox, false},
+			{"safe mode's notice under the logo", box(mode, append(w.logo, "⚠ Safe mode: all customizations are disabled", "  Restart without --safe-mode to re-enable")...), inputBox, false},
+			{"the logo's last line alone", box(mode, " ▝▝   ▝▝   /…/r/work"), inputBox, false},
+			{"a reply quotes a turn's end", box(mode, "  ✻ Cooked for 1s · done 4:03 AM"), inputBox, false},
+			{"a reply quotes a spinner", box(mode, "  * Caramelizing… (2s · thinking)"), inputBox, false},
+			{"a turn's end with words after its time", box(mode, "✻ Cooked for 1s and more"), inputBox, false},
+			{"a footer that tells wins over a turn's end", box("  ⏸ manual mode on · esc to interrupt", "✻ Cooked for 1s · done 4:03 AM"), working, true},
+			{"a footer that tells wins over a spinner", box("  ⏸ manual mode on · ? for shortcuts", w.spinner), idle, false},
+			{"nothing above the box", box(mode), inputBox, false},
+		}
+		for _, c := range cases {
+			t.Run(fmt.Sprintf("%d/%s", w.cols, c.name), func(t *testing.T) {
+				t.Parallel()
+				state := aca.ClaudeCodeScreenParser{}.Parse(c.lines, nil)
+				if got := reading(c.lines); got != c.want || state.InTurn != c.inTurn {
+					t.Errorf("%s, in turn %v; want %s, in turn %v", got, state.InTurn, c.want, c.inTurn)
+				}
+			})
+		}
 	}
 }
 

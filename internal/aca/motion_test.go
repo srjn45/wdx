@@ -171,6 +171,11 @@ var motionRecordings = map[string]motionRecording{
 	// Only its stretch before the first turn is used, so its turns are not needed.
 	"draft-120x40":              {},
 	"classic-idle-typing-40x24": {turns: [][2]float64{{5.932, 12.161}, {29.956, 31.514}, {62.006, 66.255}, {82.538, 85.443}, {103.637, 118.341}}},
+	// Each turn from the Enter that sent it, as the transcript's times are
+	// those of another clock.
+	"../2.1.322/rest-120x40": {turns: [][2]float64{{22.784, 26.947}, {43.688, 54.379}}},
+	"../2.1.322/rest-60x24":  {turns: [][2]float64{{22.237, 27.036}, {48.77, 61.745}}},
+	"../2.1.322/rest-40x24":  {turns: [][2]float64{{23.804, 28.182}, {49.994, 61.927}}},
 }
 
 // followRecording runs a recording through the parser and the fallback, as the
@@ -231,7 +236,7 @@ var motionCases = func() []motionCase {
 		{name: "keystrokes at idle, multi-line, 120", dir: "draft-120x40", from: 34 * s, to: 44 * s, real: []screen.Activity{idle}},
 		{name: "Ctrl-C's notice goes, then a long draft, 120", dir: "draft-120x40", from: 43900 * time.Millisecond, to: 49900 * time.Millisecond, real: []screen.Activity{idle}, flashes: []screen.Activity{idle, working, idle}},
 		{name: "draft at idle, classic 40", dir: "classic-idle-typing-40x24", from: 35 * s, to: 56 * s, real: []screen.Activity{idle}},
-		{name: "draft at idle, 40, with tmux's notice going", dir: "idle-typing-40x24", from: 38 * s, to: 48 * s, real: []screen.Activity{idle}, flashes: []screen.Activity{idle, working, idle}},
+		{name: "draft at idle, 40, with tmux's notice going", dir: "idle-typing-40x24", from: 38 * s, to: 48 * s, real: []screen.Activity{idle}},
 		// ... the turn ending while the footer cannot be read, ...
 		{name: "turn ends, cut off, 40", dir: "motion-40x24", from: 138 * s, to: 143 * s, real: []screen.Activity{working, idle}},
 		{name: "turn ends, cut off, classic 40", dir: "classic-motion-40x24", from: 179 * s, to: 184 * s, real: []screen.Activity{working, idle}},
@@ -239,12 +244,13 @@ var motionCases = func() []motionCase {
 		{name: "turn ends, draft, 80", dir: "motion-80x24", from: 138 * s, to: 149 * s, real: []screen.Activity{working, idle}},
 		{name: "turn ends, draft, 60", dir: "motion-60x24", from: 134 * s, to: 145 * s, real: []screen.Activity{working, idle}},
 		{name: "turn ends, draft, classic 80", dir: "classic-motion-80x24", from: 135 * s, to: 146 * s, real: []screen.Activity{working, idle}},
-		// ... and what moves on an idle screen that cannot be read.
-		{name: "the /tasks hint goes, under a draft, 80", dir: "motion-80x24", from: 145 * s, to: 152 * s, real: []screen.Activity{idle}, flashes: []screen.Activity{idle, working, idle}},
-		{name: "the /tasks hint goes, under a draft, classic 80", dir: "classic-motion-80x24", from: 143 * s, to: 150 * s, real: []screen.Activity{idle}, flashes: []screen.Activity{idle, working, idle}},
+		// ... and what moves on an idle screen whose footer cannot be read: the
+		// line above the box reads most of them, and the rest flash.
+		{name: "the /tasks hint goes, under a draft, 80", dir: "motion-80x24", from: 145 * s, to: 152 * s, real: []screen.Activity{idle}},
+		{name: "the /tasks hint goes, under a draft, classic 80", dir: "classic-motion-80x24", from: 143 * s, to: 150 * s, real: []screen.Activity{idle}},
 		{name: "a suggestion fills the box, 40", dir: "motion-40x24", from: 37 * s, to: 45 * s, real: []screen.Activity{idle}, flashes: []screen.Activity{working, idle}},
-		{name: "Ctrl+Y's hint goes, classic 40", dir: "classic-idle-typing-40x24", from: 57 * s, to: 61 * s, real: []screen.Activity{idle}, flashes: []screen.Activity{idle, working, idle}},
-		{name: "the effort hint goes, 40", dir: "motion-40x24", from: 95500 * time.Millisecond, to: 105 * s, real: []screen.Activity{idle}, flashes: []screen.Activity{idle, working, idle}},
+		{name: "Ctrl+Y's hint goes, classic 40", dir: "classic-idle-typing-40x24", from: 57 * s, to: 61 * s, real: []screen.Activity{idle}},
+		{name: "the effort hint goes, 40", dir: "motion-40x24", from: 95500 * time.Millisecond, to: 105 * s, real: []screen.Activity{idle}},
 	}
 }()
 
@@ -265,7 +271,14 @@ type motionCase struct {
 func TestMotionFallbackOnRecordings(t *testing.T) {
 	t.Parallel()
 	const showsItself = 600 * time.Millisecond
-	knownIdleInATurn := map[string]int{"motion-reduced-80x24": 1}
+	knownIdleInATurn := map[string]int{
+		"motion-reduced-80x24": 1,
+		// Claude drew nothing for 590 ms after the Enter that sent the tool's
+		// turn, so the turn's end above the draft read idle until it did: the
+		// false idle between a submit and its first frame of the wdx doc
+		// STATE_LEFTOVERS, 40 ms past showsItself.
+		"../2.1.322/rest-60x24": 1,
+	}
 	for _, c := range motionCases {
 		if _, ok := motionRecordings[c.dir]; !ok {
 			t.Errorf("%s: no recording %s", c.name, c.dir)
