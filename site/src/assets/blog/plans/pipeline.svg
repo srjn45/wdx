@@ -1,0 +1,97 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="720" height="380" viewBox="0 0 720 380">
+  <defs>
+    <style>
+      .bg { fill: #13161c; }
+      .bx { fill: #1e222a; stroke: #2e3443; stroke-width: 1.5; }
+      .bx-hot { fill: #1e222a; stroke: #6fd3c1; stroke-width: 1.5; }
+      .bx-dash { fill: #181c24; stroke: #2e3443; stroke-width: 1.5; stroke-dasharray: 5 4; }
+      .grp { fill: none; stroke: #2e3443; stroke-width: 1.5; stroke-dasharray: 6 4; }
+      text { font-family: 'JetBrains Mono', monospace; font-size: 13px; fill: #e9ecf2; }
+      text.ttl { font-family: 'Bricolage Grotesque', sans-serif; font-weight: 700; font-size: 13px; fill: #98a1b3; letter-spacing: 0.05em; text-transform: uppercase; }
+      text.sm { font-size: 11px; fill: #98a1b3; }
+      text.hot { fill: #6fd3c1; font-weight: 700; }
+      .ar { stroke: #98a1b3; stroke-width: 1.5; fill: none; }
+      .ar-hot { stroke: #6fd3c1; stroke-width: 1.5; fill: none; }
+      .ar-dash { stroke: #3a4152; stroke-width: 1.5; stroke-dasharray: 4 4; fill: none; }
+      marker path { fill: #98a1b3; }
+      marker.hot path { fill: #6fd3c1; }
+    </style>
+    <marker id="ar" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse"><path d="M0 0L10 5L0 10z" /></marker>
+    <marker id="ar-hot" class="hot" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse"><path d="M0 0L10 5L0 10z" /></marker>
+  </defs>
+
+  <rect width="720" height="380" rx="10" fill="#13161c" />
+
+  <!-- Column 1: DAG Tasks -->
+  <text class="ttl" x="14" y="24">1. The DAG</text>
+  <rect class="grp" x="10" y="34" width="180" height="332" rx="10" />
+
+  <rect class="bx" x="24" y="52" width="152" height="48" rx="8" />
+  <text x="38" y="74">schema</text>
+  <text class="sm hot" x="38" y="91">✓ landed</text>
+
+  <rect class="bx-hot" x="24" y="132" width="152" height="54" rx="8" />
+  <text class="hot" x="38" y="154">api</text>
+  <text class="sm" x="38" y="172">after: [schema]</text>
+
+  <rect class="bx-hot" x="24" y="212" width="152" height="54" rx="8" />
+  <text class="hot" x="38" y="234">cli</text>
+  <text class="sm" x="38" y="252">after: [schema]</text>
+
+  <rect class="bx-dash" x="24" y="294" width="152" height="54" rx="8" />
+  <text x="38" y="316" fill="#98a1b3">docs</text>
+  <text class="sm" x="38" y="334">after: [api, cli]</text>
+
+  <path class="ar-hot" d="M100 100 V128" marker-end="url(#ar-hot)" />
+  <path class="ar-hot" d="M100 186 V208" marker-end="url(#ar-hot)" />
+  <path class="ar-dash" d="M100 266 V290" marker-end="url(#ar)" />
+
+  <!-- Column 2: Slots & Context Synthesis -->
+  <text class="ttl" x="214" y="24">2. Parallel Slots &amp; Context</text>
+  <rect class="grp" x="206" y="34" width="280" height="332" rx="10" />
+
+  <rect class="bx" x="220" y="52" width="252" height="92" rx="8" />
+  <text class="ttl" x="232" y="72">Prompt synthesis</text>
+  <text class="sm" x="232" y="92">● Plan Goal &amp; Constraints</text>
+  <text class="sm" x="232" y="110">● Summaries of 'after' tasks</text>
+  <text class="sm" x="232" y="128">● Task prompt + plan task done</text>
+
+  <rect class="bx-hot" x="220" y="162" width="252" height="74" rx="8" />
+  <text class="hot" x="234" y="186">Slot 1 · .worktrees/auth-1</text>
+  <text class="sm" x="234" y="206">Task: api (claude_code / sonnet)</text>
+  <text class="sm hot" x="234" y="224">● working</text>
+
+  <rect class="bx-hot" x="220" y="254" width="252" height="74" rx="8" />
+  <text class="hot" x="234" y="278">Slot 2 · .worktrees/auth-2</text>
+  <text class="sm" x="234" y="298">Task: cli (codex / gpt-5)</text>
+  <text class="sm hot" x="234" y="316">● working</text>
+
+  <path class="ar-hot" d="M176 159 H216" marker-end="url(#ar-hot)" />
+  <path class="ar-hot" d="M176 239 H216" marker-end="url(#ar-hot)" />
+
+  <!-- Column 3: Landing -->
+  <text class="ttl" x="510" y="24">3. Landing to Branch</text>
+  <rect class="grp" x="502" y="34" width="208" height="332" rx="10" />
+
+  <rect class="bx" x="516" y="52" width="180" height="50" rx="8" />
+  <text class="sm" x="528" y="74">plan task done</text>
+  <text class="sm" x="528" y="91">checks clean commit</text>
+
+  <rect class="bx" x="516" y="120" width="180" height="54" rx="8" />
+  <text class="sm" x="528" y="142">landing check</text>
+  <text class="sm" x="528" y="160">runs in land-slot</text>
+
+  <rect class="bx-hot" x="516" y="192" width="180" height="54" rx="8" />
+  <text class="sm hot" x="528" y="214">atomic rebase</text>
+  <text class="sm" x="528" y="232">onto plan/auth</text>
+
+  <rect class="bx" x="516" y="278" width="180" height="70" rx="8" />
+  <text x="528" y="302">plan/auth branch</text>
+  <text class="sm hot" x="528" y="322">↑ 3 commits ahead</text>
+  <text class="sm" x="528" y="338">ready to land on main</text>
+
+  <path class="ar-hot" d="M472 199 H512" marker-end="url(#ar-hot)" />
+  <path class="ar" d="M606 102 V116" marker-end="url(#ar)" />
+  <path class="ar-hot" d="M606 174 V188" marker-end="url(#ar-hot)" />
+  <path class="ar-hot" d="M606 246 V274" marker-end="url(#ar-hot)" />
+</svg>

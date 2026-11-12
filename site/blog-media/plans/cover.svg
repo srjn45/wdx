@@ -1,0 +1,73 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="630" viewBox="0 0 1200 630">
+  <!-- Cover: Plans: split a feature into tasks and let agents run them.
+       A DAG of tasks with parallel execution slots branching and landing cleanly onto plan/<name> branch.
+       Fonts: Bricolage Grotesque (800) and JetBrains Mono (400, 700). -->
+  <defs>
+    <pattern id="dots" width="24" height="24" patternUnits="userSpaceOnUse"><circle cx="2" cy="2" r="1.2" fill="#232836" /></pattern>
+  </defs>
+  <rect width="1200" height="630" fill="#13161c" />
+  <rect width="1200" height="630" fill="url(#dots)" />
+
+  <text x="72" y="104" fill="#e9ecf2" font-family="Bricolage Grotesque" font-weight="800" font-size="54">Plans: split a feature into tasks</text>
+  <text x="72" y="168" fill="#e9ecf2" font-family="Bricolage Grotesque" font-weight="800" font-size="54">and let agents run them</text>
+  <text x="74" y="214" fill="#98a1b3" font-family="JetBrains Mono" font-size="22">DAGs of focused tasks · parallel slots · atomic rebases</text>
+
+  <!-- DAG graph visual: Tasks -> Slots -> Branch -->
+  <!-- Left: Task nodes in DAG -->
+  <g font-family="JetBrains Mono">
+    <!-- Task 1: schema (done) -->
+    <rect x="72" y="340" width="180" height="74" rx="10" fill="#1e222a" stroke="#6fd3c1" stroke-width="2" />
+    <text x="92" y="372" fill="#e9ecf2" font-weight="700" font-size="18">schema</text>
+    <text x="92" y="398" fill="#6fd3c1" font-size="14">✓ done</text>
+
+    <!-- Task 2: api (working in slot 1) -->
+    <rect x="330" y="260" width="220" height="84" rx="10" fill="#1e222a" stroke="#2e3443" stroke-width="2" />
+    <text x="350" y="292" fill="#e9ecf2" font-weight="700" font-size="18">api</text>
+    <text x="350" y="315" fill="#6fd3c1" font-size="14">● slot 1 · claude</text>
+    <text x="350" y="333" fill="#98a1b3" font-size="12">after: [schema]</text>
+
+    <!-- Task 3: cli (working in slot 2) -->
+    <rect x="330" y="410" width="220" height="84" rx="10" fill="#1e222a" stroke="#2e3443" stroke-width="2" />
+    <text x="350" y="442" fill="#e9ecf2" font-weight="700" font-size="18">cli</text>
+    <text x="350" y="465" fill="#e2b75e" font-size="14">● slot 2 · codex</text>
+    <text x="350" y="483" fill="#98a1b3" font-size="12">after: [schema]</text>
+
+    <!-- Task 4: docs (waiting for api & cli) -->
+    <rect x="630" y="340" width="220" height="74" rx="10" fill="#181c24" stroke="#2e3443" stroke-width="1.5" stroke-dasharray="5 4" />
+    <text x="650" y="372" fill="#98a1b3" font-weight="700" font-size="18">docs</text>
+    <text x="650" y="398" fill="#8a93a6" font-size="14">⏳ after: [api, cli]</text>
+  </g>
+
+  <!-- DAG Connecting arrows -->
+  <g fill="none" stroke-width="3" stroke-linecap="round">
+    <!-- schema -> api -->
+    <path d="M252 365 C290 365 290 302 330 302" stroke="#6fd3c1" />
+    <!-- schema -> cli -->
+    <path d="M252 388 C290 388 290 452 330 452" stroke="#6fd3c1" />
+    <!-- api -> docs -->
+    <path d="M550 302 C590 302 590 365 630 365" stroke="#3a4152" stroke-dasharray="4 4" />
+    <!-- cli -> docs -->
+    <path d="M550 452 C590 452 590 388 630 388" stroke="#3a4152" stroke-dasharray="4 4" />
+  </g>
+
+  <!-- Landing rail to plan/<name> branch on right -->
+  <g fill="none" stroke-width="4" stroke-linecap="round">
+    <path d="M850 377 H1030" stroke="#3a4152" />
+    <path d="M850 377 C900 377 920 377 960 377" stroke="#6fd3c1" />
+  </g>
+  <g fill="#13161c" stroke-width="4">
+    <circle cx="890" cy="377" r="8" stroke="#6fd3c1" fill="#6fd3c1" />
+    <circle cx="945" cy="377" r="8" stroke="#6fd3c1" />
+    <circle cx="1000" cy="377" r="8" stroke="#3a4152" />
+  </g>
+  <text x="890" y="420" fill="#98a1b3" font-family="JetBrains Mono" font-size="16">plan/auth</text>
+
+  <!-- The wdx mark on the right -->
+  <g transform="translate(1048 335) scale(1.1)">
+    <polyline points="5.5,46 13,76 20.5,50 28,76 35.5,46" fill="none" stroke="#e9ecf2" stroke-width="8" stroke-linecap="round" stroke-linejoin="round" />
+    <circle cx="59.5" cy="64" r="12" fill="none" stroke="#e9ecf2" stroke-width="8" />
+    <line x1="71.5" y1="42" x2="71.5" y2="76" stroke="#e9ecf2" stroke-width="8" stroke-linecap="round" />
+    <line x1="78.5" y1="14" x2="94.5" y2="30" stroke="#6fd3c1" stroke-width="7" stroke-linecap="round" />
+    <line x1="94.5" y1="14" x2="78.5" y2="30" stroke="#6fd3c1" stroke-width="7" stroke-linecap="round" />
+  </g>
+</svg>
