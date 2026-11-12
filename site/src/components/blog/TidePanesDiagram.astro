@@ -1,0 +1,134 @@
+---
+// Diagram showing TIDE's three-pane architecture:
+// Left: Project pane (1/4 width) listing agents, worktrees, docs, plans, code.
+// Top right: Agent workspace (3/4 width) with live agent PTYs, diffs, docs, and editors.
+// Bottom right: Terminal drawer (1/4 height docked) for shells and build commands.
+import Diagram from '../diagrams/Diagram.astro';
+---
+<Diagram id="tp" width={720} height={380}
+  label="TIDE layout architecture: Left is the multipurpose project pane taking 1/4 width, listing agents, worktrees, docs, plans, and code. Right is the agent workspace taking 3/4 width, displaying tabs for live agents, worktree diffs, rendered markdown docs, and in-tab terminal editors. Bottom is the docked terminal drawer taking 1/4 height, toggled with Ctrl+\\. The entire interface is navigated via Alt+arrow keys, Ctrl+] zoom, and the Ctrl+q contextual menu."
+  caption="TIDE's three-pane layout: a 1/4 project navigator on the left, a 3/4 multi-tab agent workspace on the right, and a docked terminal drawer below toggled with C-\\." >
+
+  <!-- Left: Project Pane (1/4 width) -->
+  <g transform="translate(10, 10)">
+    <rect class="bx" width="180" height="326" rx="8" />
+    <!-- Header -->
+    <rect class="bx" width="180" height="28" rx="8" />
+    <rect y="18" width="180" height="10" />
+    <text class="ttl" x="12" y="19">Project (1/4)</text>
+
+    <!-- Content Sections -->
+    <g transform="translate(12, 42)" class="sm">
+      <text class="ttl" x="0" y="0">▼ Agents</text>
+      <text x="6" y="18">▼ notes-lead</text>
+      <text class="hot" x="120" y="18">work</text>
+      <text class="tp-amb" x="14" y="34">└ count</text>
+      <text class="tp-amb" font-weight="bold" x="114" y="34">? yes/no</text>
+
+      <text class="ttl" x="0" y="60">▼ Worktrees</text>
+      <text x="6" y="78">main</text>
+      <text class="sm" x="136" y="78">↑0</text>
+      <rect class="bx hot" x="0" y="86" width="156" height="20" rx="3" fill="rgba(111,211,193,0.12)" />
+      <text class="hot" font-weight="bold" x="6" y="100">▌ count-feat</text>
+      <text class="hot" x="126" y="100">↑1</text>
+
+      <text class="ttl" x="0" y="126">▼ Plans</text>
+      <text x="6" y="144">release</text>
+      <text class="hot" x="120" y="144">● 2/4</text>
+
+      <text class="ttl" x="0" y="170">▼ Docs</text>
+      <text x="6" y="188">DESIGN</text>
+      <text class="hot" x="98" y="188">approved</text>
+
+      <text class="ttl" x="0" y="214">▼ Code</text>
+      <text x="6" y="232">notes.py</text>
+      <text class="tp-amb" x="136" y="232">M</text>
+    </g>
+
+    <!-- Bottom Pane Shortcut Hint -->
+    <line class="ar" x1="10" y1="290" x2="170" y2="290" />
+    <text class="sm" x="12" y="306">a new agent · t term</text>
+    <text class="sm" x="12" y="320">/ filter · s settings</text>
+  </g>
+
+  <!-- Right: Agent Workspace (3/4 width) -->
+  <g transform="translate(200, 10)">
+    <rect class="bx hot" width="510" height="234" rx="8" />
+
+    <!-- Tabs Header Strip -->
+    <rect class="bx" width="510" height="28" rx="8" />
+    <rect y="18" width="510" height="10" />
+
+    <!-- Inactive Tab -->
+    <rect class="bx" x="6" y="4" width="118" height="22" rx="4" />
+    <text class="sm" x="16" y="19">notes-lead(-)</text>
+
+    <!-- Active Tab (Diff) -->
+    <rect class="bx hot" x="128" y="4" width="150" height="23" rx="4" fill="var(--raised)" />
+    <text class="sm hot" font-weight="bold" x="138" y="19">diff: count-feat(-)</text>
+
+    <!-- Tab 3 (Doc) -->
+    <rect class="bx dim" x="282" y="4" width="94" height="22" rx="4" />
+    <text class="sm" x="292" y="19">DESIGN(-)</text>
+
+    <text class="sm hot" x="466" y="19">[⤢] C-]</text>
+
+    <!-- Workspace Content (Diff View with inline comment) -->
+    <g transform="translate(14, 46)" class="sm">
+      <text class="sm" x="0" y="0">@@ -20,6 +20,12 @@ def show():</text>
+      <text class="sm" x="0" y="18">     for i, note in enumerate(load(), 1):</text>
+      <text class="hot" x="0" y="36">+def count():</text>
+      <text class="hot" x="0" y="54">+    print(f"Total notes: &#123;len(load())&#125;")</text>
+
+      <!-- Inline Comment Bubble -->
+      <g transform="translate(16, 68)">
+        <rect class="bx hot" width="450" height="42" rx="6" fill="rgba(111,211,193,0.08)" />
+        <text class="hot" font-weight="bold" x="12" y="18">✎ line 22 · comment (c to write, s to batch send review)</text>
+        <text class="sm" x="12" y="34">"Support singular '1 note' vs plural 'N notes'"</text>
+      </g>
+
+      <text class="sm" x="0" y="132"> def main(argv):</text>
+    </g>
+
+    <!-- Action Bar inside tab -->
+    <line class="ar" x1="10" y1="206" x2="500" y2="206" />
+    <text class="sm hot" x="14" y="222">c comment · s send review · L land worktree · [ ] next diff</text>
+  </g>
+
+  <!-- Bottom: Terminal Drawer (Docked 1/4 height) -->
+  <g transform="translate(200, 252)">
+    <rect class="bx" width="510" height="84" rx="8" />
+
+    <!-- Drawer Tab Strip -->
+    <rect class="bx" width="510" height="24" rx="8" />
+    <rect y="14" width="510" height="10" />
+
+    <rect class="bx hot" x="6" y="3" width="76" height="18" rx="3" />
+    <text class="sm hot" x="14" y="16">shell(-)</text>
+
+    <rect class="bx" x="86" y="3" width="76" height="18" rx="3" />
+    <text class="sm" x="94" y="16">tests(-)</text>
+
+    <text class="sm hot" x="444" y="16">C-\ drawer</text>
+
+    <!-- Shell Content -->
+    <g transform="translate(14, 40)" class="sm">
+      <text class="sm" x="0" y="0">$ pytest test_notes.py</text>
+      <text class="hot" x="0" y="18">2 passed in 0.04s</text>
+    </g>
+  </g>
+
+  <!-- Global Status Line at Bottom -->
+  <g transform="translate(10, 344)">
+    <rect class="bx" width="700" height="26" rx="4" />
+    <text class="hot" font-weight="bold" x="10" y="18">notes</text>
+    <text class="sm" x="52" y="18">· agent · Alt+← / Alt+→ focus · Alt+↓ terminal · C-q menu · wdx 0.5.0</text>
+  </g>
+</Diagram>
+
+<style is:global>
+  .wdx-diagram { --tp-amb: #e2b75e; }
+  :root[data-theme="light"] .wdx-diagram { --tp-amb: #a86c00; }
+  @media (prefers-color-scheme: light) { :root:not([data-theme="dark"]) .wdx-diagram { --tp-amb: #a86c00; } }
+  .wdx-diagram .tp-amb { fill: var(--tp-amb); }
+</style>

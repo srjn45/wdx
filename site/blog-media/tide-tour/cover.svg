@@ -1,0 +1,145 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="630" viewBox="0 0 1200 630">
+  <!-- Cover: A tour of TIDE, the terminal IDE for AI agents.
+       A high-fidelity diagram of TIDE's 3-pane terminal interface:
+       Left: Project pane with agents tree, worktrees, docs, plans, code.
+       Right: Agent workspace with live diff and inline review comment.
+       Bottom: Docked terminal drawer with test output.
+       Fonts: Bricolage Grotesque (800) and JetBrains Mono (400, 700). -->
+  <defs>
+    <pattern id="dots" width="24" height="24" patternUnits="userSpaceOnUse"><circle cx="2" cy="2" r="1.2" fill="#232836" /></pattern>
+  </defs>
+  <rect width="1200" height="630" fill="#13161c" />
+  <rect width="1200" height="630" fill="url(#dots)" />
+
+  <text x="72" y="98" fill="#e9ecf2" font-family="Bricolage Grotesque" font-weight="800" font-size="52">A tour of TIDE,</text>
+  <text x="72" y="156" fill="#e9ecf2" font-family="Bricolage Grotesque" font-weight="800" font-size="52">the terminal IDE for AI agents</text>
+  <text x="74" y="200" fill="#98a1b3" font-family="JetBrains Mono" font-size="20">fleet orchestration · interactive diffs · in-tab reviews · zero context switching</text>
+
+  <!-- TIDE Window Frame -->
+  <g transform="translate(72, 230)">
+    <rect width="1056" height="364" rx="10" fill="#161922" stroke="#2e3443" stroke-width="1.5" />
+
+    <!-- Window Title Bar -->
+    <rect width="1056" height="34" rx="10" fill="#11131a" />
+    <rect y="24" width="1056" height="10" fill="#11131a" />
+    <line x1="0" y1="34" x2="1056" y2="34" stroke="#232836" stroke-width="1" />
+
+    <circle cx="20" cy="17" r="5" fill="#e5747a" />
+    <circle cx="36" cy="17" r="5" fill="#e2b75e" />
+    <circle cx="52" cy="17" r="5" fill="#6fd3c1" />
+    <text x="528" y="22" fill="#8d97ab" font-family="JetBrains Mono" font-size="12" text-anchor="middle">wdx tide · notes</text>
+    <text x="1036" y="22" fill="#6fd3c1" font-family="JetBrains Mono" font-weight="700" font-size="11" text-anchor="end">[wdx 0.5.0]</text>
+
+    <!-- Pane Layout -->
+    <!-- Left Pane: Project (width 264) -->
+    <rect x="0" y="34" width="264" height="298" fill="#13161f" />
+    <line x1="264" y1="34" x2="264" y2="332" stroke="#282e3d" stroke-width="1" />
+
+    <!-- Left Pane Content -->
+    <g font-family="JetBrains Mono" font-size="12">
+      <!-- Section: Agents -->
+      <text x="16" y="58" fill="#8a93a6" font-weight="700" letter-spacing="0.05em">▼ AGENTS</text>
+      <text x="24" y="78" fill="#e9ecf2">▼ notes-lead</text>
+      <text x="140" y="78" fill="#6fd3c1">Claude</text>
+      <circle cx="230" cy="74" r="3.5" fill="#6fd3c1" />
+      <text x="238" y="78" fill="#6fd3c1" font-size="10">work</text>
+
+      <text x="36" y="98" fill="#e2b75e">└ count</text>
+      <text x="140" y="98" fill="#98a1b3">Codex</text>
+      <rect x="186" y="87" width="66" height="15" rx="3" fill="rgba(226,183,94,0.15)" stroke="#e2b75e" stroke-width="0.8" />
+      <text x="219" y="98" fill="#e2b75e" font-size="9.5" text-anchor="middle" font-weight="700">? yes/no</text>
+
+      <!-- Section: Worktrees -->
+      <text x="16" y="126" fill="#8a93a6" font-weight="700" letter-spacing="0.05em">▼ WORKTREES</text>
+      <text x="24" y="146" fill="#8a93a6">  main</text>
+      <text x="220" y="146" fill="#6c768a" font-size="11">↑0</text>
+
+      <!-- Selected worktree row with accent highlight -->
+      <rect x="8" y="156" width="248" height="22" rx="4" fill="rgba(111,211,193,0.12)" />
+      <text x="16" y="171" fill="#6fd3c1" font-weight="700">▌ notes-count</text>
+      <text x="198" y="171" fill="#6fd3c1" font-weight="700" font-size="11">↑1 +14 -2</text>
+
+      <!-- Section: Docs & Plans -->
+      <text x="16" y="204" fill="#8a93a6" font-weight="700" letter-spacing="0.05em">▼ PLANS</text>
+      <text x="24" y="224" fill="#98a1b3">  release</text>
+      <text x="198" y="224" fill="#6fd3c1" font-size="11">● 2/4</text>
+
+      <text x="16" y="252" fill="#8a93a6" font-weight="700" letter-spacing="0.05em">▼ DOCS</text>
+      <text x="24" y="272" fill="#98a1b3">  DESIGN</text>
+      <text x="180" y="272" fill="#6fd3c1" font-size="10">approved</text>
+
+      <text x="16" y="300" fill="#8a93a6" font-weight="700" letter-spacing="0.05em">▼ CODE</text>
+      <text x="24" y="318" fill="#98a1b3">  notes.py</text>
+      <text x="224" y="318" fill="#e2b75e" font-size="11">M</text>
+    </g>
+
+    <!-- Right Pane: Tabs & Diff Workspace -->
+    <g transform="translate(264, 34)">
+      <!-- Tab Header Strip -->
+      <rect width="792" height="30" fill="#141821" />
+      <line x1="0" y1="30" x2="792" y2="30" stroke="#282e3d" stroke-width="1" />
+
+      <!-- Tab 1: Agent (Inactive) -->
+      <rect x="8" y="4" width="130" height="26" rx="4" fill="#1a1e28" stroke="#282e3d" stroke-width="1" />
+      <circle cx="20" cy="17" r="3.5" fill="#6fd3c1" />
+      <text x="30" y="21" fill="#8d97ab" font-family="JetBrains Mono" font-size="11">notes-lead(-)</text>
+
+      <!-- Tab 2: Worktree Diff (Active) -->
+      <rect x="144" y="4" width="170" height="27" rx="4" fill="#1d2330" stroke="#6fd3c1" stroke-width="1.2" />
+      <text x="156" y="21" fill="#e9ecf2" font-family="JetBrains Mono" font-weight="700" font-size="11">diff: notes-count(-)</text>
+      <line x1="145" y1="30" x2="313" y2="30" stroke="#1d2330" stroke-width="2" />
+
+      <!-- Tab Actions on right -->
+      <text x="778" y="21" fill="#8a93a6" font-family="JetBrains Mono" font-size="12" text-anchor="end">[⤢]</text>
+
+      <!-- Diff Content Area (height 190) -->
+      <g transform="translate(16, 42)" font-family="JetBrains Mono" font-size="12">
+        <text x="0" y="14" fill="#6c768a">@@ -18,6 +18,12 @@ def show():</text>
+        <text x="0" y="34" fill="#8a93a6">     for i, note in enumerate(load(), 1):</text>
+        <text x="0" y="52" fill="#8a93a6">         print(f"{i:3}  {note}")</text>
+        <text x="0" y="70" fill="#6fd3c1">+def count():</text>
+        <text x="0" y="88" fill="#6fd3c1">+    print(f"Total notes: {len(load())}")</text>
+
+        <!-- Inline Review Comment Bubble (c key) -->
+        <g transform="translate(24, 98)">
+          <rect width="660" height="48" rx="6" fill="#1a242c" stroke="#6fd3c1" stroke-width="1.5" />
+          <text x="14" y="20" fill="#6fd3c1" font-weight="700" font-size="11">✎ line 22 · inline comment</text>
+          <text x="14" y="38" fill="#e9ecf2" font-size="12">Format as 'Total notes: N' with plural handling (press 's' to batch send)</text>
+        </g>
+
+        <text x="0" y="166" fill="#8a93a6"> def main(argv):</text>
+      </g>
+    </g>
+
+    <!-- Bottom Docked Terminal Pane (Full width or under right pane) -->
+    <g transform="translate(264, 254)">
+      <line x1="0" y1="0" x2="792" y2="0" stroke="#282e3d" stroke-width="1" />
+      <rect width="792" height="78" fill="#12151d" />
+
+      <!-- Terminal Tabs -->
+      <rect x="8" y="4" width="80" height="22" rx="3" fill="#1d2330" stroke="#3a4254" stroke-width="1" />
+      <text x="20" y="19" fill="#e9ecf2" font-family="JetBrains Mono" font-size="10.5">shell(-)</text>
+
+      <rect x="94" y="4" width="80" height="22" rx="3" fill="#161922" stroke="#282e3d" stroke-width="1" />
+      <text x="106" y="19" fill="#8a93a6" font-family="JetBrains Mono" font-size="10.5">tests(-)</text>
+
+      <!-- Terminal Content -->
+      <g transform="translate(16, 44)" font-family="JetBrains Mono" font-size="11.5">
+        <text x="0" y="0" fill="#8a93a6">$ pytest test_notes.py</text>
+        <text x="0" y="18" fill="#6fd3c1">test_notes.py::test_add_and_list PASSED [100%]</text>
+      </g>
+    </g>
+
+    <!-- Status Line (Height 32) -->
+    <g transform="translate(0, 332)">
+      <rect width="1056" height="32" rx="0" fill="#0d0f15" />
+      <line x1="0" y1="0" x2="1056" y2="0" stroke="#232836" stroke-width="1" />
+      <text x="16" y="20" fill="#6fd3c1" font-family="JetBrains Mono" font-weight="700" font-size="11">notes</text>
+      <text x="56" y="20" fill="#6c768a" font-family="JetBrains Mono" font-size="11">·</text>
+      <text x="68" y="20" fill="#e9ecf2" font-family="JetBrains Mono" font-size="11">worktree: notes-count</text>
+      <text x="216" y="20" fill="#6c768a" font-family="JetBrains Mono" font-size="11">·</text>
+      <text x="228" y="20" fill="#8a93a6" font-family="JetBrains Mono" font-size="11">c comment · s send review · L land · C-q menu</text>
+      <text x="1040" y="20" fill="#8a93a6" font-family="JetBrains Mono" font-size="11" text-anchor="end">C-] zoom · C-\ term</text>
+    </g>
+  </g>
+</svg>
