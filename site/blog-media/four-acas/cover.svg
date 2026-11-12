@@ -1,0 +1,93 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="630" viewBox="0 0 1200 630">
+  <!-- Cover: Claude Code, Codex, Cursor and Antigravity under one tool.
+       Central wdx engine normalizing four distinct AI coding agent runtimes:
+       Claude Code, Codex, Cursor, and Antigravity.
+       Fonts: Bricolage Grotesque (800) and JetBrains Mono (400, 700). -->
+  <defs>
+    <pattern id="dots" width="24" height="24" patternUnits="userSpaceOnUse"><circle cx="2" cy="2" r="1.2" fill="#232836" /></pattern>
+    <linearGradient id="hubGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#1e2330" />
+      <stop offset="100%" stop-color="#141822" />
+    </linearGradient>
+  </defs>
+  <rect width="1200" height="630" fill="#13161c" />
+  <rect width="1200" height="630" fill="url(#dots)" />
+
+  <!-- Headline -->
+  <text x="72" y="96" fill="#e9ecf2" font-family="Bricolage Grotesque" font-weight="800" font-size="50">Claude Code, Codex, Cursor</text>
+  <text x="72" y="152" fill="#e9ecf2" font-family="Bricolage Grotesque" font-weight="800" font-size="50">and Antigravity under one tool</text>
+  <text x="74" y="196" fill="#98a1b3" font-family="JetBrains Mono" font-size="20">four distinct engines · one uniform protocol · isolated worktrees &amp; quota fleet</text>
+
+  <!-- Central Hub Architecture Diagram on Cover -->
+  <g transform="translate(60, 230)">
+    <!-- Connecting bus lines between nodes and central wdx hub -->
+    <g fill="none" stroke-width="2.5" stroke-linecap="round">
+      <!-- To Claude (top-left) -->
+      <path d="M 540 180 C 420 180 340 70 240 70" stroke="#e5747a" stroke-dasharray="6 4" />
+      <!-- To Codex (top-right) -->
+      <path d="M 540 180 C 660 180 740 70 840 70" stroke="#6fd3c1" stroke-dasharray="6 4" />
+      <!-- To Cursor (bottom-left) -->
+      <path d="M 540 180 C 420 180 340 290 240 290" stroke="#81a1c1" stroke-dasharray="6 4" />
+      <!-- To Antigravity (bottom-right) -->
+      <path d="M 540 180 C 660 180 740 290 840 290" stroke="#e2b75e" stroke-dasharray="6 4" />
+    </g>
+
+    <!-- Central wdx Hub Box -->
+    <g transform="translate(410, 115)">
+      <rect width="260" height="130" rx="14" fill="url(#hubGrad)" stroke="#6fd3c1" stroke-width="2" />
+      <!-- Mark -->
+      <g transform="translate(26, 24) scale(0.65)">
+        <polyline points="5.5,46 13,76 20.5,50 28,76 35.5,46" fill="none" stroke="#e9ecf2" stroke-width="8" stroke-linecap="round" stroke-linejoin="round" />
+        <circle cx="59.5" cy="64" r="12" fill="none" stroke="#e9ecf2" stroke-width="8" />
+        <line x1="71.5" y1="42" x2="71.5" y2="76" stroke="#e9ecf2" stroke-width="8" stroke-linecap="round" />
+        <line x1="78.5" y1="14" x2="94.5" y2="30" stroke="#6fd3c1" stroke-width="7" stroke-linecap="round" />
+        <line x1="94.5" y1="14" x2="78.5" y2="30" stroke="#6fd3c1" stroke-width="7" stroke-linecap="round" />
+      </g>
+      <text x="100" y="52" fill="#e9ecf2" font-family="Bricolage Grotesque" font-weight="800" font-size="22">wdx engine</text>
+      <text x="100" y="74" fill="#6fd3c1" font-family="JetBrains Mono" font-size="12">daemon &amp; holders</text>
+      
+      <line x1="20" y1="88" x2="240" y2="88" stroke="#282e3d" stroke-width="1" />
+      <text x="24" y="108" fill="#98a1b3" font-family="JetBrains Mono" font-size="11">pty · screen · inbox · worktrees</text>
+    </g>
+
+    <!-- Node 1: Claude Code (Top Left) -->
+    <g transform="translate(30, 20)">
+      <rect width="250" height="100" rx="10" fill="#1a1e28" stroke="#e5747a" stroke-width="1.5" />
+      <circle cx="26" cy="30" r="6" fill="#e5747a" />
+      <text x="42" y="34" fill="#e9ecf2" font-family="JetBrains Mono" font-weight="700" font-size="16">Claude Code</text>
+      <text x="26" y="58" fill="#98a1b3" font-family="JetBrains Mono" font-size="12">cli: claude (2.1.319)</text>
+      <text x="26" y="76" fill="#8a93a6" font-family="JetBrains Mono" font-size="11">prompt parsing · SendNow</text>
+      <rect x="26" y="85" width="85" height="4" rx="2" fill="#e5747a" />
+    </g>
+
+    <!-- Node 2: Codex (Top Right) -->
+    <g transform="translate(790, 20)">
+      <rect width="250" height="100" rx="10" fill="#1a1e28" stroke="#6fd3c1" stroke-width="1.5" />
+      <circle cx="26" cy="30" r="6" fill="#6fd3c1" />
+      <text x="42" y="34" fill="#e9ecf2" font-family="JetBrains Mono" font-weight="700" font-size="16">Codex</text>
+      <text x="26" y="58" fill="#98a1b3" font-family="JetBrains Mono" font-size="12">cli: codex (0.163.0)</text>
+      <text x="26" y="76" fill="#8a93a6" font-family="JetBrains Mono" font-size="11">developer_instructions · notify</text>
+      <rect x="26" y="85" width="120" height="4" rx="2" fill="#6fd3c1" />
+    </g>
+
+    <!-- Node 3: Cursor (Bottom Left) -->
+    <g transform="translate(30, 240)">
+      <rect width="250" height="100" rx="10" fill="#1a1e28" stroke="#81a1c1" stroke-width="1.5" />
+      <circle cx="26" cy="30" r="6" fill="#81a1c1" />
+      <text x="42" y="34" fill="#e9ecf2" font-family="JetBrains Mono" font-weight="700" font-size="16">Cursor</text>
+      <text x="26" y="58" fill="#98a1b3" font-family="JetBrains Mono" font-size="12">cli: cursor-agent (2026.11.05)</text>
+      <text x="26" y="76" fill="#8a93a6" font-family="JetBrains Mono" font-size="11">isolated config · plugin hook</text>
+      <rect x="26" y="85" width="95" height="4" rx="2" fill="#81a1c1" />
+    </g>
+
+    <!-- Node 4: Antigravity (Bottom Right) -->
+    <g transform="translate(790, 240)">
+      <rect width="250" height="100" rx="10" fill="#1a1e28" stroke="#e2b75e" stroke-width="1.5" />
+      <circle cx="26" cy="30" r="6" fill="#e2b75e" />
+      <text x="42" y="34" fill="#e9ecf2" font-family="JetBrains Mono" font-weight="700" font-size="16">Antigravity</text>
+      <text x="26" y="58" fill="#98a1b3" font-family="JetBrains Mono" font-size="12">cli: agy (1.5.2)</text>
+      <text x="26" y="76" fill="#8a93a6" font-family="JetBrains Mono" font-size="11">AGENTS.md rules · Alt+M steering</text>
+      <rect x="26" y="85" width="110" height="4" rx="2" fill="#e2b75e" />
+    </g>
+  </g>
+</svg>

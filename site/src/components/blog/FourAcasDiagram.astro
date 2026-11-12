@@ -1,0 +1,98 @@
+---
+// Architecture diagram: TIDE and CLI driving four normalized AI coding agents
+// through the wdx daemon and holder processes.
+import Diagram from '../diagrams/Diagram.astro';
+---
+<Diagram id="acas" width={720} height={380}
+  label="Architecture of wdx multi-ACA support: TIDE and CLI interact with the background daemon and holder PTYs, which adapt Claude Code, Codex, Cursor, and Antigravity into a unified protocol."
+  caption="wdx normalizes four distinct AI CLIs into one interface: identical worktree isolation, vt state detection, inbox message delivery, and unified usage tracking.">
+  
+  <!-- Top Layer: Clients -->
+  <text class="ttl" x="20" y="22">User &amp; Interface Layer</text>
+  <rect class="bx" x="20" y="34" width="325" height="42" rx="8" />
+  <text x="36" y="60">wdx tide</text>
+  <text class="sm" x="120" y="60">Terminal IDE · panes &amp; diff review</text>
+
+  <rect class="bx" x="375" y="34" width="325" height="42" rx="8" />
+  <text x="391" y="60">wdx CLI &amp; scripts</text>
+  <text class="sm" x="525" y="60">--json · agent fleet orchestration</text>
+
+  <!-- Connection to daemon -->
+  <path class="ar" d="M182 76 V108" marker-end="url(#acas-a)" />
+  <path class="ar" d="M537 76 V108" marker-end="url(#acas-a)" />
+
+  <!-- Middle Layer: wdx Daemon & Holder Engine -->
+  <rect class="bx hot" x="20" y="110" width="680" height="72" rx="10" />
+  <text class="hot" x="36" y="136">wdx daemon &amp; PTY holders</text>
+  <text class="sm" x="260" y="136">unix domain socket · outlives terminal session</text>
+  
+  <!-- Sub-features of the daemon layer -->
+  <g transform="translate(36, 148)" font-family="var(--mono)" font-size="11">
+    <rect x="0" y="0" width="145" height="24" rx="4" fill="var(--surface)" stroke="var(--line)" />
+    <text class="sm" x="10" y="16">vt screen parser</text>
+
+    <rect x="155" y="0" width="155" height="24" rx="4" fill="var(--surface)" stroke="var(--line)" />
+    <text class="sm" x="10" y="16" transform="translate(155, 0)">worktree isolation</text>
+
+    <rect x="320" y="0" width="165" height="24" rx="4" fill="var(--surface)" stroke="var(--line)" />
+    <text class="sm" x="10" y="16" transform="translate(320, 0)">inbox steering queue</text>
+
+    <rect x="495" y="0" width="155" height="24" rx="4" fill="var(--surface)" stroke="var(--line)" />
+    <text class="sm" x="10" y="16" transform="translate(495, 0)">account usage quota</text>
+  </g>
+
+  <!-- Connectors to the four ACA adapters -->
+  <path class="ar hot" d="M100 182 V222" marker-end="url(#acas-h)" />
+  <path class="ar hot" d="M270 182 V222" marker-end="url(#acas-h)" />
+  <path class="ar hot" d="M450 182 V222" marker-end="url(#acas-h)" />
+  <path class="ar hot" d="M620 182 V222" marker-end="url(#acas-h)" />
+
+  <!-- Bottom Layer: Four ACA Adapters -->
+  <!-- 1. Claude Code -->
+  <g transform="translate(20, 224)">
+    <rect class="bx" x="0" y="0" width="160" height="136" rx="8" />
+    <text x="12" y="24">Claude Code</text>
+    <text class="sm" x="12" y="42">claude (2.1.319)</text>
+    <line x1="12" y1="52" x2="148" y2="52" stroke="var(--line)" />
+    <text class="sm" x="12" y="70">· no alt-screen</text>
+    <text class="sm" x="12" y="88">· prompt parsing</text>
+    <text class="sm" x="12" y="106">· C-x C-s SendNow</text>
+    <text class="sm" x="12" y="124">· append sysprompt</text>
+  </g>
+
+  <!-- 2. Codex -->
+  <g transform="translate(193, 224)">
+    <rect class="bx" x="0" y="0" width="160" height="136" rx="8" />
+    <text x="12" y="24">Codex</text>
+    <text class="sm" x="12" y="42">codex (0.163.0)</text>
+    <line x1="12" y1="52" x2="148" y2="52" stroke="var(--line)" />
+    <text class="sm" x="12" y="70">· developer_inst</text>
+    <text class="sm" x="12" y="88">· rollout jsonl</text>
+    <text class="sm" x="12" y="106">· notify turns</text>
+    <text class="sm" x="12" y="124">· codex resume</text>
+  </g>
+
+  <!-- 3. Cursor -->
+  <g transform="translate(366, 224)">
+    <rect class="bx" x="0" y="0" width="160" height="136" rx="8" />
+    <text x="12" y="24">Cursor</text>
+    <text class="sm" x="12" y="42">cursor-agent</text>
+    <line x1="12" y1="52" x2="148" y2="52" stroke="var(--line)" />
+    <text class="sm" x="12" y="70">· config folder</text>
+    <text class="sm" x="12" y="88">· plugin hook</text>
+    <text class="sm" x="12" y="106">· store.db SQLite</text>
+    <text class="sm" x="12" y="124">· synthetic status</text>
+  </g>
+
+  <!-- 4. Antigravity -->
+  <g transform="translate(540, 224)">
+    <rect class="bx" x="0" y="0" width="160" height="136" rx="8" />
+    <text x="12" y="24">Antigravity</text>
+    <text class="sm" x="12" y="42">agy (1.5.2)</text>
+    <line x1="12" y1="52" x2="148" y2="52" stroke="var(--line)" />
+    <text class="sm" x="12" y="70">· AGENTS.md rules</text>
+    <text class="sm" x="12" y="88">· SQLite snapshots</text>
+    <text class="sm" x="12" y="106">· Alt+M steering</text>
+    <text class="sm" x="12" y="124">· statusline token</text>
+  </g>
+</Diagram>
