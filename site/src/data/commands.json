@@ -307,6 +307,10 @@
     "summary": "Show, start or stop pushing a project's docs to the hub",
     "href": "/wdx/docs/reference/cli/project/#wdx-project-sync"
   },
+  "prompt": {
+    "summary": "Answer the prompts the project's Claude Code agents wait on",
+    "href": "/wdx/docs/reference/cli/prompt/"
+  },
   "setting get": {
     "summary": "Show one setting",
     "href": "/wdx/docs/reference/cli/setting/#wdx-setting-get"

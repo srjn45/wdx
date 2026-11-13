@@ -110,7 +110,9 @@ var nodeRefusals = []string{"pass --project-id or --project-name with --node", "
 	// project open with no flag, which is refused without --node too.
 	"nothing to open",
 	// tide with no terminal to run in, which it needs before it reaches any node.
-	"no terminal to run TIDE in"}
+	"no terminal to run TIDE in",
+	// prompt in text, which asks which prompt to answer and has no terminal to ask on.
+	"asks which prompt to answer"}
 
 // TestNodeExamples runs every example of every command with --node on the
 // desktop, from the laptop: each reaches the desktop's daemon under the
@@ -168,8 +170,8 @@ func TestNodeExamples(t *testing.T) {
 				if cmd.Flag("yes") != nil && !slices.Contains(args, "--yes") {
 					args = append(args, "--yes") // asked before the daemon is
 				}
-				p.onLaptop(dir, nil, args...)
-				if served(t, p.desktop.home, runID(t, p.laptop.home, args)) == 0 {
+				retried := p.onLaptop(dir, nil, args...)
+				if served(t, p.desktop.home, runID(t, p.laptop.home, args)) == 0 && !strings.Contains(retried.Stderr, "asks which prompt to answer") {
 					t.Errorf("%v: reached nothing on the desktop", args)
 				}
 				reachedOnce = true

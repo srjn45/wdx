@@ -24,6 +24,7 @@ Every command but daemon, observe, setting and update is served by the daemon; w
 | [`wdx observe`](/wdx/docs/reference/cli/observe/) | Run Grafana with the logs and metrics |
 | [`wdx plan`](/wdx/docs/reference/cli/plan/) | Manage plans: the work of a feature broken into tasks for agents |
 | [`wdx project`](/wdx/docs/reference/cli/project/) | Manage projects |
+| [`wdx prompt`](/wdx/docs/reference/cli/prompt/) | Answer the prompts the project's Claude Code agents wait on |
 | [`wdx setting`](/wdx/docs/reference/cli/setting/) | Show and change the settings |
 | [`wdx terminal`](/wdx/docs/reference/cli/terminal/) | Manage terminals: shells that belong to a project and outlive the daemon |
 | [`wdx tide`](/wdx/docs/reference/cli/tide/) | Work in the terminal IDE: a project, an agent and terminals in one window |

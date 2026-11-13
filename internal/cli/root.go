@@ -109,6 +109,9 @@ type Timeouts struct {
 	// UpdatePreflight is how long wdx update gives the new binary to run on
 	// the settings before installing it: update's preflightTimeout.
 	UpdatePreflight time.Duration
+	// PromptNext is how long wdx prompt waits for the daemon to know the next
+	// question of a decision: promptNextWait.
+	PromptNext time.Duration
 }
 
 // termVars are the variables that describe the terminal wdx runs in.
@@ -283,7 +286,7 @@ func newRoot(cfg config.Config) *cobra.Command {
 		Color:   cfg.Color,
 		Topics:  topics,
 	}, addNodeFlag(newVersionCmd()), addNodeFlag(newProjectCmd(cfg.Home)), addNodeFlag(newTerminalCmd()), addNodeFlag(newAgentCmd()),
-		addNodeFlag(newWorktreeCmd()), addNodeFlag(newMessageCmd()), newDaemonCmd(cfg.Home), newObserveCmd(), newSettingCmd(), newUpdateCmd(cfg), newCompletionCmd(), newHolderCmd(), newCodesignCmd(), addNodeFlag(newTideCmd()), newDepsCmd(), addNodeFlag(newDocCmd()), newHubCmd(), addNodeFlag(newPlanCmd()), addNodeFlag(newUsageCmd()))
+		addNodeFlag(newWorktreeCmd()), addNodeFlag(newMessageCmd()), newDaemonCmd(cfg.Home), newObserveCmd(), newSettingCmd(), newUpdateCmd(cfg), newCompletionCmd(), newHolderCmd(), newCodesignCmd(), addNodeFlag(newTideCmd()), newDepsCmd(), addNodeFlag(newDocCmd()), newHubCmd(), addNodeFlag(newPlanCmd()), addNodeFlag(newUsageCmd()), addNodeFlag(newPromptCmd()))
 	wrapNode(root)
 	return root
 }

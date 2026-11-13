@@ -28,6 +28,7 @@ import (
 	"github.com/srjn45/wdx/internal/db/dbtest"
 	"github.com/srjn45/wdx/internal/gh/ghtest"
 	"github.com/srjn45/wdx/internal/holder/holdertest"
+	"github.com/srjn45/wdx/internal/holder/prompttest"
 	"github.com/srjn45/wdx/internal/identity"
 	"github.com/srjn45/wdx/internal/limitstest"
 	"github.com/srjn45/wdx/internal/logging"
@@ -45,6 +46,7 @@ var wdxBinary, releaseBinary string
 const releaseVersion = "0.2.0"
 
 func TestMain(m *testing.M) {
+	prompttest.RunIfProgram() // the program the prompt tests run as an agent
 	done := runtest.Start()
 	// make test-changed runs many processes of these tests, which need only one
 	// build, in a directory it removes.

@@ -20,7 +20,7 @@ const docsDir = "site/src/content/docs/docs"
 // waiting are the commands no guide covers yet: the guides still to be
 // written take them off, and the test fails until they do. Empty: a new
 // command comes with its guide.
-var waiting = []string{}
+var waiting = []string{"prompt"} // the finish task of the plan prompt-tab writes its guide
 
 // TestGuideCoverage fails when a command is in no guide, a guide names a
 // command that is gone, a command still waiting is in a guide, or a guide
