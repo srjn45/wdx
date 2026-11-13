@@ -2,7 +2,7 @@
 
 Status: implemented. Designed with the human on 2026-11-01.
 
-The right pane shows one agent at a time today, the active one. This gives it a tab per agent opened. A tab is only a view: closing one stops nothing. Other tab types (`docs/IDE.md`) come later and are not part of this.
+The right pane shows one agent at a time today, the active one. This gives it a tab per agent opened. A tab is only a view: closing one stops nothing. Other tab types (`docs/IDE.md`) came later: info, settings, files, diffs, docs, plans, stats (docs/TIDE_STATS.md) and prompts (docs/TIDE_PROMPTS.md), each opened from the list or the menu and walked with the same keys.
 
 ## Decisions
 

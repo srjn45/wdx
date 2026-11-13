@@ -1,0 +1,65 @@
+---
+title: Prompts in TIDE
+description: The prompts tab gathers every question the project's Claude Code agents wait on, and answers each from one place, without attaching to the agent.
+since: 0.6.0
+sidebar:
+  label: Prompts
+---
+
+import Since from '../../../../components/Since.astro';
+
+`C-q P`, or `P` in the project pane, opens the prompts tab: every question the project's Claude Code agents wait on, a permission, a trust question or a choice their model asks, answered from one place. With several agents and plan tasks running, no question waits unseen in a tab you are not looking at. It is `wdx prompt` on a screen that keeps itself current; the CLI side is in [Agents](/wdx/docs/guides/agents/).
+
+## What you see
+
+The list, one row per agent with a question open:
+
+```
+┬─[● planner(-)]─[? prompts 2(-)]───────────────────────[⤢]─┐
+ ▸ fix-readme   yes/no    Bash command · go test ./...
+   planner      decision  Which store keeps the sessions?
+```
+
+`Enter` opens a question on its own screen:
+
+```
+┬─[● planner(-)]─[? prompts 2(-)]───────────────────────[⤢]─┐
+ ‹ prompts  ·  planner  ·  decision  ·  2 of 2
+ ──────────────────────────────────────────────────
+     Which store keeps the sessions?
+
+   ❯ 1. (•) SQLite
+     2. ( ) Files
+     3. ( ) Type something.
+       ─────
+     4. Chat about this
+```
+
+The tab's title counts the questions waiting, `[? prompts 2(-)]`, and reads `[prompts(-)]` with none; the list then says `no prompts`.
+
+## Keys
+
+| Key | What it does |
+|---|---|
+| `C-q P`, `P` in the project pane | open the tab, or go to it |
+| `↑` `↓` | move through the questions, or through a question's options |
+| `Enter` on a row | open its question |
+| `Enter` on an option | answer it: a yes/no or a single choice, a `Type something` with your text, or `Chat about this` |
+| `Space` or `Enter` in a checkbox list | tick or untick the option |
+| `Enter` on `Submit` | send the boxes ticked |
+| a digit | move to that option, never answering |
+| typing, on `Type something` | your answer; in a checkbox list typing ticks it |
+| `o` | open the agent's tab without answering |
+| `Esc` | back to the list, keeping what you did |
+| `-` | close the tab |
+
+## How it behaves
+
+- **Your own cursor.** The cursor, the ticks and your text are TIDE's: the agent's own cursor does not move while you look, and the answer goes in one go once you send it.
+- **Never a question you did not see.** wdx presses the keys in the agent's terminal one at a time, checking each, and only while its screen still shows the question you answered. If it changed, nothing more is pressed and the tab says `not answered: the prompt changed before it was`; a question that changes while open is drawn again with `changed`, and one that closes leaves the screen.
+- **Checkboxes** send only on `Submit`, so an `Enter` meant as a tick never sends; `Submit` with nothing ticked sends nothing and says so.
+- **Several questions** in one decision come one at a time, with Claude Code's tab line above them. Each but the last is sent as you answer it, as Claude Code shows only its current question and submits nothing before its review; after the last comes the tab's review, every question with its answer, then `Submit answers` and `Back to the questions`. Only `Submit answers` sends them.
+- **Chat about this** declines the questions and takes you to the agent's tab, to talk it over.
+- **Claude Code only.** Its questions are the ones wdx reads, so other AI CLIs' agents never show here: answer them in their own tab.
+- **Kept** across restarts, as the other tabs are, one per project.
+- **Private.** Nothing TIDE or wdx logs holds a question, an option or what you typed.

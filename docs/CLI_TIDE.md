@@ -65,6 +65,7 @@ The CLI and tide stay in sync, but not one to one. The CLI serves scripts and AI
 | See its model and permissions | `agent get` | the info tab | Same | |
 | List the models to choose from | `agent models [--aca]`, `--model`'s completion | the form's model list, filtered by what is typed | Same | |
 | See how much of an ACA's account's limits is used, and whether it can be used | `usage`, `usage --node` for another node's | the stats tab, `C-q S` (docs/TIDE_STATS.md) | Same | the CLI names the fact, `usage`; tide's tab is generic, `stats`, so that other machine-wide facts join it over time |
+| Answer the project's Claude Code prompts without attaching | `prompt`: a list, a number, then the options; `--json` lists and asks nothing | the prompts tab, `C-q P` (docs/TIDE_PROMPTS.md) | Same | each but the last of several questions is sent as answered, then a review; the CLI asks before sending ticks and before the review, as a typed number is easier to get wrong than a cursor; tide's checkbox list sends only on `Submit` |
 | Choose its AI coding agent when creating | `--aca` | the form's ACA field, shown with two or more | Same | |
 | List the AI coding agents to choose from | `agent acas`, `--aca`'s completion | the field's ‹ › | Same | |
 | See why an ACA is not offered | `deps list` (installed), `setting list` (enabled) | the settings tab (enabled); installed is not shown | Later (tide) | tide has no deps screen yet |

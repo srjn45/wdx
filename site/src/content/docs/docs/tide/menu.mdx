@@ -2,6 +2,7 @@
 title: The menu
 description: C-q shows every action that applies where you are, a letter each, from what is selected to the whole of TIDE.
 ---
+import Since from '../../../../components/Since.astro';
 import TideScreen from '../../../../components/TideScreen.astro';
 
 `C-q` opens the menu: everything you can do where you are, each with one letter. It is how to find a key, and how to act from a pane whose keys go to a program. TIDE takes so few keys of its own that the menu holds the rest.
@@ -22,7 +23,7 @@ The menu's parts, each shown only where it applies:
 | Code | `e` edit, `n` new file, `N` new directory, `r` rename, `x` delete |
 | A tab, in the right pane | `-` close it |
 | The list, in the project pane | `/` filter, `f` read git again, `z` fold the section, or open it |
-| Global | `a` new agent, `t` new terminal, `p` the project menu, `s` settings, `S` stats, `H` the sessions into this node while one is open, `q` quit |
+| Global | `a` new agent, `t` new terminal, `p` the project menu, `s` settings, `S` stats, `P` prompts <Since v="0.6.0" />, `H` the sessions into this node while one is open, `q` quit |
 | The project menu (`p`) | `o` open a project, `s` switch, `c` close the one shown, `x` remove it from wdx |
 | A program in focus | `\`, `]` and `C-q` send `C-\`, `C-]` and `C-q` to it |
 

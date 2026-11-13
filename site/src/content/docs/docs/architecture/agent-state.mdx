@@ -41,13 +41,13 @@ The holder is generic and knows no AI CLI. The daemon starts it with `--aca <id>
 
 - **When a message goes in.** The holder's inbox delivers only when the parser says it can: an input box with no draft of yours, no question open. A draft you are typing is never sent with a message, nor overwritten. See [Messages and sending](/wdx/docs/guides/messages/).
 - **When a plan waits for you**: a task whose agent asks a question stops for your answer. See [Running plans](/wdx/docs/guides/running-plans/).
-- **What TIDE and the CLI show**: the state, the model, and for Claude Code the question and its options, which TIDE lets you answer. See [Agents in TIDE](/wdx/docs/tide/agents/).
+- **What TIDE and the CLI show**: the state, the model, and for Claude Code the question and its options, which TIDE's prompts tab and `wdx prompt` answer by keys through the agent's holder, only while its screen still shows the question you saw. See [Agents in TIDE](/wdx/docs/tide/agents/).
 
 ## Each AI CLI
 
 What each parser reads, and where it was checked, is on its page; in short:
 
-- **[Claude Code](/wdx/docs/acas/claude-code/)**: its footer for the activity and the model, and its questions, yes/no or a choice, with their options.
+- **[Claude Code](/wdx/docs/acas/claude-code/)**: its footer for the activity and the model, and its questions, yes/no or a choice, with their options and what each takes: a choice, your own text, chat, or a checkbox list's `Submit`, and the review of several questions.
 - **[Codex](/wdx/docs/acas/codex/)**: the block above its input box, `• Working` or `Worked for 3s`; its box counts only once its status line shows, as Codex draws it before it can take input.
 - **[Cursor](/wdx/docs/acas/cursor/)**: `ctrl+c to stop` and its spinner line; idle is read from their absence, so recordings check that no screen in a turn reads idle.
 - **[Antigravity](/wdx/docs/acas/antigravity/)**: its footer and the spinner above the box; its box counts only once the footer names a model.

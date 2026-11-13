@@ -390,7 +390,7 @@ Built for Claude Code (the wdx doc CLAUDE_PROMPTS, step 1); the other three pars
 
 | `Prompt` | What it holds |
 |---|---|
-| `Kind` | `yes_no`, answered yes or no in one of Claude's variants (a permission, a plan approval, the trust prompt), or `decision`, a question Claude's model asks with options of its own. Which yes/no prompt it is is not a field: the step that answers them adds it |
+| `Kind` | `yes_no`, answered yes or no in one of Claude's variants (a permission, a plan approval, the trust prompt), or `decision`, a question Claude's model asks with options of its own. Which yes/no prompt it is is not a field: the answer goes by the option's index and kind |
 | `Title` | `Bash command`, `Create file`, `Bash command · from the general-purpose agent`, `Accessing workspace`, a decision's tab `Color`; `""` for the plan approval |
 | `Question` | `Do you want to proceed?`, `Do you want to create wdx-b.txt?`, `Claude has written up a plan and is ready to execute. Would you like to proceed?`, `Accessing workspace:`, a decision's question |
 | `Detail` | the command, the file's name, the workspace path; `""` for a decision and the plan |
@@ -398,12 +398,32 @@ Built for Claude Code (the wdx doc CLAUDE_PROMPTS, step 1); the other three pars
 | `Selected` | the option with `❯`; -1 when none shows |
 | `Multi` | a decision whose options are checkboxes |
 | `Ticked` | the index of each option whose box is `[✔]`, in order; empty for a multi-select with none and for every other prompt |
+| `Kinds` | one per option, what answers it (below); added by the wdx doc PROMPT_TAB |
+| `Questions` | a decision's tabs' names when it asks several (`Color`, `Size`); empty for one question, even a multi-select whose tab line shows `✔ Submit`, and for every other prompt; never nil from the parser |
+| `Answered` | the indexes of those questions whose tab is `☒` |
+| `Review` | Claude's review screen of a decision of several questions: `Review your answers` as its title, `Ready to submit your answers?` as its question, no detail, `Submit answers` and `Cancel` as its options, both `choice`, and `Questions` and `Answered` from its tab line |
+
+### The option kinds
+
+Since the plan prompt-tab (2026-11-13), so that a prompt can be answered from tide's prompts tab and `wdx prompt` without attaching (docs/PROMPT_ANSWER.md, docs/TIDE_PROMPTS.md). The kind goes by position and shape, never by the model's words:
+
+| Kind | Which options | Answered by |
+|---|---|---|
+| `choice` | a yes/no option, one of the model's own options, the review's two | moving to it, then Enter (yes/no, radio, review) or Space (a checkbox) |
+| `text` | the last numbered option before the rule of a decision (`Type something`, `Type something.`); in a yes/no prompt an option whose label holds `tell Claude what`, wrapped or not | typing into it, then Enter; in a checkbox list typing ticks it. A yes/no `text` option is chosen by Enter alone |
+| `chat` | the option after the rule, `Chat about this` | moving to it, then Enter, which declines every question; then the agent's tab |
+| `submit` | a multi-select's `Submit` row, with no number, right above the rule under `Type something` | moving to it, then Enter, then Claude's review |
+
+- **The Submit row** was dropped as a description before; it is an option now, as the cursor lands on it.
+- **The current question** shows in color only, a background on its tab, so the title is the first question not answered, as Claude moves on after each answer; `""` when all are answered and a question shows, as when the person went back. A person moving back to an answered tab while one is open gets the title of the open one: the holder checks the question and options, not the title.
+- **The review** has no footer at all, so it read `unknown` before; it is read only in the branch with no input box, from its tab line, `Review your answers` and `Ready to submit your answers?`.
+- `Prompt.Equal` and the JSON (`kinds`, `questions`, `answered`, `review`) carry the four. Recordings on 2.1.323 (`record/decisions.py`, `planprompt.py`) at 120x40, 60x24 and 40x24, in `testdata/claude_code/2.1.323`: every kind, the questions, the answered and the review read right at all three; at 40 columns the trust prompt's wrapped path pushes the rule off a 24-row screen, so it reads `waiting` with no prompt, as a prompt is never read without its rule.
 
 How Claude Code's parser reads it, in the two branches that read `waiting`: the kind from the footer and the line above the options, never from the options' words, which a reply above can hold too; the options upward from the footer; the question right above them; the title and detail from the block under the last full rule, never above it. The rules are in docs/ACA.md's row, the widths' findings in the wdx doc CLAUDE_PROMPTS. The holder compares states with `ScreenState.Equal`, so a selection moving or a box ticked is a change it publishes.
 
 From the holder to the person (step 2): `holder.Status` carries it as `prompt`, left out when none is read, so an older holder reads as none; a status goes out when the prompt alone changes. The daemon keeps it in `agents.prompt` as JSON with the activity, only with `waiting`, cleared when the terminal ends and, for terminals that ended with no daemon running, at the daemon's start, and serves it as `Agent.prompt` (docs/AGENT.md), which the project stream sends as any other change. The logs say its `prompt_kind` and `prompt_options`, the count, never the text: the holder's `screen state changed`, the daemon's `agent status changed`, and the request and command logs, whose responses go through `api.AgentResponseLogged`. tide's row and `agent list` read `yes/no` or `decision` in place of `waiting`; the info tab and `agent get` show `prompt`, `question`, `detail` and `options`, `❯` before the selected one and, in a multi-select, `[✔]` before a ticked option and `[ ]` before the others.
 
-Options differ per prompt: `No` is 4 for Bash and 3 for a file, and offers depend on the mode, so whatever answers later goes by label, not number.
+Options differ per prompt: `No` is 4 for Bash and 3 for a file, and offers depend on the mode, so an answer is given against the question and labels as read, and the holder checks the screen still shows them (docs/PROMPT_ANSWER.md).
 
 ### Hooks
 

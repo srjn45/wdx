@@ -43,7 +43,7 @@ Table `tide_tabs`, in the migration `0017_tide_tabs.sql`: one row per open tab p
 |---|---|
 | `project_id` | the project, `ON DELETE CASCADE` |
 | `position` | its place in the strip, from 0; the key is (`project_id`, `position`) |
-| `kind` | `agent`, `info`, `settings`, `file`, `diff`, `pr`, `doc`, `plan` (added by migration 0021, docs/PLANS.md), `stats` (added by migration 0029, docs/TIDE_STATS.md) |
+| `kind` | `agent`, `info`, `settings`, `file`, `diff`, `pr`, `doc`, `plan` (added by migration 0021, docs/PLANS.md), `stats` (added by migration 0029, docs/TIDE_STATS.md), `prompts` (migration 0035, docs/TIDE_PROMPTS.md, which drops the `CHECK` on the kinds: `tidestate` checks them in Go, the columns' checks staying) |
 | `agent_id` | for `agent` and `info`: `REFERENCES agents (id) ON DELETE CASCADE` |
 | `doc_id` | for `doc`, and for `plan` the plan's id, as plans are kept as docs: `REFERENCES docs (id) ON DELETE CASCADE` |
 | `worktree` | for `file`, `diff` and `pr`: the worktree's name, `main` for the clone, as the worktree API and tide name it. Not a foreign key, since git lists checkouts wdx never registered, as `verified_files` and `review_comments` say |

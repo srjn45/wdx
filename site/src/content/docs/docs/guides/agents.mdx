@@ -1,7 +1,7 @@
 ---
 title: Agents
 description: Run Claude Code, Codex, Cursor or Antigravity in a terminal wdx keeps, see what each is doing, and pick up its conversation again.
-commands: [agent create, agent attach, agent list, agent get, agent acas, agent models, agent rename, agent start, agent restart, agent transcript, agent remove, usage]
+commands: [agent create, agent attach, agent list, agent get, agent acas, agent models, agent rename, agent start, agent restart, agent transcript, agent remove, usage, prompt]
 ---
 import Commands from '../../../../components/Commands.astro';
 import Since from '../../../../components/Since.astro';
@@ -114,6 +114,24 @@ antigravity Gemini models   available
   Week                      30%   Nov 13 08:00   16:09
 ```
 
+Answer the questions your Claude Code agents wait on <Since v="0.6.0" />, without attaching to each: `wdx prompt` lists them, asks which, then offers its options.
+
+```console
+$ wdx prompt
+2 prompts in app
+  1  fix-readme  yes/no    Bash command · go test ./...
+  2  planner     decision  Which store keeps the sessions?
+Which one? (1-2, q to quit): 2
+planner · decision · Store
+Which store keeps the sessions?
+  1  SQLite
+  2  Files
+  3  Type something.  (type your own)
+  4  Chat about this  (declines; go on in the agent's tab)
+Which option? (1-4, q to quit): 1
+answered agent planner in app
+```
+
 ## In TIDE
 
 The Agents section of the left pane lists the project's agents, children under their parents, each with its activity, model and context size; Enter opens one in the right pane to talk to it. `C-q a` creates one in a form (name, ACA, model, worktree, permissions and a prompt), and `i` opens its info tab, with what `agent get` shows. On an agent, `r` renames it, `g` starts it again once it has ended, `R` starts a new session after a confirmation, and `x` removes it. TIDE has no transcript screen: that is for reading and grepping with the CLI. More in [Agents in TIDE](/wdx/docs/tide/agents/).
@@ -130,6 +148,7 @@ The Agents section of the left pane lists the project's agents, children under t
 - **Names** are generated unless `--name` gives one, unique in a project among agents and terminals; `agent rename` changes one while it runs.
 - **Removing** a running agent asks first, as it interrupts what it does; `--stop-running` or `--cancel` answers in advance. What the ACA keeps of its session stays on disk.
 - **Giving it a task later** is `wdx agent send`, in [Messages and sending](/wdx/docs/guides/messages/).
+- **Answering its prompts** <Since v="0.6.0" />. `wdx prompt` lists the project's Claude Code agents with a question open, in the agents' order, and answers the one you pick: a number chooses an option; in a checkbox list you give the numbers to tick, and it asks before sending; a `Type something` option asks for your text; `Chat about this` declines and says to go on in the agent's tab. A decision of several questions is asked one by one, each sent as you answer it, as Claude Code shows only the current one and submits nothing before its review; then the answers are shown and sent only on `y`. wdx presses the keys through the agent's terminal, one at a time, and only while its screen still shows the question you saw: if it changed, nothing more is pressed, `wdx prompt` says so and lists them again. With `--json` it lists the agents and their prompts and asks nothing; scripts answer through the API's `POST /v1/agents/{agent}/prompt/answer`. Nothing it logs holds a question, an option or what you typed. The same in TIDE is the [prompts tab](/wdx/docs/tide/prompts/).
 - **Usage** <Since v="0.5.0" /> is read from what the AI CLI tells its agents, with nothing typed into them: the windows of its limits with the percentage used and when each resets, as of the latest answer of any of its agents. A window used 100% or more is limited, and the AI CLI can be used while none is; the line says `limited, resets in 2 h` otherwise. Nothing is shown until an agent has answered, and an account without limits never shows anything. wdx only shows it: nothing pauses or resumes on its own. `wdx usage --node desk` shows another node's ([Hub](/wdx/docs/guides/hub/#commands-on-another-node)).
 - **Where each AI CLI tells it** <Since v="0.5.0" />. Claude Code and Antigravity in the status line wdx gives every agent, the file it already reads for the context size; Codex in its session file, beside each answer's token count; Cursor nowhere on disk, so the daemon asks Cursor's API what its own `/usage` screen asks, while a Cursor agent works and at most every 5 minutes, with the login Cursor's CLI keeps, which wdx reads at each call and never stores (on Linux; on macOS that login is in the keychain, which wdx does not read). Cursor is the one place wdx goes on the network for an AI CLI.
 - **Buckets** <Since v="0.5.0" />. Some limits apply to a group of models only, shown as a block of their own under its name: Antigravity's `Gemini models`, `Claude and GPT models` and `Gemini 4 Argon`, each with a session and a week; Cursor's `Auto` and `API` beside its included allowance, by the billing month, in whole percents, without on-demand spend; Codex's other buckets by the names it gives. A window or bucket wdx does not know yet shows its key as the AI CLI gives it. Codex may stop at 99% and refuse every prompt: wdx shows that window limited too.

@@ -52,6 +52,7 @@ export default defineConfig({
             'docs/tide/menu',
             'docs/tide/settings',
             'docs/tide/stats',
+            'docs/tide/prompts',
           ],
         },
         {

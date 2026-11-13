@@ -137,6 +137,8 @@ Prompt text is never logged (AGENTS.md), but today the CLI logs raw args and eve
 
 `frameSend`, 13, goes from the daemon to the holder, with `instant` in its payload. 12 is `frameStatus`, the state channel from the holder to the daemon (docs/AGENT_STATE.md), which will carry the queue's length too.
 
+`frameAnswer`, 15, and `frameAnswered`, 16, answer an agent's prompt by keys, and take no version either: a holder says `answers` in its hello (docs/PROMPT_ANSWER.md). The inbox holds its messages while an answer is under way, and is woken when it ends.
+
 Version 3 is the inbox, for shells: an older holder would drop `frameSend` silently, so the daemon asks for the version that has it. Version 4 delivers to an ACA and knows `instant`: a version 3 holder would type the message into an ACA with no look at its screen, so `agent send` asks for 4 and gets `send_failed` from an older one. So nothing here needs another acceptance release, but the next version, 5, does; the state channel needs no new version.
 
 Today's daemon accepts only versions 1 and 2, so rolling back to it would lose every newer holder. As for version 2 (docs/ATTACH.md), the daemon's acceptance ships first, in a release of its own that is installed before either feature is released.
