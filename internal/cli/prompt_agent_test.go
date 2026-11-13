@@ -211,7 +211,7 @@ func TestPromptSeveralQuestions(t *testing.T) {
 	if exit != clikit.ExitOK || !strings.HasPrefix(out, "answered agent styler") {
 		t.Fatalf("want it answered, got exit %d, %q, %q", exit, out, stderr)
 	}
-	for _, want := range []string{"question 1 of 2: Color", "question 2 of 2: Size", "Review your answers", "Which hue suits the sky?\n    → Azure", "Which base size fits?\n    → Grande", "Submit these answers?"} {
+	for _, want := range []string{"Color · question 1 of 2\n", "Size · question 2 of 2\n", "Review your answers", "Which hue suits the sky?\n    → Azure", "Which base size fits?\n    → Grande", "Submit these answers?"} {
 		if !strings.Contains(stderr, want) {
 			t.Errorf("the dialogue lacks %q: %q", want, stderr)
 		}

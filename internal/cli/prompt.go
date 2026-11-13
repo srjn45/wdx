@@ -416,10 +416,12 @@ func (d *promptDialogue) show(a api.Agent, p api.AgentPrompt) {
 	}
 	if len(p.Questions) > 1 && !p.Review {
 		position := min(len(p.Answered)+1, len(p.Questions))
-		head += fmt.Sprintf(" · question %d of %d", position, len(p.Questions))
-		if position <= len(p.Questions) {
-			head += ": " + p.Questions[position-1]
+		if p.Title != nil {
+			if i := slices.Index(p.Questions, *p.Title); i >= 0 {
+				position = i + 1
+			}
 		}
+		head += fmt.Sprintf(" · question %d of %d", position, len(p.Questions))
 	}
 	fmt.Fprintf(d.out, "\n%s\n%s\n", head, p.Question)
 	if p.Detail != nil && *p.Detail != "" {
