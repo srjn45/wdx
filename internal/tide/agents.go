@@ -95,6 +95,7 @@ type agentList struct {
 	plansView   plansView            // the plans the section shows, as its selector chose
 	planFolders map[string]bool      // the folders of the Plans section folded, by path
 	planViews   map[string]*planView // what the plans' tabs hold, by tab
+	prompts     promptsView          // what the prompts' tab shows
 	lastActive  string               // the tab current when last looked, to tell one coming to show
 	// editorsSeen is set once the project came and its editors got their tabs.
 	editorsSeen bool
@@ -351,7 +352,7 @@ func (m *Model) agentsChanged() {
 	if m.node != "" {
 		m.closeRemovedAgentTabs()
 	}
-	if l.created == settingsTab || l.created == statsTab || isTextTab(l.created) {
+	if isProjectTab(l.created) || isTextTab(l.created) {
 		l.openTab(l.created)
 		l.created, l.createdKeepsCursor = "", false
 	}
@@ -384,7 +385,7 @@ func (m *Model) closeRemovedAgentTabs() {
 		return
 	}
 	for _, tab := range slices.Clone(l.tabs) {
-		if isTextTab(tab) || isPlanTab(tab) || tab == settingsTab || tab == statsTab {
+		if isTextTab(tab) || isPlanTab(tab) || isProjectTab(tab) {
 			continue
 		}
 		id := tabAgent(tab)
@@ -1561,6 +1562,9 @@ func (p agentPane) draw(buf uv.Screen, area uv.Rectangle, st style.Style) {
 		return
 	case m.statsShown():
 		m.drawStats(buf, area, st)
+		return
+	case m.promptsShown():
+		m.drawPrompts(buf, area, st)
 		return
 	case m.editShown():
 		e, _ := m.tabEditor(m.list().active)

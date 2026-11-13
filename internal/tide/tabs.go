@@ -69,24 +69,30 @@ func (m *Model) closeTab(tab, reason string) {
 	}
 }
 
+// isProjectTab reports whether tab is one of the project's own, of no agent.
+func isProjectTab(tab string) bool {
+	return tab == settingsTab || tab == statsTab || tab == promptsTab
+}
+
 // agentTab is an open tab with the agent it is of, if any.
 type agentTab struct {
 	tab     string
 	agent   api.Agent
-	diff    string // what a diff's or file's tab is called now
+	diff    string // what a diff's or file's tab is called now, and the prompts' tab
+	prompts bool   // the prompts' tab, with prompts waiting
 	missing bool   // what it shows was removed outside wdx
 }
 
 // marked reports whether it shows a mark: an agent its state, and a tab whose file
 // or worktree is gone that it is. A plan has no state.
 func (t agentTab) marked() bool {
-	return t.missing || t.tab != settingsTab && t.tab != statsTab && !isTextTab(t.tab) && !isPlanTab(t.tab)
+	return t.missing || t.prompts || !isProjectTab(t.tab) && !isTextTab(t.tab) && !isPlanTab(t.tab)
 }
 
 // title is what the strip calls it.
 func (t agentTab) title() string {
 	switch {
-	case isTextTab(t.tab), isPlanTab(t.tab):
+	case isTextTab(t.tab), isPlanTab(t.tab), t.tab == promptsTab:
 		return t.diff
 	case t.tab == settingsTab, t.tab == statsTab:
 		return t.tab
@@ -116,7 +122,9 @@ func (m *Model) openTabs() []agentTab {
 			tabs = append(tabs, agentTab{tab: tab, diff: m.diffTitle(tab), missing: l.missingTabs[tab]})
 		} else if isPlanTab(tab) {
 			tabs = append(tabs, agentTab{tab: tab, diff: m.planTitle(tab)})
-		} else if tab == settingsTab || tab == statsTab {
+		} else if tab == promptsTab {
+			tabs = append(tabs, agentTab{tab: tab, diff: m.promptsTitle(), prompts: len(m.promptAgents()) > 0})
+		} else if isProjectTab(tab) {
 			tabs = append(tabs, agentTab{tab: tab})
 		} else if i := agentIndex(agents, tabAgent(tab)); i >= 0 {
 			tabs = append(tabs, agentTab{tab: tab, agent: agents[i]})
@@ -262,6 +270,9 @@ func (m *Model) agentTabLabels(tabs []agentTab, x, end, y int) []label {
 		switch {
 		case t.missing:
 			put(label{tab: i}, m.st.Failure(missingMark), 1)
+			name = " " + name
+		case t.prompts:
+			put(label{tab: i}, m.st.Warning(promptsMark), 1)
 			name = " " + name
 		case t.marked():
 			put(label{tab: i}, agentMark(m.st, t.agent), 1)

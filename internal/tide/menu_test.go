@@ -69,15 +69,15 @@ func menuPlaces(t *testing.T) []struct {
 		want []string
 	}{
 		{"no project", noProject, []string{"global: p q"}},
-		{"an agent in the list", agents, []string{"a-parent (agent): o x c i r R -", "list: / f z", "global: p s S q"}},
-		{"a worktree's file", worktreeFile, []string{"a (file): o v", "list: / f z", "global: p s S q"}},
-		{"a file in Code", codeFile, []string{"dir/a.go (file): o e n N r x", "list: / f z", "global: p s S q"}},
-		{"a directory in Code", codeDir, []string{"dir (directory): n N r x", "list: / f z", "global: p s S q"}},
-		{"Code's worktree selector", codeSelector, []string{"main (worktree): n N", "list: / f z", "global: p s S q"}},
-		{"an agent's tab", agentTab, []string{"tab-0 (agent): x c i r R -", "global: p s S q"}},
-		{"the settings tab", settings, []string{"settings: -", "global: p S q"}},
-		{"the stats tab", stats, []string{"stats: -", "global: p s q"}},
-		{"a terminal's tab", terminalTab, []string{"shell (terminal): x", "global: a t p s S q"}},
+		{"an agent in the list", agents, []string{"a-parent (agent): o x c i r R -", "list: / f z", "global: p s S P q"}},
+		{"a worktree's file", worktreeFile, []string{"a (file): o v", "list: / f z", "global: p s S P q"}},
+		{"a file in Code", codeFile, []string{"dir/a.go (file): o e n N r x", "list: / f z", "global: p s S P q"}},
+		{"a directory in Code", codeDir, []string{"dir (directory): n N r x", "list: / f z", "global: p s S P q"}},
+		{"Code's worktree selector", codeSelector, []string{"main (worktree): n N", "list: / f z", "global: p s S P q"}},
+		{"an agent's tab", agentTab, []string{"tab-0 (agent): x c i r R -", "global: p s S P q"}},
+		{"the settings tab", settings, []string{"settings: -", "global: p S P q"}},
+		{"the stats tab", stats, []string{"stats: -", "global: p s P q"}},
+		{"a terminal's tab", terminalTab, []string{"shell (terminal): x", "global: a t p s S P q"}},
 		{"the Project submenu", projectMenu, []string{"Project: o s c x"}},
 	}
 }

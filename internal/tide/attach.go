@@ -334,6 +334,9 @@ func (m *Model) paneInput(p pane, msg tea.Msg) tea.Cmd {
 			return m.planTabKey(v, msg)
 		}
 	}
+	if p == agent && m.promptsShown() {
+		return m.promptsKey(msg)
+	}
 	if rows, ok := m.valueRows(); p == agent && ok {
 		return m.values.update(rows, msg)
 	}

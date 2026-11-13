@@ -145,6 +145,7 @@ func (m *Model) projectEvent(msg projectEvent) tea.Cmd {
 		m.tabsFromStream(msg.event.Tabs, msg.event.TabsRevision)
 	}
 	m.agentsChanged()
+	m.promptsChanged()
 	m.editorsChanged()
 	m.worktreesChanged()
 	m.docsChanged()

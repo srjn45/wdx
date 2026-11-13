@@ -528,7 +528,7 @@ func TestPopupTakesTheMouse(t *testing.T) {
 // TestPopupFrame: both frames and the margin, equidistant, over the panes.
 func TestPopupFrame(t *testing.T) {
 	t.Parallel()
-	m, _ := newModel(60, 25)
+	m, _ := newModel(60, 26)
 	m.Update(key('q', tea.ModCtrl))
 	want := []string{
 		"                                 ",
@@ -546,6 +546,7 @@ func TestPopupFrame(t *testing.T) {
 		"  ┃  ┃ p  project…         ┃  ┃  ",
 		"  ┃  ┃ s  settings         ┃  ┃  ",
 		"  ┃  ┃ S  stats            ┃  ┃  ",
+		"  ┃  ┃ P  prompts          ┃  ┃  ",
 		"  ┃  ┃ q  quit             ┃  ┃  ",
 		"  ┃  ┣━━━━━━━━━━━━━━━━━━━━━┫  ┃  ",
 		"  ┃  ┃ Esc close           ┃  ┃  ",
@@ -555,7 +556,7 @@ func TestPopupFrame(t *testing.T) {
 		"                                 ",
 	}
 	got := strings.Split(ansi.Strip(m.render()), "\n")
-	const x, y = 13, 1 // the middle of the 60 × 24 above the status line
+	const x, y = 13, 1 // the middle of the 60 × 25 above the status line
 	for i, w := range want {
 		if row := string([]rune(got[y+i])[x : x+utf8.RuneCountInString(w)]); row != w {
 			t.Fatalf("row %d: got %q, want %q:\n%s", i, row, w, text(m))
@@ -570,9 +571,9 @@ func TestPopupFrameSmallWindow(t *testing.T) {
 		width, height int
 		outer, margin bool
 	}{
-		{80, 23, true, true},
-		{80, 21, true, false},
-		{80, 20, false, false},
+		{80, 24, true, true},
+		{80, 22, true, false},
+		{80, 21, false, false},
 		{20, 25, false, false},
 	} {
 		m, _ := newModel(tc.width, tc.height)

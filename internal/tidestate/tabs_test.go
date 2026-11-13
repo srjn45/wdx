@@ -97,6 +97,7 @@ func TestReplace(t *testing.T) {
 		{Kind: KindInfo, AgentID: a},
 		{Kind: KindSettings},
 		{Kind: KindStats},
+		{Kind: KindPrompts},
 		fileTab("main", "go.mod"),
 		{Kind: KindDiff, Worktree: "feat", Path: "a/b.go"},
 		{Kind: KindPR, Worktree: "feat"},

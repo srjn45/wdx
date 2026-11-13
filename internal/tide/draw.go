@@ -503,6 +503,9 @@ func (m *Model) statusLine() string {
 	if h, ok := m.root.(hinter); ok && l.focus == project && m.projects.loaded {
 		right = m.st.BarMuted(h.hint())
 	}
+	if l.focus == agent && m.promptsShown() {
+		right = m.st.BarMuted(m.promptsHint())
+	}
 	if s, ok := m.paneStatus(); ok {
 		state = style.StatusScrolled
 		if m.attachedIn(l.focus).pane.FetchErr() != nil {

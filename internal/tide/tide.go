@@ -48,6 +48,9 @@ type Model struct {
 	client *client.Client
 	now    func() time.Time
 	tick   func(d time.Duration, fn func(time.Time) tea.Msg) tea.Cmd // tea.Tick, which tests replace
+	// answerPrompt sends an answer to an agent's prompt; nil sends it through the
+	// client, and tests replace it.
+	answerPrompt func(ctx context.Context, agentID string, answers api.PromptAnswers) error
 
 	workDir, userHome, projectsDir, home string // from Options
 	// node is the node TIDE shows through a session, "" for this one; remote
@@ -395,6 +398,9 @@ func (m *Model) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.settingSaved(msg)
 	case usageListed:
 		return m, m.usageListed(msg)
+	case promptAnswered:
+		m.promptWasAnswered(msg)
+		return m, nil
 	case statsMinute:
 		return m, m.statsMinuteMsg()
 	case planLoaded:
