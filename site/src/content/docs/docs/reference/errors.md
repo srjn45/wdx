@@ -64,6 +64,12 @@ A daemon already serves this home.
 
 Exit 1 · HTTP 409 · returned by [`wdx daemon start`](/wdx/docs/reference/cli/daemon/#wdx-daemon-start)
 
+## answer_failed
+
+The agent's holder could not answer the prompt, or did not see the answer taken.
+
+Exit 3 · HTTP 500
+
 ## attach_unsupported
 
 The terminal was started by a wdx too old to attach to.
@@ -447,6 +453,12 @@ Exit 1 · HTTP 409 · returned by [`wdx project close`](/wdx/docs/reference/cli/
 The repository is a worktree of one project but has the origin of another.
 
 Exit 1 · HTTP 409 · returned by [`wdx project open`](/wdx/docs/reference/cli/project/#wdx-project-open)
+
+## prompt_changed
+
+The agent's prompt is not the one answered, or changed while it was answered.
+
+Exit 1 · HTTP 409
 
 ## push_failed
 

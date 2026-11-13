@@ -10,6 +10,7 @@ import (
 	"github.com/srjn45/wdx/internal/aca"
 	"github.com/srjn45/wdx/internal/agent"
 	"github.com/srjn45/wdx/internal/api"
+	"github.com/srjn45/wdx/internal/holder"
 	"github.com/srjn45/wdx/internal/logging"
 	"github.com/srjn45/wdx/internal/project"
 	"github.com/srjn45/wdx/internal/screen"
@@ -238,6 +239,44 @@ func (s *server) SendAgent(ctx context.Context, req api.SendAgentRequestObject) 
 	return api.SendAgent200JSONResponse{Result: api.ResultQueued, Agent: agentView(a)}, nil
 }
 
+func (s *server) AnswerAgentPrompt(ctx context.Context, req api.AnswerAgentPromptRequestObject) (api.AnswerAgentPromptResponseObject, error) {
+	answers, err := promptAnswers(req.Body)
+	if err != nil {
+		return nil, &requestError{err: err}
+	}
+	a, err := s.findAgent(ctx, req.Agent, req.Params.Project, req.Params.Dir)
+	if err != nil {
+		return nil, err
+	}
+	if a, err = s.agents.Answer(ctx, a.ID, answers); err != nil {
+		return nil, err
+	}
+	return api.AnswerAgentPrompt200JSONResponse{Result: api.ResultAnswered, Agent: agentView(a)}, nil
+}
+
+// promptAnswers are the answers a request gives: one question's in the body, or
+// answers, never both.
+func promptAnswers(body *api.PromptAnswers) ([]holder.Answer, error) {
+	one := body.Question != nil || body.Options != nil || body.Choose != nil || body.Tick != nil || body.Text != nil
+	switch {
+	case body.Answers != nil && one:
+		return nil, errors.New("give question and options with their answer, or answers, not both")
+	case body.Answers != nil:
+		answers := make([]holder.Answer, len(*body.Answers))
+		for i, a := range *body.Answers {
+			answers[i] = holderAnswer(a)
+		}
+		return answers, nil
+	case body.Question == nil || body.Options == nil:
+		return nil, errors.New("give question and options with their answer, or answers")
+	}
+	return []holder.Answer{holderAnswer(api.PromptAnswer{Question: *body.Question, Options: *body.Options, Choose: body.Choose, Tick: body.Tick, Text: body.Text})}, nil
+}
+
+func holderAnswer(a api.PromptAnswer) holder.Answer {
+	return holder.Answer{Question: a.Question, Options: a.Options, Choose: a.Choose, Tick: deref(a.Tick), Text: deref(a.Text)}
+}
+
 func (s *server) DeleteAgent(ctx context.Context, req api.DeleteAgentRequestObject) (api.DeleteAgentResponseObject, error) {
 	a, err := s.findAgent(ctx, req.Agent, req.Params.Project, req.Params.Dir)
 	if err != nil {
@@ -457,13 +496,24 @@ func agentView(a agent.Agent) api.Agent {
 }
 
 // promptView is p as the API serves it; nil for none.
+// orEmpty is s, or an empty slice for nil, which JSON shows as [].
+func orEmpty[T any](s []T) []T {
+	if s == nil {
+		return []T{}
+	}
+	return s
+}
+
 func promptView(p *screen.Prompt) *api.AgentPrompt {
 	if p == nil {
 		return nil
 	}
-	v := &api.AgentPrompt{Kind: api.AgentPromptKind(p.Kind), Question: p.Question, Options: p.Options, Multi: p.Multi, Ticked: []int{}}
-	if p.Ticked != nil {
-		v.Ticked = p.Ticked
+	v := &api.AgentPrompt{
+		Kind: api.AgentPromptKind(p.Kind), Question: p.Question, Options: p.Options, Multi: p.Multi, Review: p.Review,
+		Ticked: orEmpty(p.Ticked), Kinds: []api.AgentPromptKinds{}, Questions: orEmpty(p.Questions), Answered: orEmpty(p.Answered),
+	}
+	for _, kind := range p.Kinds {
+		v.Kinds = append(v.Kinds, api.AgentPromptKinds(kind))
 	}
 	if p.Title != "" {
 		v.Title = &p.Title

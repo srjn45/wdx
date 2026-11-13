@@ -231,6 +231,15 @@ func classify(err error) (api.ErrorCode, map[string]any) {
 	if e, ok := errors.AsType[*agent.NotRunningError](err); ok {
 		return api.ErrorCodeAgentNotRunning, map[string]any{"agent": agentView(e.Agent)}
 	}
+	if e, ok := errors.AsType[*agent.PromptChangedError](err); ok {
+		return api.ErrorCodePromptChanged, map[string]any{"agent": agentView(e.Agent), "question": e.Question, "entered": e.Entered}
+	}
+	if e, ok := errors.AsType[*agent.InvalidAnswerError](err); ok {
+		return api.ErrorCodeInvalidArgument, map[string]any{"agent": agentView(e.Agent), "argument": "answer", "reason": e.Reason}
+	}
+	if e, ok := errors.AsType[*agent.AnswerError](err); ok {
+		return api.ErrorCodeAnswerFailed, map[string]any{"agent": agentView(e.Agent), "result": orNull(string(e.Result)), "entered": e.Entered}
+	}
 	if e, ok := errors.AsType[*agent.SendError](err); ok {
 		return api.ErrorCodeSendFailed, map[string]any{"agent": agentView(e.Agent)}
 	}

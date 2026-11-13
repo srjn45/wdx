@@ -111,7 +111,7 @@ func planTaskLogged(task map[string]any) map[string]any {
 // AgentResponseLogged is a response holding agents as logged, by the daemon and
 // the cli: a prompt's question, detail and options are the agent's text, which
 // can hold secrets, so of a prompt only its kind and how many options it has are
-// kept. b is the response's JSON.
+// kept, in its details too when it is a problem. b is the response's JSON.
 func AgentResponseLogged(b []byte) any {
 	var v map[string]any
 	if json.Unmarshal(b, &v) != nil {
@@ -120,6 +120,9 @@ func AgentResponseLogged(b []byte) any {
 	agentsLogged(v)
 	if project, ok := v["project"].(map[string]any); ok {
 		agentsLogged(project)
+	}
+	if details, ok := v["details"].(map[string]any); ok {
+		agentsLogged(details)
 	}
 	return v
 }

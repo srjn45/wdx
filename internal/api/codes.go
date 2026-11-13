@@ -113,6 +113,8 @@ var Codes = map[ErrorCode]clikit.CodeInfo{
 	ErrorCodeRouteNotAllowed:          codeInfo(http.StatusForbidden, clikit.ExitRejected, "the node does not serve this through a session, or does not have it"),
 	ErrorCodeSessionRequired:          codeInfo(http.StatusConflict, clikit.ExitRejected, "no session into the node is open: open one with its code"),
 	ErrorCodeRemoteNotForAgents:       codeInfo(http.StatusForbidden, clikit.ExitRejected, "an agent cannot run commands on another node"),
+	ErrorCodePromptChanged:            codeInfo(http.StatusConflict, clikit.ExitRejected, "the agent's prompt is not the one answered, or changed while it was answered"),
+	ErrorCodeAnswerFailed:             codeInfo(http.StatusInternalServerError, clikit.ExitSystem, "the agent's holder could not answer the prompt, or did not see the answer taken"),
 	ErrorCodeHolderVersionUnsupported: codeInfo(http.StatusConflict, clikit.ExitRejected, "the terminal's holder and a client on another node speak no version in common: the terminal was started by a wdx too old for relayed clients, or the client's is too old for the holder"),
 }
 

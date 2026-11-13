@@ -134,13 +134,15 @@ func (s *Store) SetStatus(ctx context.Context, terminalID, activity string, draf
 	if activity != string(screen.ActivityWaiting) {
 		prompt = nil
 	}
-	var promptJSON sql.NullString
+	// The prompt's text is the agent's, and a label can hold what a person typed:
+	// the SQL's log has its length alone.
+	var promptJSON any // NULL
 	if prompt != nil {
 		b, err := json.Marshal(prompt)
 		if err != nil {
 			return false, err
 		}
-		promptJSON = sql.NullString{String: string(b), Valid: true}
+		promptJSON = sqlite.Secret[string]{V: string(b)}
 	}
 	rows, err := sqlite.Exec(ctx, s.db, "UPDATE agents SET activity = ?1, draft = ?2, queued = ?3, model = COALESCE(NULLIF(?4, ''), model), prompt = ?6 WHERE terminal_id = ?5 AND (activity IS NOT ?1 OR draft IS NOT ?2 OR queued IS NOT ?3 OR (?4 != '' AND model IS NOT ?4) OR prompt IS NOT ?6)", activity, draft, queued, model, terminalID, promptJSON)
 	if err != nil {

@@ -275,6 +275,8 @@ func (d *Daemon) logRequests(router routers.Router, next http.Handler) http.Hand
 				response = api.PlanTaskResponseLogged(rec.body.Bytes())
 			case worktreeResponses[operation] && rec.status < http.StatusBadRequest:
 				response = api.WorktreeResponseLogged(rec.body.Bytes())
+			case operation == "answerAgentPrompt":
+				response = api.AgentResponseLogged(rec.body.Bytes()) // its problems carry the agent too
 			case agentResponses[operation] && rec.status < http.StatusBadRequest:
 				response = api.AgentResponseLogged(rec.body.Bytes())
 			case rec.stream && rec.status == http.StatusOK:
@@ -317,6 +319,8 @@ func requestLogged(operation string, b []byte) any {
 		return withTextMeasured(b, "summary") // an agent's output
 	case "sendHubLoginCode":
 		return api.HubLoginCodeLogged(b)
+	case "answerAgentPrompt":
+		return answersLogged(b)
 	case "startHubCode", "verifyHubCode", "recoverHubCode", "openHubSession":
 		return api.HubCodeRequestLogged(b)
 	}
@@ -332,6 +336,25 @@ func requestLogged(operation string, b []byte) any {
 		logged["instant"] = *r.Instant
 	}
 	return logged
+}
+
+// answersLogged is an answer to a prompt as logged: its question, labels and
+// text are the agent's and the person's, so only the option chosen, how many
+// boxes and how long the text are.
+func answersLogged(b []byte) any {
+	var r api.PromptAnswers
+	if json.Unmarshal(b, &r) != nil {
+		return map[string]any{"body_bytes": len(b)}
+	}
+	answers := []api.PromptAnswer{{Choose: r.Choose, Tick: r.Tick, Text: r.Text, Options: deref(r.Options)}}
+	if r.Answers != nil {
+		answers = *r.Answers
+	}
+	logged := make([]map[string]any, len(answers))
+	for i, a := range answers {
+		logged[i] = map[string]any{"options": len(a.Options), "choose": a.Choose, "ticked": len(deref(a.Tick)), "text_bytes": len(deref(a.Text))}
+	}
+	return map[string]any{"answers": logged}
 }
 
 // withTextMeasured is the JSON object b as logged with the text under key replaced by its

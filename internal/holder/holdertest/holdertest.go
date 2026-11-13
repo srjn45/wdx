@@ -72,8 +72,17 @@ func RunIfHolder() {
 
 // sendTimes keep the waits of typing a message short: a test's program draws no
 // draft for most, which would hold each message up to the ceiling. The settle is
-// left as wdx's, so a program slow to clear a draft gets no second Enter.
-var sendTimes = holder.SendTimes{PasteFloor: 10 * time.Millisecond, PasteCeiling: 100 * time.Millisecond}
+// left as wdx's, so a program slow to clear a draft gets no second Enter. The
+// waits of answering a prompt are long, as a loaded machine slows a test's
+// program, unless the run keeps wdx's own.
+var sendTimes = holder.SendTimes{PasteFloor: 10 * time.Millisecond, PasteCeiling: 100 * time.Millisecond, AnswerKey: answerWait(), AnswerClose: answerWait()}
+
+func answerWait() time.Duration {
+	if runtest.ProductionLimits() {
+		return 0
+	}
+	return time.Minute
+}
 
 // Limits are limits a loaded machine does not reach: a test fails on what it
 // checks, or at its deadline, not because a process was held back.

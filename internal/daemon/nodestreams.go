@@ -437,6 +437,7 @@ var remoteOperations = map[string]remoteRule{
 	"startAgent":         allowed,
 	"restartAgent":       allowed,
 	"sendAgent":          allowed,
+	"answerAgentPrompt":  allowed,
 	"getAgentHistory":    allowed,
 	"getAgentTranscript": allowed,
 	"listAcas":           allowed,

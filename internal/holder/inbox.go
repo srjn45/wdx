@@ -237,6 +237,9 @@ func (h *holder) inboxReader() {
 			if next != actionHold && h.readsLines() {
 				next, reason = actionHold, notReadingKeys
 			}
+			if next != actionHold && h.answering.Load() {
+				next, reason = actionHold, "answering"
+			}
 		}
 		if held == notReadingKeys && reason != notReadingKeys {
 			h.log.Info("message no longer held", "reason", held)

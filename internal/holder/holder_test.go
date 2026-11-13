@@ -15,6 +15,7 @@ import (
 	"time"
 
 	"github.com/srjn45/wdx/internal/aca"
+	"github.com/srjn45/wdx/internal/holder/prompttest"
 	"github.com/srjn45/wdx/internal/identity"
 	"github.com/srjn45/wdx/internal/logging"
 	"github.com/srjn45/wdx/internal/logtest"
@@ -28,6 +29,7 @@ func TestMain(m *testing.M) {
 	if len(os.Args) > 1 && os.Args[1] == "holder" {
 		os.Exit(runHolder(os.Args[2:]))
 	}
+	prompttest.RunIfProgram()
 	os.Exit(runtest.Main(m))
 }
 

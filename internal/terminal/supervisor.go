@@ -606,6 +606,29 @@ func (s *Supervisor) send(ctx context.Context, kind Kind, id, prompt string, ins
 	return t, messageID, nil
 }
 
+// AnswerAgent has the holder of a running agent's terminal answer the prompt on
+// its screen with answers, one per question, and returns the terminal and what
+// came of it. An agent not running is a *NotRunningError, and a holder not
+// reached or too old to answer a *SendError.
+func (s *Supervisor) AnswerAgent(ctx context.Context, id string, answers []holder.Answer) (Terminal, holder.AnswerReport, error) {
+	t, err := s.store.ofKind(ctx, KindAgent, id)
+	if err != nil {
+		return Terminal{}, holder.AnswerReport{}, err
+	}
+	if t.State != StateRunning {
+		return Terminal{}, holder.AnswerReport{}, &NotRunningError{Terminal: t}
+	}
+	conn, ok := s.currentConn(id)
+	if !ok {
+		return Terminal{}, holder.AnswerReport{}, &SendError{Terminal: t, Err: errors.New("no connection to its holder")}
+	}
+	report, err := conn.Answer(ctx, answers)
+	if err != nil {
+		return Terminal{}, holder.AnswerReport{}, &SendError{Terminal: t, Err: err}
+	}
+	return t, report, nil
+}
+
 // currentConn returns the connection to the terminal's holder.
 func (s *Supervisor) currentConn(id string) (*holder.Conn, bool) {
 	s.mu.Lock()

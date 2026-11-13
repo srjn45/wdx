@@ -1450,6 +1450,59 @@ paths:
               schema: { $ref: "#/components/schemas/AgentResult" }
         default: { $ref: "#/components/responses/Problem" }
 
+  /v1/agents/{agent}/prompt/answer:
+    parameters:
+      - $ref: "#/components/parameters/AgentRef"
+      - $ref: "#/components/parameters/TerminalProject"
+      - $ref: "#/components/parameters/TerminalDir"
+    post:
+      operationId: answerAgentPrompt
+      summary: Answer the prompt a Claude Code agent shows
+      description: |
+        The agent's holder answers the prompt on its screen by keys, as a
+        person would, only while the screen still shows the prompt the request
+        gives, its question and options unchanged: it moves the cursor one key
+        at a time and sees each move, ticks the boxes that must change with
+        Space, types a text option's text as a paste and sees its label show
+        it, presses Enter once, passes Claude's review screen with Enter on
+        Submit answers, and sees the prompt close or its next question show.
+        It returns once it has, with the agent and result answered.
+
+        Give the question, its options and the answer, or answers, one such
+        object per question of a decision that asks several, in order: each is
+        answered once the screen shows its question. choose is the index of
+        the option Enter goes on; tick the indexes of a checkbox list's boxes
+        to be ticked, after which Enter goes on its Submit row; text what a
+        decision's text option takes, one line.
+
+        Any change the holder did not make, as a person's key or a prompt that
+        closed or is not the one given, stops it with prompt_changed, the
+        agent under details.agent; the questions answered before it stay
+        answered on Claude's screen. An answer the prompt cannot take is
+        invalid_argument. answer_failed is a holder too old to answer, one that
+        lost the shell, or a key whose effect did not show in its time, with
+        details.entered true when Enter was pressed, so the prompt may have
+        taken the answer all the same.
+
+        Only Claude Code's prompts are answered; another AI coding agent's
+        agent is aca_unsupported.
+
+        Errors: aca_unsupported, agent_not_running, agent_removed,
+        answer_failed, invalid_argument, invalid_path, not_found,
+        prompt_changed.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/PromptAnswers" }
+      responses:
+        "200":
+          description: The agent, with result answered.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/AgentResult" }
+        default: { $ref: "#/components/responses/Problem" }
+
   /v1/agents/{agent}/history:
     parameters:
       - $ref: "#/components/parameters/AgentRef"
@@ -2914,7 +2967,7 @@ components:
     Result:
       type: string
       description: The most significant thing that happened.
-      enum: [created, registered, cloned, opened, closed, removed, started, detached, exited, reloaded, queued, renamed, updated, unchanged, landed, restarted, pr_opened, synced, landing, paused, resumed, cancelled, retried, skipped, archived, unarchived, rebased, up_to_date, logged_in, logged_out, changed, set_up, recovered]
+      enum: [created, registered, cloned, opened, closed, removed, started, detached, exited, reloaded, queued, renamed, updated, unchanged, landed, restarted, pr_opened, synced, landing, paused, resumed, cancelled, retried, skipped, archived, unarchived, rebased, up_to_date, logged_in, logged_out, changed, set_up, recovered, answered]
 
     Worktree:
       type: object
@@ -3851,7 +3904,7 @@ components:
 
     AgentPrompt:
       type: object
-      required: [kind, title, question, detail, options, selected, multi, ticked]
+      required: [kind, title, question, detail, options, selected, multi, ticked, kinds, questions, answered, review]
       properties:
         kind:
           type: string
@@ -3870,6 +3923,23 @@ components:
           type: array
           items: { type: integer }
           description: The index of each option whose box is ticked, in order; empty for a multi-select with none and for every other prompt.
+        kinds:
+          type: array
+          items:
+            type: string
+            enum: [choice, text, chat, submit]
+          description: "What each option is, one per option: choice, a yes/no answer or one of the model's own options; text, which takes words typed before Enter; chat, which declines the decision to talk it over; submit, a checkbox list's Submit row. Empty from a host too old to tell."
+        questions:
+          type: array
+          items: { type: string }
+          description: The name of each question of a decision that asks several at once, in order as its tabs show them; empty for one question and every other prompt.
+        answered:
+          type: array
+          items: { type: integer }
+          description: The index in questions of each question already answered, in order.
+        review:
+          type: boolean
+          description: A decision's review screen, shown after its questions to send the answers or cancel them.
     AgentContext:
       type: object
       required: [tokens, window]
@@ -3910,6 +3980,47 @@ components:
         instant:
           type: boolean
           description: Go first, and interrupt the agent's turn if it is in one.
+
+    PromptAnswer:
+      type: object
+      required: [question, options]
+      additionalProperties: false
+      description: One question's answer, given against the question and options as the person saw them.
+      properties:
+        question: { type: string, description: "The prompt's question, as the agent's prompt gives it." }
+        options:
+          type: array
+          items: { type: string }
+          description: Its options, as the agent's prompt gives them.
+        choose: { type: integer, minimum: 0, description: "The index of the option Enter goes on: a yes/no answer, a radio option, a text option, chat, or a checkbox list's Submit row." }
+        tick:
+          type: array
+          items: { type: integer, minimum: 0 }
+          description: A checkbox list's answer, the indexes of the boxes to be ticked; Enter then goes on its Submit row.
+        text:
+          type: string
+          maxLength: 4096
+          description: What a decision's text option takes, one line; in a checkbox list it is ticked too.
+
+    PromptAnswers:
+      type: object
+      additionalProperties: false
+      description: The answer to one question as PromptAnswer's fields, or answers, one per question of a decision that asks several, in order.
+      properties:
+        question: { type: string }
+        options:
+          type: array
+          items: { type: string }
+        choose: { type: integer, minimum: 0 }
+        tick:
+          type: array
+          items: { type: integer, minimum: 0 }
+        text: { type: string, maxLength: 4096 }
+        answers:
+          type: array
+          minItems: 1
+          maxItems: 32
+          items: { $ref: "#/components/schemas/PromptAnswer" }
 
     AgentResult:
       type: object
@@ -4809,6 +4920,8 @@ components:
         - session_required
         - remote_not_for_agents
         - holder_version_unsupported
+        - prompt_changed
+        - answer_failed
 
     Problem:
       type: object

@@ -22,6 +22,7 @@ import (
 	"github.com/srjn45/wdx/internal/db/dbtest"
 	"github.com/srjn45/wdx/internal/gittest"
 	"github.com/srjn45/wdx/internal/holder/holdertest"
+	"github.com/srjn45/wdx/internal/holder/prompttest"
 	"github.com/srjn45/wdx/internal/identity"
 	"github.com/srjn45/wdx/internal/limitstest"
 	"github.com/srjn45/wdx/internal/logging"
@@ -34,6 +35,7 @@ import (
 
 func TestMain(m *testing.M) {
 	holdertest.RunIfHolder()
+	prompttest.RunIfProgram()
 	os.Exit(runtest.Main(m))
 }
 

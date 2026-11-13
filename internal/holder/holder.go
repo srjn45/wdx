@@ -176,6 +176,8 @@ type holder struct {
 	sendNow    func(w io.Writer) error
 	sendTimes  SendTimes
 	readerDone chan struct{} // closed once the inboxReader returns
+	// answering is set while a prompt is answered, which holds the inbox.
+	answering atomic.Bool
 }
 
 // answerQueue bounds the vt's answers waiting for a program to read its
@@ -791,6 +793,13 @@ func (h *holder) handle(ctx context.Context, c *net.UnixConn) {
 				continue
 			}
 			h.queue(message{text: req.Prompt, instant: req.Instant, id: req.ID})
+		case frameAnswer:
+			var req answerRequest
+			if err := json.Unmarshal(body, &req); err != nil {
+				h.log.Warn("bad answer request", "err", err)
+				continue
+			}
+			go h.answerPrompt(req)
 		case frameRelease:
 			select {
 			case <-h.ended:
@@ -807,7 +816,7 @@ func (h *holder) handle(ctx context.Context, c *net.UnixConn) {
 
 // hello is what the holder says to whoever connects; h.mu is held.
 func (h *holder) hello() Hello {
-	return Hello{Version: Version, OldestClient: oldestClientVersion, TerminalID: h.id, PID: h.cmd.Process.Pid, HolderPID: os.Getpid(), Exited: h.exit, HistoryLines: h.nextLine.Load(), Status: h.status(), Confirms: true, Delivered: h.inbox.typedIDs()}
+	return Hello{Version: Version, OldestClient: oldestClientVersion, TerminalID: h.id, PID: h.cmd.Process.Pid, HolderPID: os.Getpid(), Exited: h.exit, HistoryLines: h.nextLine.Load(), Status: h.status(), Confirms: true, Delivered: h.inbox.typedIDs(), Answers: true}
 }
 
 // stop hangs up on the shell and the program in the foreground, and kills

@@ -104,6 +104,51 @@ func (e *SendError) Error() string {
 
 func (e *SendError) Unwrap() error { return e.Err }
 
+// PromptChangedError is an answer to a prompt the agent's screen did not show,
+// or that changed while its holder answered it, with no key of the holder's.
+// Question is the index of the answer it stopped at; Entered says Enter was
+// pressed for an answer before it.
+type PromptChangedError struct {
+	Agent    Agent
+	Question int
+	Entered  bool
+}
+
+func (e *PromptChangedError) Error() string {
+	return fmt.Sprintf("the prompt of agent %s is not the one answered, or changed while it was answered", e.Agent.Terminal.Name)
+}
+
+// InvalidAnswerError is an answer the agent's prompt cannot take; Reason says
+// why, in no words of the prompt's.
+type InvalidAnswerError struct {
+	Agent  Agent
+	Reason string
+}
+
+func (e *InvalidAnswerError) Error() string {
+	return fmt.Sprintf("the prompt of agent %s cannot take the answer: %s", e.Agent.Terminal.Name, e.Reason)
+}
+
+// AnswerError is an answer the agent's holder could not give, or did not see
+// taken: Result and Reason say which, and Entered whether Enter was pressed,
+// so that the prompt may have taken it.
+type AnswerError struct {
+	Agent   Agent
+	Result  holder.AnswerResult
+	Reason  string
+	Entered bool
+	Err     error
+}
+
+func (e *AnswerError) Error() string {
+	if e.Err != nil {
+		return fmt.Sprintf("the prompt of agent %s was not answered: %v", e.Agent.Terminal.Name, e.Err)
+	}
+	return fmt.Sprintf("the prompt of agent %s was not answered: %s, %s", e.Agent.Terminal.Name, e.Result, e.Reason)
+}
+
+func (e *AnswerError) Unwrap() error { return e.Err }
+
 // Launches returns what the terminals' supervisor asks at each launch of an
 // agent's row: the agent's id, and the id and command of its AI coding agent,
 // among those of b, for the session it was last in, which the backup knows. The
@@ -646,6 +691,47 @@ func (m *Manager) Send(ctx context.Context, id, prompt string, instant bool) (Ag
 		return Agent{}, "", m.agentError(ctx, err)
 	}
 	return a.OnRow(t), messageID, nil
+}
+
+// Answer has the holder of a running Claude Code agent answer the prompt on its
+// screen with answers, one per question, by keys, and returns the agent once it
+// saw the prompt close or its next question show. Another ACA's prompts are not
+// read, so its agent fails with aca.ErrNotSupported; a tombstone with a
+// *RemovedError, one not running with a *NotRunningError, and an answer not
+// taken with a *PromptChangedError, *InvalidAnswerError or *AnswerError.
+func (m *Manager) Answer(ctx context.Context, id string, answers []holder.Answer) (Agent, error) {
+	a, err := m.store.Get(ctx, id)
+	if err != nil {
+		return Agent{}, err
+	}
+	if a.Tombstone() {
+		return Agent{}, &RemovedError{Agent: a}
+	}
+	if a.ACA != (aca.ClaudeCode{}).ID() {
+		return Agent{}, fmt.Errorf("%w: only Claude Code's prompts are answered, and agent %s runs %s", aca.ErrNotSupported, a.Terminal.Name, a.ACA)
+	}
+	t, report, err := m.terminals.AnswerAgent(ctx, a.Terminal.ID, answers)
+	if err != nil {
+		if e, ok := errors.AsType[*terminal.SendError](err); ok {
+			a, gerr := m.withTerminal(ctx, e.Terminal)
+			if gerr != nil {
+				return Agent{}, gerr
+			}
+			return Agent{}, &AnswerError{Agent: a, Err: e.Err}
+		}
+		return Agent{}, m.agentError(ctx, err)
+	}
+	a = a.OnRow(t)
+	logging.FromContext(ctx).Info("agent prompt answer", "agent_id", id, "answers", len(answers), "result", report.Result, "question", report.Question, "entered", report.Entered)
+	switch report.Result {
+	case holder.Answered:
+		return a, nil
+	case holder.AnswerPromptChanged:
+		return Agent{}, &PromptChangedError{Agent: a, Question: report.Question, Entered: report.Entered}
+	case holder.AnswerInvalid:
+		return Agent{}, &InvalidAnswerError{Agent: a, Reason: report.Reason}
+	}
+	return Agent{}, &AnswerError{Agent: a, Result: report.Result, Reason: report.Reason, Entered: report.Entered}
 }
 
 // History reads count lines of the agent's history from line from on, or its

@@ -502,6 +502,17 @@ func (c *Client) SendAgent(ctx context.Context, ref, project, dir, prompt string
 	return result(r.HTTPResponse, r.Body, r.ApplicationproblemJSONDefault, r.JSON200)
 }
 
+// AnswerAgentPrompt answers the prompt the agent ref names shows, as StartAgent
+// names it: answers gives the question, its options and the answer, or one such
+// per question of a decision that asks several.
+func (c *Client) AnswerAgentPrompt(ctx context.Context, ref, project, dir string, answers api.PromptAnswers) (api.AgentResult, error) {
+	r, err := c.api.AnswerAgentPromptWithResponse(ctx, ref, &api.AnswerAgentPromptParams{Project: nonEmpty(project), Dir: nonEmpty(dir)}, answers)
+	if err != nil {
+		return api.AgentResult{}, err
+	}
+	return result(r.HTTPResponse, r.Body, r.ApplicationproblemJSONDefault, r.JSON200)
+}
+
 // DeleteAgent removes the agent ref names, as StartAgent does; a live one is
 // refused unless stopRunning.
 func (c *Client) DeleteAgent(ctx context.Context, ref, project, dir string, stopRunning bool) (api.AgentResult, error) {

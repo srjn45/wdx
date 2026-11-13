@@ -21,12 +21,20 @@ const (
 	submitSettle = time.Second
 	// submitRetries is how many times the submit key is pressed again.
 	submitRetries = 2
+	// answerKey is how long a key pressed to answer a prompt, a paste included,
+	// is given to show on the screen.
+	answerKey = time.Second
+	// answerClose is how long a prompt is given, after Enter, to close or to
+	// show its next question or its review, as the submit's settle for a draft.
+	answerClose = 2 * time.Second
 )
 
 // SendTimes are those waits, when not the defaults: a test shortens them.
 type SendTimes struct {
 	PasteFloor, PasteCeiling, SubmitSettle time.Duration
 	SubmitRetries                          int
+	// AnswerKey and AnswerClose are the waits of answering a prompt.
+	AnswerKey, AnswerClose time.Duration
 }
 
 func (t SendTimes) orDefaults() SendTimes {
@@ -35,6 +43,8 @@ func (t SendTimes) orDefaults() SendTimes {
 		PasteCeiling:  cmp.Or(t.PasteCeiling, pasteCeiling),
 		SubmitSettle:  cmp.Or(t.SubmitSettle, submitSettle),
 		SubmitRetries: cmp.Or(t.SubmitRetries, submitRetries),
+		AnswerKey:     cmp.Or(t.AnswerKey, answerKey),
+		AnswerClose:   cmp.Or(t.AnswerClose, answerClose),
 	}
 }
 

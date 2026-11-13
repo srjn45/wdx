@@ -73,6 +73,11 @@ const (
 	// Takes no version of its own either: a holder too old for it leaves Confirms
 	// out of its hello, and a daemon before it skips the frame. docs/SEND.md.
 	frameDelivered frameType = 14 // holder to daemon: a deliveredReport, of messages it typed
+	// Take no version of their own either: a holder too old to answer leaves
+	// Answers out of its hello, so the daemon sends it no frameAnswer, and a
+	// daemon before them sends none. The wdx doc PROMPT_TAB.
+	frameAnswer   frameType = 15 // daemon to holder: an answerRequest
+	frameAnswered frameType = 16 // holder to daemon: the AnswerReport of the request of its id
 )
 
 // Roles a connecting side gives in its hello; a hello without one is a
@@ -113,6 +118,9 @@ type Hello struct {
 	// Delivered are the ids of the messages it typed last, including while no
 	// daemon was there to be told.
 	Delivered []string `json:"delivered,omitempty"`
+	// Answers says it answers its program's prompts (frameAnswer). One too old
+	// to says nothing.
+	Answers bool `json:"answers,omitempty"`
 }
 
 // Status is everything a holder tells the daemon about what its program is
@@ -184,6 +192,65 @@ type sendRequest struct {
 	// ID names the message for a report that it was typed, and makes sending it
 	// again harmless. A sender too old to give one gets no report.
 	ID string `json:"id,omitempty"`
+}
+
+// Answer is the answer to one question of a prompt, given against the prompt
+// as the person saw it: its Question and Options, which the holder checks the
+// screen still shows before each key. Choose is the index of the option Enter
+// is pressed on; Tick the indexes of the boxes a checkbox answer ticks, after
+// which Enter goes on its Submit row; Text what a text option takes, typed as
+// a paste. The wdx doc PROMPT_TAB.
+type Answer struct {
+	Question string   `json:"question"`
+	Options  []string `json:"options"`
+	Choose   *int     `json:"choose,omitempty"`
+	Tick     []int    `json:"tick,omitempty"`
+	Text     string   `json:"text,omitempty"`
+}
+
+// answerRequest asks a holder to answer the prompt on its screen: each of
+// Answers in turn, one per question of a decision that asks several.
+type answerRequest struct {
+	ID      string   `json:"id"`
+	Answers []Answer `json:"answers"`
+}
+
+// AnswerResult is what came of an answer. A daemon takes one it does not know,
+// from a newer holder, as a failure.
+type AnswerResult string
+
+const (
+	// Answered is the prompt closed, or its next question shown, after Enter.
+	Answered AnswerResult = "answered"
+	// AnswerPromptChanged is a prompt that was not the one sent, or changed
+	// with no key of the holder's, as a person's: the holder stopped.
+	AnswerPromptChanged AnswerResult = "prompt_changed"
+	// AnswerInvalid is an answer the prompt cannot take, as an option of the
+	// wrong kind; Reason says why.
+	AnswerInvalid AnswerResult = "invalid"
+	// AnswerNotConfirmed is a key, Enter included, whose effect did not show in
+	// its time; Entered says whether Enter was pressed.
+	AnswerNotConfirmed AnswerResult = "not_confirmed"
+	// AnswerBusy is another answer under way.
+	AnswerBusy AnswerResult = "busy"
+	// AnswerEnded is the shell's end.
+	AnswerEnded AnswerResult = "ended"
+	// AnswerUnread is a holder that reads no screen, and so cannot answer.
+	AnswerUnread AnswerResult = "unread"
+)
+
+// AnswerReport is what came of an answerRequest.
+type AnswerReport struct {
+	ID     string       `json:"id"`
+	Result AnswerResult `json:"result"`
+	// Reason says why an answer was not taken, in words of the holder's own:
+	// never a label, question or text of the prompt's.
+	Reason string `json:"reason,omitempty"`
+	// Question is the index in the request of the answer it stopped at.
+	Question int `json:"question"`
+	// Entered says Enter was pressed for an answer, so one that failed after
+	// may have been taken all the same.
+	Entered bool `json:"entered,omitempty"`
 }
 
 // deliveredReport says which messages a holder typed.

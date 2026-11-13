@@ -7,6 +7,7 @@ import (
 	"runtime"
 	"runtime/debug"
 	"slices"
+	"sync"
 	"sync/atomic"
 	"time"
 	"unicode/utf8"
@@ -61,7 +62,11 @@ type screenWatch struct {
 	published chan struct{}
 	// statusChanged is told after a change of what a Status says, for sendStatuses.
 	statusChanged chan struct{}
-	panicked      atomic.Bool // a panic in the parser is logged once
+	// next is closed and replaced after latest changes, for any number of
+	// waiters, as an answer is beside the inboxReader.
+	nextMu   sync.Mutex
+	next     chan struct{}
+	panicked atomic.Bool // a panic in the parser is logged once
 
 	quit  chan struct{} // closed to stop the goroutine
 	ended chan struct{} // closed when the goroutine has ended
@@ -71,7 +76,7 @@ func newScreenWatch(log *slog.Logger, parse ParseScreen, read func() (lines, und
 	w := &screenWatch{
 		log: log, parse: parse, read: read, times: times.orDefaults(),
 		changed: make(chan struct{}, 1), inputs: make(chan struct{}, 1), published: make(chan struct{}, 1), statusChanged: make(chan struct{}, 1),
-		quit: make(chan struct{}), ended: make(chan struct{}),
+		next: make(chan struct{}), quit: make(chan struct{}), ended: make(chan struct{}),
 	}
 	begun := time.Now()
 	w.now = func() time.Duration { return time.Since(begun) }
@@ -158,6 +163,14 @@ func (w *screenWatch) stateChanged() <-chan struct{} {
 		return nil
 	}
 	return w.published
+}
+
+// changes is closed once the state changes from what state says now: take it
+// before reading the state, so as not to miss a change.
+func (w *screenWatch) changes() <-chan struct{} {
+	w.nextMu.Lock()
+	defer w.nextMu.Unlock()
+	return w.next
 }
 
 // state is the latest state read.
@@ -288,6 +301,10 @@ func (w *screenWatch) publish(state screen.ScreenState) {
 	}
 	w.latest.Store(&state)
 	wake(w.published)
+	w.nextMu.Lock()
+	close(w.next)
+	w.next = make(chan struct{})
+	w.nextMu.Unlock()
 	if !statusOf(state).Equal(statusOf(last)) {
 		wake(w.statusChanged)
 	}

@@ -2,6 +2,7 @@ package holder
 
 import (
 	"context"
+	"crypto/rand"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -24,6 +25,13 @@ var ErrAgentSendUnsupported = errors.New("the agent's holder is too old to take 
 // ErrMessageTooLarge is a message that does not fit in a frame.
 var ErrMessageTooLarge = fmt.Errorf("the message does not fit in the %d bytes the holder takes", maxPayload)
 
+// ErrAnswerUnsupported is an agent's holder too old to answer its prompts: it
+// was started by an older wdx.
+var ErrAnswerUnsupported = errors.New("the agent's holder is too old to answer its prompts; restart the agent")
+
+// ErrAnswerTooLarge is an answer that does not fit in a frame.
+var ErrAnswerTooLarge = fmt.Errorf("the answer does not fit in the %d bytes the holder takes", maxPayload)
+
 // Conn is the daemon's connection to a holder. Nothing polls: the holder
 // pushes the shell's exit and its status, and the connection ending means the holder is
 // gone or replaced it with a newer one.
@@ -41,6 +49,9 @@ type Conn struct {
 	// who records it.
 	status        atomic.Pointer[Status]
 	statusChanged chan struct{}
+	// answers are the answers sent and not reported yet, by id.
+	answersMu sync.Mutex
+	answers   map[string]chan AnswerReport
 }
 
 // Dial connects to the holder of terminal id listening on socket.
@@ -64,7 +75,7 @@ func Dial(ctx context.Context, socket, id string) (*Conn, error) {
 		return nil, err
 	}
 	_ = c.SetDeadline(time.Time{})
-	conn := &Conn{c: c, writeTimeout: limits.Write, hello: hello, exited: make(chan Exit, 1), done: make(chan struct{}), statusChanged: make(chan struct{}, 1)}
+	conn := &Conn{c: c, writeTimeout: limits.Write, hello: hello, exited: make(chan Exit, 1), done: make(chan struct{}), statusChanged: make(chan struct{}, 1), answers: map[string]chan AnswerReport{}}
 	if hello.Status != nil {
 		conn.status.Store(hello.Status)
 	} else {
@@ -195,6 +206,17 @@ func (c *Conn) read() {
 			c.delivered = append(c.delivered, report.IDs...)
 			c.deliveredMu.Unlock()
 			wake(c.deliveredChanged)
+		case frameAnswered:
+			var report AnswerReport
+			if json.Unmarshal(body, &report) != nil {
+				continue
+			}
+			c.answersMu.Lock()
+			if waiting, ok := c.answers[report.ID]; ok {
+				waiting <- report // buffered, and reported once
+				delete(c.answers, report.ID)
+			}
+			c.answersMu.Unlock()
 		}
 	}
 }
@@ -253,6 +275,54 @@ func (c *Conn) send(req sendRequest) error {
 	// Fails only on a closed connection, which the write reports.
 	_ = c.c.SetWriteDeadline(time.Now().Add(c.writeTimeout))
 	return writeRaw(c.c, frameSend, body)
+}
+
+// Answers reports whether the holder answers its program's prompts.
+func (c *Conn) Answers() bool {
+	return c.hello.Answers
+}
+
+// Answer has the holder answer the prompt on its screen with answers, one per
+// question, and returns what came of it, once the holder has pressed what it
+// would and seen the prompt close, or stopped. It waits until ctx is done or
+// the connection ends: the holder bounds each key's wait itself.
+func (c *Conn) Answer(ctx context.Context, answers []Answer) (AnswerReport, error) {
+	if !c.hello.Answers {
+		return AnswerReport{}, ErrAnswerUnsupported
+	}
+	req := answerRequest{ID: rand.Text(), Answers: answers}
+	body, err := json.Marshal(req)
+	if err != nil {
+		return AnswerReport{}, err
+	}
+	if len(body) > maxPayload {
+		return AnswerReport{}, ErrAnswerTooLarge
+	}
+	reported := make(chan AnswerReport, 1)
+	c.answersMu.Lock()
+	c.answers[req.ID] = reported
+	c.answersMu.Unlock()
+	defer func() {
+		c.answersMu.Lock()
+		delete(c.answers, req.ID)
+		c.answersMu.Unlock()
+	}()
+	c.wmu.Lock()
+	// Fails only on a closed connection, which the write reports.
+	_ = c.c.SetWriteDeadline(time.Now().Add(c.writeTimeout))
+	err = writeRaw(c.c, frameAnswer, body)
+	c.wmu.Unlock()
+	if err != nil {
+		return AnswerReport{}, err
+	}
+	select {
+	case report := <-reported:
+		return report, nil
+	case <-c.done:
+		return AnswerReport{}, ErrConnectionLost
+	case <-ctx.Done():
+		return AnswerReport{}, ctx.Err()
+	}
 }
 
 // Release tells the holder the shell's exit is recorded: it quits.

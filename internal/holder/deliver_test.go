@@ -16,13 +16,15 @@ const (
 	pasteFloorVar   = "TEST_PASTE_FLOOR"
 	pasteCeilingVar = "TEST_PASTE_CEILING"
 	submitSettleVar = "TEST_SUBMIT_SETTLE"
+	answerKeyVar    = "TEST_ANSWER_KEY"
+	answerCloseVar  = "TEST_ANSWER_CLOSE"
 )
 
 // testSendTimes are a test holder's: short, as most test programs draw no draft,
 // unless the test set them.
 func testSendTimes() SendTimes {
 	times := SendTimes{PasteFloor: 10 * time.Millisecond, PasteCeiling: 100 * time.Millisecond, SubmitSettle: 100 * time.Millisecond}
-	for name, d := range map[string]*time.Duration{pasteFloorVar: &times.PasteFloor, pasteCeilingVar: &times.PasteCeiling, submitSettleVar: &times.SubmitSettle} {
+	for name, d := range map[string]*time.Duration{pasteFloorVar: &times.PasteFloor, pasteCeilingVar: &times.PasteCeiling, submitSettleVar: &times.SubmitSettle, answerKeyVar: &times.AnswerKey, answerCloseVar: &times.AnswerClose} {
 		if v, err := time.ParseDuration(os.Getenv(name)); err == nil { //nolint:forbidigo // the test holder's main reads its settings as runHolder does
 			*d = v
 		}
