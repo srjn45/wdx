@@ -1,0 +1,600 @@
+7[r8[?25h[?25l[?2004h[?2031h[?1004h[<u[>5u[>4;2m
+[38;5;220m────────────────────────────────────────[39m
+[2G[38;5;220m[1mAccessing[12Gworkspace:[22m[39m
+
+[2G[1m/tmp/xxxxxx-xxxx/-xxxx-xxxxxx-xxx-xxx-[22m
+[2G[1m-xxxxxxxxx-xxxxxx-xxx-x/xxxxxxxx-xxxx-[22m
+[2G[1mxxxx-xxxx-xxxxxxxxxxxx/xxxxxxxxxx/r/wo[22m
+[2G[1mrk/w-szkouwxb[22m
+
+[2GQuick[8Gsafety[15Gcheck:[22GIs[25Gthis[30Ga[32Gproject
+[2Gyou[6Gcreated[14Gor[17Gone[21Gyou[25Gtrust?[32G(Like
+[2Gyour[7Gown[11Gcode,[17Ga[19Gwell-known[30Gopen
+[2Gsource[9Gproject,[18Gor[21Gwork[26Gfrom[31Gyour
+[2Gteam).[9GIf[12Gnot,[17Gtake[22Ga[24Gmoment[31Gto[34Greview
+[2Gwhat's[9Gin[12Gthis[17Gfolder[24Gfirst.
+
+[2GClaude[9GCode'll[17Gbe[20Gable[25Gto[28Gread,[34Gedit,
+[2Gand[6Gexecute[14Gfiles[20Ghere.
+
+[2G]8;id=zaxmda;https://code.claude.com/docs/en/security[38;5;246mSecurity guide[39m]8;;
+
+[2G[38;5;153m❯[4GNo,[8Gexit[39m
+[4GYes,[9GI[11Gtrust[17Gthis[22Gfolder
+
+[2G[38;5;246mEnter[8Gto[11Gconfirm[19G·[21GEsc[25Gto[28Gcancel[39m
+[1C[4A[>0q[?u]7501;?[c[?2026$p[c[1D[4B[1C[4A [4GNo, exit[1C[1B[38;5;153m❯[4GYes, I trust this folder[39m
+
+
+[1C[3A[>4m[<u[?1004l[?2031l[?2004l[1D[3B[H[2K[1B[2K[1B[2K[1B[2K[1B[2K[1B[2K[1B[2K[1B[2K[1B[2K[1B[2K[1B[2K[1B[2K[1B[2K[1B[2K[1B[2K[1B[2K[1B[2K[1B[2K[1B[2K[1B[2K[1B[2K[1B[2K[1B[2K[1B[2K[1B[H[?2004h[?2031h[?1004h[<u[>5u[>4;2m]0;✳ Claude Code[38;5;174m ▐[48;5;16m▛███▛█[12G[39m[49m[1mClaude[19GCode[24G[22m[38;5;246mv2.1.323[39m
+[38;5;174m▝▜[48;5;16m█████[49m█▀[12G[38;5;246mHaiku[18G5.5[22G·[24GClaude[31GMax[39m
+[38;5;174m ▝▝[7G▝▝[12G[38;5;246m/…/r/work/w-szkouwxb[39m
+
+[38;5;220m⚠[3GSafe[8Gmode:[14Gall[18Gcustomizations[33Gare[39m
+[3G[38;5;220mdisabled[12G(CLAUDE.md,[24Gskills,[32Gplugins,[39m
+[3G[38;5;220mhooks,[10GMCP,[15Gagents,[23Gand[27Gmore)[39m
+[3G[38;5;246mRestart[11Gwithout[19G--safe-mode[31Gto[39m
+[3G[38;5;246mre-enable[39m
+
+[38;5;244m────────────────────────────────────────[39m
+❯ [2mTry[7G"create[15Ga[17Gutil[22Glogging.py[33Gthat..."[22m
+[38;5;244m────────────────────────────────────────[39m
+[3G[38;5;246m⏸[5Gmanual[12Gmode[17Gon[20G·[22G?[24Gfor[28Gshortcuts[38G…[39m
+[21G[38;5;246m◐[23Gmedium[30G·[32G/effort[39m
+[2C[4A[?25h[>0q[c[?2026$p[c[?25l[2D[4B[2C[4AUse the AskUserQuestion tool to ask[K[1B  me to choose a color: red, blue or[K[2C[1Bgreen, single choice. Do nothing[K[2C[1Belse.[21G[K
+[38;5;244m────────────────────────────────────────[39m
+[3G[38;5;246m⏸[5Gmanual[12Gmode[17Gon[21G◐[23Gmedium[30G·[32G/effort[39m
+[7C[3A[?25h[?25l[7D[3B[7A[48;5;237m[38;5;246m❯ [38;5;231mUse the AskUserQuestion tool to ask [39m  [1B  [38;5;231mme to choose a color: red, blue or [39m   [1B  [38;5;231mgreen, single choice. Do nothing [39m     [1B  [38;5;231melse.[39m                                 [2C[1B[49m[K[1B[38;5;174m·[39m [38;5;174mHullaball[38;5;216mooi[38;5;174mng… [39m[K[2C[1B[K
+[38;5;244m────────────────────────────────────────[39m
+[38;5;246m❯ [39m
+[38;5;244m────────────────────────────────────────[39m
+[3G[38;5;246m⏸[5Gmanual[12Gmode[17Gon[20G·[22Gesc[26Gto[29Ginterrupt…[39m
+[21G[38;5;246m◐[23Gmedium[30G·[32G/effort[39m
+[2C[4A[?25h[?25l[2D[4B[7A[38;5;174m✢[11G[38;5;216ml[14G[38;5;174mi[39m
+
+
+
+
+
+
+[2C[4A[?25h[?25l[2D[4B[7A[38;5;174m*[10G[38;5;216ml[13G[38;5;174mo[39m
+
+
+
+
+
+
+[2C[4A[?25h[?25l[2D[4B[7A[38;5;174m✶[39m
+
+
+
+
+
+
+[2C[4A[?25h[?25l[2D[4B[7A[38;5;174m✻[9G[38;5;216ma[12G[38;5;174mo[39m
+
+
+
+
+
+
+[2C[4A[?25h[?25l[2D[4B[7A[38;5;174m✽[8G[38;5;216mb[11G[38;5;174ml[39m
+
+
+
+
+
+
+[2C[4A[?25h[?25l[2D[4B[6C[7A[38;5;216ma[10G[38;5;174ml[39m
+
+
+
+
+
+
+[2C[4A[?25h]0;✳ AskUserQuestion color choice[?25l[2D[4B[5C[7A[38;5;216ml[9G[38;5;174ma[39m
+
+
+
+
+
+
+[2C[4A[?25h[?25l[2D[4B[2C[7A[38;5;216mSy[38;5;174mnthesizing… [39m[K
+
+
+
+
+
+
+[2C[4A[?25h[?25l[2D[4B[7A[38;5;174m✻[39m
+
+
+
+
+
+
+[2C[4A[?25h[?25l[2D[4B[7A[38;5;174m✶[4Gy[39m
+
+
+
+
+
+
+[2C[4A[?25h[?25l[2D[4B[7A[38;5;174m*[39m
+
+
+
+
+
+
+[2C[4A[?25h[?25l[2D[4B[7A[38;5;174m✢[3GS[39m
+
+
+
+
+
+
+[2C[4A[?25h[?25l[2D[4B[8A[38;5;246m────────────────────────────────────────[1B[48;5;153m[38;5;16m ☐ Color [39m[49m[K[2B[38;5;231m[1mWhich color would you like?[22m[39m[K[1B[K[1B[38;5;153m❯[39m [38;5;246m1.[39m [38;5;153mRed[39m[K[2C[1B   [38;5;246mChoose red.[39m[K[2C[1B[38;5;246m2.[6G[39mBlue[21G[K
+[6G[38;5;246mChoose[13Gblue.[39m
+[3G[38;5;246m3.[6G[39mGreen
+[6G[38;5;246mChoose[13Ggreen.[39m
+[3G[38;5;246m4.[6GType[11Gsomething.[39m
+[38;5;246m────────────────────────────────────────[39m
+[3G5.[6GChat[11Gabout[17Gthis
+
+[38;5;246mEnter[7Gto[10Gselect[17G·[19G↑/↓[23Gto[26Gnavigate[35G·[37GEsc[39m
+[38;5;246mto[4Gcancel[39m
+[12A(B[?2004h[<u[>5u[>4;2m[12B[12A [6GRed[2B[38;5;153m❯[6GBlue[39m
+
+
+
+
+
+
+
+
+
+[10A[10B[10A [6GBlue[2B[38;5;153m❯[6GGreen[39m
+
+
+
+
+
+
+
+[8A[8B[8A [6GGreen[2B[38;5;153m❯[6G[39m[2mType something.[36C[4B[22m[K[1B[38;5;246mctrl+g to edit in VS Code · Esc to [39m
+[38;5;246mcancel[39m
+[5C[7A[?25h[?25l[5D[7B[5C[7At[K
+
+
+
+
+
+
+[6C[7A[?25h[?25l[6D[7B[6C[7Ae
+
+
+
+
+
+
+[7C[7A[?25h[?25l[7D[7B[7C[7Aa
+
+
+
+
+
+
+[8C[7A[?25h[?25l[8D[7B[8C[7Al
+
+
+
+
+
+
+[9C[7A[?25h[?25l[9D[7B[7A [2B[38;5;153m❯[3G5. Chat about this[39m
+
+
+
+
+[2K[1A[2K[1A[2K[1A[2K[1A[2K[1A[2K[G[1A[12A[K[1B[38;5;246m● [39mUser declined[17Gto[20Ganswer[27Gquestions[1B[38;5;246m  ⎿  · Which color would you like? (Red [1B[39m     [38;5;246m/ Blue / Green)[39m[K[2B[38;5;246m✻[3GChurned for 1s · done 9:27 AM[5C[1B[39m[K[1B[38;5;244m────────────────────────────────────────[1B[39m❯ [6G[K[1B[38;5;244m────────────────────────────────────────[2C[1B[38;5;246m⏸ manual mod[16G on · ? for shortcuts …[2C[1B[39m       [21G[38;5;246m◐ medium · /effort[1B[39m[K[1B[K[1B[K[1B[K[1B[K[1B[K[5A[2C[4A[?25h(B[?2004h[<u[>5u[>4;2m[?25l[2D[4B[2C[4AUse[7Gthe[11GAskUserQuestion[27Gtool[32Gwith[1B  multiSelect true to ask which fruits[K[2C[1BI like: apple, pear, plum. Do[K[2C[1Bnothing[11Gelse.[21G[K
+[38;5;244m────────────────────────────────────────[39m
+[3G[38;5;246m⏸[5Gmanual[12Gmode[17Gon[21G◐[23Gmedium[30G·[32G/effort[39m
+[15C[3A[?25h[?25l[15D[3B[7A[48;5;237m[38;5;246m❯ [38;5;231mUse the AskUserQuestion tool with [39m    [1B  [38;5;231mmultiSelect true to ask which fruits [39m [1B  [38;5;231mI like: apple, pear, plum. Do nothing[39m [1B  [38;5;231melse.[39m                                 [2C[1B[49m[K[1B[38;5;174m✶[39m [38;5;174mW[38;5;216mibb[38;5;174mling… [39m[K[1B[38;5;246m  ⎿[5G Tip: Hit shift+tab to cycle between[39m
+[6G[38;5;246mmanual[13Gmode,[19Gauto-accept[31Gedit[39m
+[6G[38;5;246mmode,[12Gand[16Gplan[21Gmode[39m
+
+[38;5;244m────────────────────────────────────────[39m
+[38;5;246m❯ [39m
+[38;5;244m────────────────────────────────────────[39m
+[3G[38;5;246m⏸[5Gmanual[12Gmode[17Gon[20G·[22Gesc[26Gto[29Ginterrupt…[39m
+[21G[38;5;246m◐[23Gmedium[30G·[32G/effort[39m
+[2C[4A[?25h[?25l[2D[4B[10A[38;5;174m✻[3G[38;5;216mW[6G[38;5;174mb[39m
+
+
+
+
+
+
+
+
+
+[2C[4A[?25h[?25l[2D[4B[10A[38;5;174m✽[5Gb[39m
+
+
+
+
+
+
+
+
+
+[2C[4A[?25h[?25l[2D[4B[3C[10A[38;5;174mi[39m
+
+
+
+
+
+
+
+
+
+[2C[4A[?25h[?25l[2D[4B[10A[38;5;174m✻[3GW[39m
+
+
+
+
+
+
+
+
+
+[2C[4A[?25h[?25l[2D[4B[10A[38;5;174m✶[39m
+
+
+
+
+
+
+
+
+
+[2C[4A[?25h[?25l[2D[4B[10A[38;5;174m*[39m
+
+
+
+
+
+
+
+
+
+[2C[4A[?25h[?25l[2D[4B[10A[38;5;174m✢[39m
+
+
+
+
+
+
+
+
+
+[2C[4A[?25h[?25l[2D[4B[11A[38;5;246m────────────────────────────────────────[1B← [48;5;153m[38;5;16m ☐ Fruits [14G[39m[49m✔[16GSubmit[24G→[1B[K[1B[38;5;231m[1mWhich fruits do you like?[22m[39m[K[5C[1B[K[1B[38;5;153m❯[3G[38;5;246m1.[6G[39m[[8G][10G[38;5;153mApple[1B[39m         [38;5;246mApple[39m[K[1B  [38;5;246m2.[6G[39m[[8G][10GPear[1B         [38;5;246mPear[39m[K[2C[1B[38;5;246m3.[39m [ ] Plum[K[9C[1B[38;5;246mPlum[21G[39m[K
+[3G[38;5;246m4.[6G[39m[[8G][10G[38;5;246mType[15Gsomething[39m
+[6G[1mSubmit[22m
+[38;5;246m────────────────────────────────────────[39m
+[3G5.[6GChat[11Gabout[17Gthis
+
+[38;5;246mEnter[7Gto[10Gselect[17G·[19G↑/↓[23Gto[26Gnavigate[35G·[37GEsc[39m
+[38;5;246mto[4Gcancel[39m
+[13A[13B[3C[17A[48;5;153m[38;5;16m☒[5C[4B[49m[38;5;114m[✔][39m
+
+
+
+
+
+
+
+
+
+
+
+
+[13A[13B[13A [10GApple[2B[38;5;153m❯[10GPear[39m
+
+
+
+
+
+
+
+
+
+
+[11A[11B[11A [10GPear[2B[38;5;153m❯[10GPlum[39m
+
+
+
+
+
+
+
+
+[9A[9B[9A [10GPlum[2B[38;5;153m❯[10G[39m[2mType something[36C[5B[22m[K[1B[38;5;246mctrl+g to edit in VS Code · Esc to [39m
+[38;5;246mcancel[39m
+[9C[8A[?25h[?25l[9D[8B[5C[8A[38;5;114m[✔] [39mk[K
+
+
+
+
+
+
+
+[10C[8A[?25h[?25l[10D[8B[10C[8Ai
+
+
+
+
+
+
+
+[11C[8A[?25h[?25l[11D[8B[11C[8Aw
+
+
+
+
+
+
+
+[12C[8A[?25h[?25l[12D[8B[12C[8Ai
+
+
+
+
+
+
+
+[13C[8A[?25h[?25l[13D[8B[8A [1B[38;5;153m❯[6G[1mSubmit[22m[39m
+
+
+
+
+
+
+[7A [6G[1mSubmit[2B[22m[38;5;153m❯[3G5. Chat about this[39m
+
+
+
+
+[2K[1A[2K[1A[2K[1A[2K[1A[2K[1A[2K[1A[2K[G[1A[12A[K[1B[38;5;246m● [39mUser declined to answer[27Gquestions[1B[38;5;246m  ⎿  · Which fruits do you like? (Apple [1B[39m     [38;5;246m/ Pear / Plum)[39m[K[2B[38;5;246m✻[3GCooked for 1s · done 9:28 AM[9C[1B[39m[K[1B[38;5;244m────────────────────────────────────────[1B[39m❯ [10G[K[1B[38;5;244m────────────────────────────────────────[2C[1B[38;5;246m⏸ manual mode on · ? for shortcuts …[2C[1B[39m           [21G[38;5;246m◐ medium · /effort[1B[39m[K[1B[K[1B[K[1B[K[1B[K[1B[K[1B[K[6A[2C[4A[?25h(B[?2004h[<u[>5u[>4;2m[?25l[2D[4B[2C[4AUse[7Gthe[11GAskUserQuestion[27Gtool[32Gonce,[1B  with two questions in the same call,[K[2C[1Bsingle choice each: header Color,[K[2C[1Bwhich[9Gcolor:[16Gred[20Gor blue; header[K
+[3GSize,[9Gwhich[15Gsize:[21Gsmall[27Gor[30Glarge.[37GDo
+[3Gnothing[11Gelse.
+[38;5;244m────────────────────────────────────────[39m
+[3G[38;5;246m⏸[5Gmanual[12Gmode[17Gon[21G◐[23Gmedium[30G·[32G/effort[39m
+[15C[3A[?25h[?25l[15D[3B[9A[48;5;237m[38;5;246m❯ [38;5;231mUse the AskUserQuestion tool once, [39m   [1B  [38;5;231mwith two questions in the same call, [39m [1B  [38;5;231msingle choice each: header Color, [39m    [1B  [38;5;231mwhich color: red or blue; header [39m     [1B  [38;5;231mSize, which size: small or large. Do [39m [1B  [38;5;231mnothing else.[39m                         [2C[1B[49m[K[1B[38;5;174m·[39m [38;5;174mTransmogrifying… [39m[K[1B[38;5;246m  ⎿[5G Tip: Press[17Gctrl+x = or ctrl+x - at [39m
+[6G[38;5;246mthe[10Gprompt[17Gto[20Graise[26Gor[29Glower[35Gthe[39m
+[6G[38;5;246meffort[13Glevel[19Gfor[23Gthis[28Gsession[39m
+
+[38;5;244m────────────────────────────────────────[39m
+[38;5;246m❯ [39m
+[38;5;244m────────────────────────────────────────[39m
+[3G[38;5;246m⏸[5Gmanual[12Gmode[17Gon[20G·[22Gesc[26Gto[29Ginterrupt…[39m
+[21G[38;5;246m◐[23Gmedium[30G·[32G/effort[39m
+[2C[4A[?25h[?25l[2D[4B[10A[38;5;174m✢[39m
+
+
+
+
+
+
+
+
+
+[2C[4A[?25h[?25l[2D[4B[10A[38;5;174m*[39m
+
+
+
+
+
+
+
+
+
+[2C[4A[?25h[?25l[2D[4B[10A[38;5;174m✶[39m
+
+
+
+
+
+
+
+
+
+[2C[4A[?25h[?25l[2D[4B[10A[38;5;174m✻[39m
+
+
+
+
+
+
+
+
+
+[2C[4A[?25h[?25l[2D[4B[10A[38;5;174m✽[39m
+
+
+
+
+
+
+
+
+
+[2C[4A[?25h[?25l[2D[4B[19C[10A[38;5;246m(0s · [38;5;247mthinking[38;5;246m)[39m
+
+
+
+
+
+
+
+
+
+[2C[4A[?25h[?25l[2D[4B[25C[10A[38;5;248mthinking[39m
+
+
+
+
+
+
+
+
+
+[2C[4A[?25h[?25l[2D[4B[20C[10A[38;5;246m1[39m
+
+
+
+
+
+
+
+
+
+[2C[4A[?25h[?25l[2D[4B[10A[38;5;174m✻[26G[38;5;249mthinking[39m
+
+
+
+
+
+
+
+
+
+[2C[4A[?25h[?25l[2D[4B[10A[38;5;174m✶[39m
+
+
+
+
+
+
+
+
+
+[2C[4A[?25h[?25l[2D[4B[10A[38;5;174m*[39m
+
+
+
+
+
+
+
+
+
+[2C[4A[?25h[?25l[2D[4B[11A[38;5;246m────────────────────────────────────────[1B← [48;5;153m[38;5;16m ☐ Color [39m[49m ☐ Size  ✔ Submit  →[K[1B[K[1B[38;5;231m[1mWhich color: red or blue?[22m[39m[K[5C[1B[K[1B[38;5;153m❯[3G[38;5;246m1.[6G[38;5;153mRed[1B[39m     [38;5;246mRed[39m[K[1B  [38;5;246m2.[6G[39mBlue[1B     [38;5;246mBlue[39m[K[2C[1B[38;5;246m3. Type somethi[19Gg.[39m[K[1B[38;5;246m────────────────────────────────────────[39m
+[3G4.[6GChat[11Gabout[17Gthis
+
+[38;5;246mEnter[7Gto[10Gselect[17G·[19GTab/Arrow[29Gkeys[34Gto[39m
+[38;5;246mnavigate[10G·[12GEsc[16Gto[19Gcancel[39m
+[10A(B[?2004h[<u[>5u[>4;2m[10B[14A←  ☒ Color [48;5;153m[38;5;16m ☐ Size [6C[2B[49m[38;5;231m[1msize: small or [23Garge?[5C[2B[22m[38;5;153mSmall[5C[1B[38;5;246mSmall[5C[1B[39mLarge[5C[1B[38;5;246mLarge[39m
+
+
+
+
+
+
+[10A[10B[15A[K[1B[38;5;246m────────────────────────────────────────[1B[39m←[4G☒[6GColor[13G☒[15GSize[20G[48;5;153m[38;5;16m ✔ Submit [49m[38;5;246m →[1B[39m[K[1B[38;5;231m[1mReview your answers[1B[22m[39m[K[1C[1B●[4GWhich color:[17Gred[21Gor[24Gblue?[2C[1B [38;5;114m→ Red[39m[K[1C[1B●[4GWhich size:[16Gsmall[22Gor[25Glarge?[2C[1B [38;5;114m→ Small[39m[K[1B[K[1B[38;5;246mReady to submit your answers?[2B[38;5;153m❯[39m [38;5;246m1. [38;5;153mSubmit answers[39m[K[1B  [38;5;246m2. [39mCancel[K
+[2A[2B[2A [6GSubmit answers[1B[38;5;153m❯[6GCancel[39m
+[1A[1B[2A[38;5;153m❯[6GSubmit answers[1B[39m [6GCancel
+[2A[2B[14A[38;5;246m● [39mUser answered Claude's questions:[K[1B[38;5;246m  ⎿  · Which color: red or blue? → Red[5C[1B· Which size: small or large? → [1B[39m     [38;5;246mSmall[39m[K[2B[38;5;174m·[39m [38;5;216mTransmogrifying…[38;5;174m [38;5;246m(1s)[39m[K[1B[38;5;246m  ⎿  Tip: Press ctrl+x = or ctrl+x - at [1C[1B[39m [4G  [38;5;246mthe prompt to raise or lower the [3C[1B[39m  [38;5;246meffort level for this session[2B[38;5;244m────────────────────────────────────────[1B[38;5;246m❯ [1B[38;5;244m────────────────────────────────────────[2C[1B[38;5;246m⏸ manual mode on · esc to interrupt…[39m
+[21G[38;5;246m◐[23Gmedium[30G·[32G/effort[39m
+[2C[4A[?25h[?25l[2D[4B[10A[38;5;174m✢[39m
+
+
+
+
+
+
+
+
+
+[2C[4A[?25h[?25l[2D[4B[10A[38;5;174m*[39m
+
+
+
+
+
+
+
+
+
+[2C[4A[?25h[?25l[2D[4B[10A[38;5;174m✶[39m
+
+
+
+
+
+
+
+
+
+[2C[4A[?25h[?25l[2D[4B[10A[38;5;174m✻[21G[38;5;246m2[39m
+
+
+
+
+
+
+
+
+
+[2C[4A[?25h[?25l[2D[4B[10A[38;5;174m✽[39m
+
+
+
+
+
+
+
+
+
+[2C[4A[?25h[?25l[2D[4B[2C[10A[38;5;180mTransmogrifying…[39m
+
+
+
+
+
+
+
+
+
+[2C[4A[?25h[?25l[2D[4B[2C[10A[38;5;174mTransmogrif[38;5;216myin[38;5;174mg…[39m
+
+
+
+
+
+
+
+
+
+[2C[4A[?25h[?25l[2D[4B[12C[10A[38;5;216mf[16G[38;5;174mn[39m
+
+
+
+
+
+
+
+
+
+[2C[4A[?25h[?25l[2D[4B[10A[38;5;231m●[3G[39mYou chose [1mRed[22m for color[27Gand[31G[1mSmall[37G[22mfor[1B[K[1B[38;5;174m✽[3GTransmogri[38;5;216mfyi[38;5;174mng… [38;5;246m(2s)[39m[K[1B[38;5;246m  ⎿  Tip: Press ctrl+x = or ctrl+x - at [5C[1Bthe prompt to raise or lower the [1B[39m     [38;5;246meffort level for this session[39m[K[1B[K[2B[38;5;246m❯ [39m[K[1B[38;5;244m────────────────────────────────────────[39m
+[3G[38;5;246m⏸[5Gmanual[12Gmode[17Gon[20G·[22Gesc[26Gto[29Ginterrupt…[39m
+[21G[38;5;246m◐[23Gmedium[30G·[32G/effort[39m
+[2C[4A[?25h[?25l[2D[4B[2C[11Asize.[9GI[11Ghaven't[19Gdone[24Ganything[33Gelse.[1B[K[1B[38;5;174m✽[39m [38;5;174mTransmogri[38;5;216mfyi[38;5;174mng… [38;5;246m(2s)[39m[K[1B[38;5;246m  ⎿  Tip: Press[17Gctrl+x =[29Gctrl+x - at [5C[1Bthe prompt to raise or lower the [5C[1Beffort level for this session[1B[39m[K[1B[38;5;244m────────────────────────────────────────[1B[38;5;246m❯ [39m[K[1B[38;5;244m────────────────────────────────────────[2C[1B[38;5;246m⏸ manual mode on · esc to interrupt…[39m
+[21G[38;5;246m◐[23Gmedium[30G·[32G/effort[39m
+[2C[4A[?25h[?25l[2D[4B[2K[1A[2K[1A[2K[G[1A[7A[38;5;246m✻[3GCogitated for 2s · done 9:28 AM[1B[39m[K[1B[38;5;244m────────────────────────────────────────[1B[39m❯ [6G[K[1B[38;5;244m────────────────────────────────────────[1B[39m  [38;5;246m⏸ manual mode on · ? for shortcuts …[39m[K[1B  [21G[38;5;246m◐ medium · /effort[1B[39m[K[1B[K[1B[K[2A[2C[4A[?25h(B[?2004h[<u[>5u[>4;2m[?25l[2D[4B[2C[2A[38;5;246mPress Ctrl-C again[22Gto exit[39m[K
+
+[2C[4A[?25h[?1006l[?1003l[?1002l[?1000l[2D[4B[?1004l[>4m[<u[?2031l[?2004l(B[?1016l[?1006l[?1003l[?1002l[?1000l[?25h7[r8]0;[2m[22m
+[2mResume this session with:[22m
+[2mclaude --safe-mode --model haiku --permission-mode manual --resume 00000000-0000-0000-0000-000000000000[22m
+[2m[22m

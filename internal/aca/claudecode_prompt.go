@@ -22,12 +22,17 @@ const (
 var (
 	// claudeCodeNumbered is an option as "❯ 1. Yes", "  2. [ ] Pear": the
 	// cursor, the number, the box of a checkbox and the label.
-	claudeCodeNumbered  = regexp.MustCompile(`^(\s*(?:❯\s+)?)(\d+)\.\s+(\[[ ✔]\]\s+)?(.*?)\s*$`)
-	claudeCodeQuestion  = regexp.MustCompile(`^Do you want\b.*\?$`)
-	claudeCodeTabName   = regexp.MustCompile(`[☐☒] (.+?)(?:\s{2,}|$)`)
+	claudeCodeNumbered = regexp.MustCompile(`^(\s*(?:❯\s+)?)(\d+)\.\s+(\[[ ✔]\]\s+)?(.*?)\s*$`)
+	claudeCodeQuestion = regexp.MustCompile(`^Do you want\b.*\?$`)
+	claudeCodeTabName  = regexp.MustCompile(`([☐☒]) (.+?)(?:\s{2,}|$)`)
+	// claudeCodeAsksWords is a yes/no option that takes what to do instead:
+	// "Tell Claude what to change", "No, and tell Claude what to do differently".
+	claudeCodeAsksWords = regexp.MustCompile(`(?i)\btell Claude what\b`)
 	claudeCodePlanAsks  = "Claude has written up a plan"
 	claudeCodeWorkspace = "Accessing workspace:"
 	claudeCodeCommand   = " command"
+	claudeCodeReviewing = "Review your answers"
+	claudeCodeReadyAsks = "Ready to submit your answers?"
 )
 
 // claudeCodePrompt reads the prompt at the bottom of a screen that reads
@@ -66,30 +71,7 @@ func claudeCodePrompt(lines []string) *screen.Prompt {
 	if first < 0 {
 		return nil
 	}
-	prompt := &screen.Prompt{Kind: screen.PromptYesNo, Selected: -1, Ticked: []int{}}
-	if kind == claudeCodeDecision {
-		prompt.Kind = screen.PromptDecision
-	}
-	for _, line := range lines[first:below] {
-		m := claudeCodeNumbered.FindStringSubmatch(line)
-		switch {
-		case m != nil && utf8.RuneCountInString(m[1]) == column && m[2] == strconv.Itoa(len(prompt.Options)+1):
-			if strings.Contains(m[1], "❯") {
-				prompt.Selected = len(prompt.Options)
-			}
-			prompt.Multi = prompt.Multi || m[3] != ""
-			if strings.Contains(m[3], "✔") {
-				prompt.Ticked = append(prompt.Ticked, len(prompt.Options))
-			}
-			prompt.Options = append(prompt.Options, m[4])
-		case isClaudeCodeRule(line), kind == claudeCodeDecision, kind == claudeCodePlanApproval:
-			// A decision's description under its option, the rule before its last
-			// option, and the plan's key hint under its last are not labels.
-		default:
-			// The rest of a label the width wrapped.
-			prompt.Options[len(prompt.Options)-1] += " " + strings.TrimSpace(line)
-		}
-	}
+	prompt := claudeCodeOptions(lines[first:below], column, kind)
 	// The question is the lines right above the options, which a narrow
 	// screen wraps; a decision and the plan approval have a blank line between.
 	above := first - 1
@@ -112,8 +94,109 @@ func claudeCodePrompt(lines []string) *screen.Prompt {
 	case claudeCodePermission:
 		prompt.Title, prompt.Detail = claudeCodePermissionHeader(lines[:questionStart])
 	case claudeCodeDecision:
-		prompt.Title = claudeCodeDecisionTab(lines[:questionStart])
+		prompt.Title, prompt.Questions, prompt.Answered = claudeCodeDecisionTabs(lines[:questionStart])
 	}
+	return prompt
+}
+
+// claudeCodeOptions reads the options of a prompt from their lines, those of
+// option 1 to the last, whose numbers are in the given column, with what each
+// is. A decision's kinds go by position and shape: the options after its rule
+// are chat, the last numbered one before it text, and a multi-select's row
+// without a number right above the rule is its Submit. A yes/no prompt's are
+// choices, but those whose label asks for words.
+func claudeCodeOptions(lines []string, column int, kind claudeCodePromptKind) *screen.Prompt {
+	prompt := &screen.Prompt{Kind: screen.PromptYesNo, Selected: -1, Ticked: []int{}, Questions: []string{}, Answered: []int{}}
+	if kind == claudeCodeDecision {
+		prompt.Kind = screen.PromptDecision
+	}
+	add := func(label string, selected bool, kind screen.OptionKind) {
+		if selected {
+			prompt.Selected = len(prompt.Options)
+		}
+		prompt.Options = append(prompt.Options, label)
+		prompt.Kinds = append(prompt.Kinds, kind)
+	}
+	afterRule := false
+	numbered := 0
+	for i, line := range lines {
+		m := claudeCodeNumbered.FindStringSubmatch(line)
+		switch {
+		case m != nil && utf8.RuneCountInString(m[1]) == column && m[2] == strconv.Itoa(numbered+1):
+			numbered++
+			prompt.Multi = prompt.Multi || m[3] != ""
+			if strings.Contains(m[3], "✔") {
+				prompt.Ticked = append(prompt.Ticked, len(prompt.Options))
+			}
+			optionKind := screen.OptionChoice
+			switch {
+			case afterRule:
+				optionKind = screen.OptionChat
+			case kind != claudeCodeDecision && claudeCodeAsksWords.MatchString(m[4]):
+				optionKind = screen.OptionText
+			}
+			add(m[4], strings.Contains(m[1], "❯"), optionKind)
+		case isClaudeCodeRule(line):
+			// The rule before a decision's Chat about this: the last numbered
+			// option above it takes text.
+			if kind == claudeCodeDecision && !afterRule {
+				afterRule = true
+				for j := len(prompt.Kinds) - 1; j >= 0; j-- {
+					if prompt.Kinds[j] == screen.OptionChoice {
+						prompt.Kinds[j] = screen.OptionText
+						break
+					}
+				}
+			}
+		case kind == claudeCodeDecision && prompt.Multi && !afterRule && i+1 < len(lines) && isClaudeCodeRule(lines[i+1]):
+			// The multi-select's Submit row, with no number, under Type something.
+			label, selected := strings.CutPrefix(strings.TrimSpace(line), "❯")
+			add(strings.TrimSpace(label), selected, screen.OptionSubmit)
+		case kind == claudeCodeDecision, kind == claudeCodePlanApproval:
+			// A decision's description under its option and the plan's key hint
+			// under its last are not labels.
+		default:
+			// The rest of a label the width wrapped.
+			prompt.Options[len(prompt.Options)-1] += " " + strings.TrimSpace(line)
+			if claudeCodeAsksWords.MatchString(prompt.Options[len(prompt.Options)-1]) {
+				prompt.Kinds[len(prompt.Kinds)-1] = screen.OptionText
+			}
+		}
+	}
+	return prompt
+}
+
+// claudeCodeReview reads a decision's review screen, which Claude shows after
+// its questions, or after a multi-select's Submit: under the last full rule the
+// tab line, "Review your answers", each question and its answer, then "Ready to
+// submit your answers?" and two options, Submit answers and Cancel, with no
+// footer under them. nil when the screen is not one.
+func claudeCodeReview(lines []string) *screen.Prompt {
+	block := trimmed(claudeCodeBlockUnderRule(lines))
+	if len(block) < 3 || !strings.HasPrefix(block[0], "←") || !strings.Contains(block[0], "✔ Submit") {
+		return nil
+	}
+	heading := 1
+	for heading < len(block) && block[heading] == "" {
+		heading++
+	}
+	if heading == len(block) || block[heading] != claudeCodeReviewing {
+		return nil
+	}
+	first, column := claudeCodeFirstOption(lines, len(lines), false)
+	if first < 0 {
+		return nil
+	}
+	above := first - 1
+	for above >= 0 && isBlank(lines[above]) {
+		above--
+	}
+	if start, _ := claudeCodeQuestionAbove(lines, above, func(q string) bool { return q == claudeCodeReadyAsks }); start < 0 {
+		return nil
+	}
+	prompt := claudeCodeOptions(lines[first:], column, claudeCodeDecision)
+	prompt.Title, prompt.Question, prompt.Review = claudeCodeReviewing, claudeCodeReadyAsks, true
+	_, prompt.Questions, prompt.Answered = claudeCodeDecisionTabs(lines[:first])
 	return prompt
 }
 
@@ -170,13 +253,14 @@ func claudeCodeTrustPrompt(lines []string, below int) *screen.Prompt {
 	for first > 0 && !isBlank(lines[first-1]) && !isClaudeCodeRule(lines[first-1]) {
 		first--
 	}
-	prompt := &screen.Prompt{Kind: screen.PromptYesNo, Selected: -1, Ticked: []int{}}
+	prompt := &screen.Prompt{Kind: screen.PromptYesNo, Selected: -1, Ticked: []int{}, Questions: []string{}, Answered: []int{}}
 	for _, line := range trimmed(lines[first:below]) {
 		if label, ok := strings.CutPrefix(line, "❯"); ok {
 			prompt.Selected = len(prompt.Options)
 			line = strings.TrimSpace(label)
 		}
 		prompt.Options = append(prompt.Options, line)
+		prompt.Kinds = append(prompt.Kinds, screen.OptionChoice)
 	}
 	block := claudeCodeBlockUnderRule(lines[:first])
 	if len(block) == 0 || strings.TrimSpace(block[0]) != claudeCodeWorkspace {
@@ -235,17 +319,34 @@ func claudeCodePermissionHeader(above []string) (title, detail string) {
 	return title, strings.Join(body, "\n")
 }
 
-// claudeCodeDecisionTab is the name of the first tab in the line under the last
-// full rule, "☐ Color" or "←  ☐ Fruits  ✔ Submit  →"; "" when there is none.
-func claudeCodeDecisionTab(above []string) string {
+// claudeCodeDecisionTabs reads the tab line under the last full rule, "☐ Color"
+// for one question or "←  ☒ Color  ☐ Size  ✔ Submit  →" for several: the title,
+// the current question's name, and when there are several, every question's
+// name and the indexes of those answered, ☒. Which tab is current shows in
+// color only, so it is taken to be the first not answered, as Claude moves on
+// to the next after each answer; "" when all are, as when the person went back.
+func claudeCodeDecisionTabs(above []string) (title string, questions []string, answered []int) {
+	questions, answered = []string{}, []int{}
 	block := claudeCodeBlockUnderRule(above)
 	if len(block) == 0 {
-		return ""
+		return "", questions, answered
 	}
-	if m := claudeCodeTabName.FindStringSubmatch(block[0]); m != nil {
-		return m[1]
+	tabs := claudeCodeTabName.FindAllStringSubmatch(block[0], -1)
+	if len(tabs) == 0 {
+		return "", questions, answered
 	}
-	return ""
+	if len(tabs) == 1 {
+		return tabs[0][2], questions, answered
+	}
+	for i, tab := range tabs {
+		questions = append(questions, tab[2])
+		if tab[1] == "☒" {
+			answered = append(answered, i)
+		} else if title == "" {
+			title = tab[2]
+		}
+	}
+	return title, questions, answered
 }
 
 // claudeCodeBlockUnderRule is the lines under the last full rule in lines; none

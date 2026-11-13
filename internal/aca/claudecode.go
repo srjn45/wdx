@@ -168,6 +168,10 @@ func (ClaudeCodeScreenParser) Parse(lines, undimmed []string) screen.ScreenState
 		if len(tail) == min(len(lines), claudeCodeTailLines) && strings.Contains(strings.Join(tail, " "), "ctrl+g to edit in") {
 			return screen.ScreenState{Activity: screen.ActivityWaiting, Prompt: claudeCodePrompt(lines)}
 		}
+		// A decision's review screen has no footer at all.
+		if review := claudeCodeReview(lines); review != nil {
+			return screen.ScreenState{Activity: screen.ActivityWaiting, Prompt: review}
+		}
 		return screen.ScreenState{Activity: screen.ActivityUnknown}
 	}
 	inTurn := strings.Contains(box.footer, "esc to interrupt")

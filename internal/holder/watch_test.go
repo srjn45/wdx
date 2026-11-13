@@ -748,12 +748,12 @@ wait_for end
 	waitParsed(t, dir, "two")
 	step(t, dir, "prompt")
 	// Working in a turn and in the background differ only in InTurn: no frame.
-	prompt := &screen.Prompt{Kind: screen.PromptYesNo, Question: "Do you want to proceed?", Options: []string{"Yes"}}
+	prompt := &screen.Prompt{Kind: screen.PromptYesNo, Question: "Do you want to proceed?", Options: []string{"Yes"}, Kinds: []screen.OptionKind{screen.OptionChoice}}
 	if got := next(); !got.Equal(Status{Activity: "waiting", Prompt: prompt}) {
 		t.Errorf("status after the background %+v, prompt %+v", got, got.Prompt)
 	}
 	step(t, dir, "moved")
-	moved := &screen.Prompt{Kind: screen.PromptYesNo, Question: "Do you want to proceed?", Options: []string{"Yes", "No"}, Selected: 1}
+	moved := &screen.Prompt{Kind: screen.PromptYesNo, Question: "Do you want to proceed?", Options: []string{"Yes", "No"}, Kinds: []screen.OptionKind{screen.OptionChoice, screen.OptionChoice}, Selected: 1}
 	if got := next(); !got.Equal(Status{Activity: "waiting", Prompt: moved}) {
 		t.Errorf("status after the selection moved %+v, prompt %+v", got, got.Prompt)
 	}

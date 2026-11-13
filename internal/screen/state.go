@@ -80,6 +80,8 @@ type Prompt struct {
 	Detail string `json:"detail"`
 	// Options is every label, in order as shown, without its number, box or tick.
 	Options []string `json:"options"`
+	// Kinds is what each option is, one per option, in the same order.
+	Kinds []OptionKind `json:"kinds"`
 	// Selected is the index of the option the cursor is on; -1 when none shows.
 	Selected int `json:"selected"`
 	// Multi is a decision whose options are checkboxes.
@@ -87,7 +89,32 @@ type Prompt struct {
 	// Ticked is the index of each option whose box is ticked, in order; empty,
 	// never nil, for a multi-select with none and for every other prompt.
 	Ticked []int `json:"ticked"`
+	// Questions is the name of each question of a decision that asks several
+	// at once, in order as its tabs show them; empty, never nil, for one
+	// question and for every other prompt.
+	Questions []string `json:"questions"`
+	// Answered is the index in Questions of each question already answered, in
+	// order; empty, never nil, when none is.
+	Answered []int `json:"answered"`
+	// Review is a decision's review screen, shown after its questions to send
+	// the answers or go back to them.
+	Review bool `json:"review"`
 }
+
+// OptionKind is what an option of a prompt is, and so how it is answered.
+type OptionKind string
+
+const (
+	// OptionChoice is a yes/no answer or one of the model's own options:
+	// chosen by Enter, or ticked by Space in a checkbox list.
+	OptionChoice OptionKind = "choice"
+	// OptionText takes words the person types before Enter.
+	OptionText OptionKind = "text"
+	// OptionChat declines the decision to talk it over with the agent.
+	OptionChat OptionKind = "chat"
+	// OptionSubmit sends a checkbox list's ticks.
+	OptionSubmit OptionKind = "submit"
+)
 
 // Equal reports whether two prompts read the same; two nil prompts do.
 func (p *Prompt) Equal(o *Prompt) bool {
@@ -95,5 +122,7 @@ func (p *Prompt) Equal(o *Prompt) bool {
 		return p == o
 	}
 	return p.Kind == o.Kind && p.Title == o.Title && p.Question == o.Question && p.Detail == o.Detail &&
-		p.Selected == o.Selected && p.Multi == o.Multi && slices.Equal(p.Options, o.Options) && slices.Equal(p.Ticked, o.Ticked)
+		p.Selected == o.Selected && p.Multi == o.Multi && p.Review == o.Review && slices.Equal(p.Options, o.Options) &&
+		slices.Equal(p.Kinds, o.Kinds) && slices.Equal(p.Ticked, o.Ticked) && slices.Equal(p.Questions, o.Questions) &&
+		slices.Equal(p.Answered, o.Answered)
 }

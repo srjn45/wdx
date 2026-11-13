@@ -189,7 +189,7 @@ func TestClaudeCodeDraft(t *testing.T) {
 			lines:    []string{rule, " Do you want to proceed?", " ❯ 1. Yes", "", " Esc to cancel · Tab to amend"},
 			undimmed: []string{rule, " Do you want to proceed?", " ❯ 1. Yes", "", " Esc to cancel · Tab to amend"},
 			want: screen.ScreenState{Activity: waiting, Prompt: &screen.Prompt{Kind: screen.PromptYesNo,
-				Question: "Do you want to proceed?", Options: []string{"Yes"}}},
+				Question: "Do you want to proceed?", Options: []string{"Yes"}, Kinds: []screen.OptionKind{screen.OptionChoice}}},
 		},
 		{
 			name:     "a numbered option is no box and no draft, whatever the footer",
