@@ -1,0 +1,84 @@
+---
+// Four multi-agent failure modes in plain terminals compared to how wdx
+// resolves each through architectural guarantees.
+import Diagram from '../diagrams/Diagram.astro';
+---
+<Diagram id="fourf" width={720} height={380}
+  label="Comparison of four multi-agent failure modes in plain terminals vs how wdx resolves each through architectural guarantees."
+  caption="Running multiple AI agents in plain terminals leads to lost sessions, clashing checkouts, silent stoppages, and mystery diffs. wdx solves each with an architectural primitive.">
+
+  <!-- Column Headers -->
+  <text class="ttl" x="20" y="22">Plain Terminals (Failure Modes)</text>
+  <text class="ttl" x="380" y="22">wdx Architecture (The Fix)</text>
+
+  <!-- Row 1: Lost Terminals -> Daemon Holders -->
+  <g transform="translate(20, 36)">
+    <rect class="bx ff-bad" x="0" y="0" width="310" height="66" rx="8" />
+    <text class="sm ff-bad" font-weight="bold" x="14" y="22">1. Disappearing Sessions</text>
+    <text class="sm" x="14" y="40">Terminal tab closed, SSH drops, or reboot;</text>
+    <text class="sm" x="14" y="56">PTY dies and hours of agent context vanish.</text>
+  </g>
+  <path class="ar hot" d="M338 69 H368" marker-end="url(#fourf-h)" />
+  <g transform="translate(380, 36)">
+    <rect class="bx hot" x="0" y="0" width="320" height="66" rx="8" />
+    <text class="hot" font-size="13" x="14" y="22">Daemon-Managed PTY Holders</text>
+    <text class="sm" x="14" y="40">Holders outlive terminal windows &amp; reboots;</text>
+    <text class="sm" x="14" y="56">reconnect anytime with wdx tide or attach.</text>
+  </g>
+
+  <!-- Row 2: Clashing Edits -> Git Worktrees -->
+  <g transform="translate(20, 118)">
+    <rect class="bx ff-bad" x="0" y="0" width="310" height="66" rx="8" />
+    <text class="sm ff-bad" font-weight="bold" x="14" y="22">2. Stepped-On Source Tree</text>
+    <text class="sm" x="14" y="40">Agents edit same checkout in main branch;</text>
+    <text class="sm" x="14" y="56">shared index overwritten and files clobbered.</text>
+  </g>
+  <path class="ar hot" d="M338 151 H368" marker-end="url(#fourf-h)" />
+  <g transform="translate(380, 118)">
+    <rect class="bx hot" x="0" y="0" width="320" height="66" rx="8" />
+    <text class="hot" font-size="13" x="14" y="22">Isolated Git Worktrees (--worktree)</text>
+    <text class="sm" x="14" y="40">Dedicated branch &amp; directory per agent;</text>
+    <text class="sm" x="14" y="56">zero git index collisions; clean main tree.</text>
+  </g>
+
+  <!-- Row 3: Silent Stoppages -> Real-Time VT Screen Engine -->
+  <g transform="translate(20, 200)">
+    <rect class="bx ff-amb" x="0" y="0" width="310" height="66" rx="8" />
+    <text class="sm ff-amb" font-weight="bold" x="14" y="22">3. The Silent Stoppage</text>
+    <text class="sm" x="14" y="40">Agent asks a question 1 min in; sits idle for 1 hr;</text>
+    <text class="sm" x="14" y="56">engineer assumes work is progressing.</text>
+  </g>
+  <path class="ar hot" d="M338 233 H368" marker-end="url(#fourf-h)" />
+  <g transform="translate(380, 200)">
+    <rect class="bx ff-amb-bg" x="0" y="0" width="320" height="66" rx="8" />
+    <text class="ff-amb" font-size="13" x="14" y="22">VT Screen Parser &amp; TIDE Alerts</text>
+    <text class="sm" x="14" y="40">Real-time prompt parsing; amber ? badge in TIDE;</text>
+    <text class="sm" x="14" y="56">answer in place instantly or queue via inbox.</text>
+  </g>
+
+  <!-- Row 4: Mystery Diffs -> In-Tab Review & Guarded Landing -->
+  <g transform="translate(20, 282)">
+    <rect class="bx ff-bad" x="0" y="0" width="310" height="66" rx="8" />
+    <text class="sm ff-bad" font-weight="bold" x="14" y="22">4. The Blind Merge</text>
+    <text class="sm" x="14" y="40">Agent reports "done", but what actually changed?</text>
+    <text class="sm" x="14" y="56">Manual diff archaeology or unreviewed main break.</text>
+  </g>
+  <path class="ar hot" d="M338 315 H368" marker-end="url(#fourf-h)" />
+  <g transform="translate(380, 282)">
+    <rect class="bx hot" x="0" y="0" width="320" height="66" rx="8" />
+    <text class="hot" font-size="13" x="14" y="22">In-Tab Diff Review &amp; Guarded Landing</text>
+    <text class="sm" x="14" y="40">Review diff (o), leave inline comments (c);</text>
+    <text class="sm" x="14" y="56">one-key landing (L) with automated test checks.</text>
+  </g>
+</Diagram>
+
+<style is:global>
+  .wdx-diagram { --ff-bad: #e5747a; --ff-amb: #e2b75e; }
+  :root[data-theme="light"] .wdx-diagram { --ff-bad: #b8323a; --ff-amb: #a86c00; }
+  @media (prefers-color-scheme: light) { :root:not([data-theme="dark"]) .wdx-diagram { --ff-bad: #b8323a; --ff-amb: #a86c00; } }
+  .wdx-diagram .bx.ff-bad { stroke: var(--ff-bad); }
+  .wdx-diagram text.ff-bad { fill: var(--ff-bad); }
+  .wdx-diagram .bx.ff-amb { stroke: var(--ff-amb); }
+  .wdx-diagram .bx.ff-amb-bg { fill: rgba(226, 183, 94, 0.10); stroke: var(--ff-amb); }
+  .wdx-diagram text.ff-amb { fill: var(--ff-amb); font-weight: 700; }
+</style>

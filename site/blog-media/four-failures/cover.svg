@@ -1,0 +1,104 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="630" viewBox="0 0 1200 630">
+  <!-- Cover: Four ways running several AI agents goes wrong, and how wdx fixes each
+       Four classic failure modes resolving into wdx's four architectural primitives.
+       Fonts: Bricolage Grotesque (800) and JetBrains Mono (400, 700). -->
+  <defs>
+    <pattern id="dots" width="24" height="24" patternUnits="userSpaceOnUse"><circle cx="2" cy="2" r="1.2" fill="#232836" /></pattern>
+    <linearGradient id="cardGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#1c212c" />
+      <stop offset="100%" stop-color="#141822" />
+    </linearGradient>
+    <linearGradient id="hotGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#242c3d" />
+      <stop offset="100%" stop-color="#18202e" />
+    </linearGradient>
+  </defs>
+  <rect width="1200" height="630" fill="#13161c" />
+  <rect width="1200" height="630" fill="url(#dots)" />
+
+  <!-- Headline -->
+  <text x="72" y="82" fill="#e9ecf2" font-family="Bricolage Grotesque" font-weight="800" font-size="46">Four ways running several AI agents goes wrong,</text>
+  <text x="72" y="134" fill="#6fd3c1" font-family="Bricolage Grotesque" font-weight="800" font-size="46">and how wdx fixes each</text>
+  <text x="74" y="174" fill="#98a1b3" font-family="JetBrains Mono" font-size="18">lost terminals · clashing edits · unanswered prompts · mystery diffs</text>
+
+  <!-- Four Quadrant Cards -->
+  <g transform="translate(60, 205)" font-family="JetBrains Mono">
+    
+    <!-- Quadrant 1: Lost Terminals -->
+    <g transform="translate(0, 0)">
+      <rect width="520" height="185" rx="12" fill="url(#cardGrad)" stroke="#2b3242" stroke-width="1.5" />
+      <!-- Problem tag -->
+      <rect x="20" y="18" width="94" height="24" rx="4" fill="#38242a" />
+      <text x="28" y="34" fill="#f87171" font-size="12" font-weight="700">FAILURE 1</text>
+      <text x="126" y="35" fill="#e9ecf2" font-size="18" font-weight="700">The Disappearing Session</text>
+      
+      <text x="20" y="66" fill="#8892a4" font-size="13">Problem: Terminal tab closed or crash kills agent PTY</text>
+      <text x="20" y="86" fill="#8892a4" font-size="13">Fear of restarting computer loses weeks of context</text>
+      
+      <line x1="20" y1="104" x2="500" y2="104" stroke="#242a38" stroke-width="1" />
+      
+      <!-- Fix -->
+      <text x="20" y="128" fill="#6fd3c1" font-size="12" font-weight="700">WDX FIX: DAEMON PTY HOLDERS</text>
+      <text x="20" y="152" fill="#e2e8f0" font-size="14">Detached background holders outlive terminals &amp; reboots</text>
+      <text x="20" y="170" fill="#94a3b8" font-size="12">wdx agent attach · state: lost -> wdx agent start</text>
+    </g>
+
+    <!-- Quadrant 2: Clashing Edits -->
+    <g transform="translate(560, 0)">
+      <rect width="520" height="185" rx="12" fill="url(#cardGrad)" stroke="#2b3242" stroke-width="1.5" />
+      <!-- Problem tag -->
+      <rect x="20" y="18" width="94" height="24" rx="4" fill="#38242a" />
+      <text x="28" y="34" fill="#f87171" font-size="12" font-weight="700">FAILURE 2</text>
+      <text x="126" y="35" fill="#e9ecf2" font-size="18" font-weight="700">The Stepped-On Source Tree</text>
+      
+      <text x="20" y="66" fill="#8892a4" font-size="13">Problem: Agents editing same checkout in main branch</text>
+      <text x="20" y="86" fill="#8892a4" font-size="13">Shared index overwritten; files clobbered silently</text>
+      
+      <line x1="20" y1="104" x2="500" y2="104" stroke="#242a38" stroke-width="1" />
+      
+      <!-- Fix -->
+      <text x="20" y="128" fill="#6fd3c1" font-size="12" font-weight="700">WDX FIX: ISOLATED GIT WORKTREES</text>
+      <text x="20" y="152" fill="#e2e8f0" font-size="14">Dedicated checkouts in .worktrees/ with zero file locks</text>
+      <text x="20" y="170" fill="#94a3b8" font-size="12">wdx agent create --worktree &lt;name&gt; · clean main</text>
+    </g>
+
+    <!-- Quadrant 3: Unanswered Prompts (Primary Highlight) -->
+    <g transform="translate(0, 205)">
+      <rect width="520" height="185" rx="12" fill="url(#hotGrad)" stroke="#6fd3c1" stroke-width="1.8" />
+      <!-- Problem tag -->
+      <rect x="20" y="18" width="94" height="24" rx="4" fill="#3b2b1a" />
+      <text x="28" y="34" fill="#fbbf24" font-size="12" font-weight="700">FAILURE 3</text>
+      <text x="126" y="35" fill="#e9ecf2" font-size="18" font-weight="700">The Silent Stoppage</text>
+      
+      <text x="20" y="66" fill="#8892a4" font-size="13">Problem: Agent asks confirmation 1m in; sits idle for 1h</text>
+      <text x="20" y="86" fill="#8892a4" font-size="13">You think work is progressing while agent is blocked</text>
+      
+      <line x1="20" y1="104" x2="500" y2="104" stroke="#2b3848" stroke-width="1" />
+      
+      <!-- Fix -->
+      <text x="20" y="128" fill="#fbbf24" font-size="12" font-weight="700">WDX FIX: REAL-TIME VT PARSING &amp; TIDE ALERTS</text>
+      <text x="20" y="152" fill="#e2e8f0" font-size="14">Amber '?' badge in TIDE the second prompt appears</text>
+      <text x="20" y="170" fill="#94a3b8" font-size="12">Instant in-place response · wdx agent send --instant</text>
+    </g>
+
+    <!-- Quadrant 4: Mystery Diffs -->
+    <g transform="translate(560, 205)">
+      <rect width="520" height="185" rx="12" fill="url(#cardGrad)" stroke="#2b3242" stroke-width="1.5" />
+      <!-- Problem tag -->
+      <rect x="20" y="18" width="94" height="24" rx="4" fill="#38242a" />
+      <text x="28" y="34" fill="#f87171" font-size="12" font-weight="700">FAILURE 4</text>
+      <text x="126" y="35" fill="#e9ecf2" font-size="18" font-weight="700">The Blind Merge</text>
+      
+      <text x="20" y="66" fill="#8892a4" font-size="13">Problem: "Done!" but what changed? Merge conflicts,</text>
+      <text x="20" y="86" fill="#8892a4" font-size="13">half-baked commits, broken builds landed on main</text>
+      
+      <line x1="20" y1="104" x2="500" y2="104" stroke="#242a38" stroke-width="1" />
+      
+      <!-- Fix -->
+      <text x="20" y="128" fill="#6fd3c1" font-size="12" font-weight="700">WDX FIX: IN-TAB DIFFS &amp; GUARDED LANDING</text>
+      <text x="20" y="152" fill="#e2e8f0" font-size="14">Review diffs (o), inline comments (c), one-key land (L)</text>
+      <text x="20" y="170" fill="#94a3b8" font-size="12">Automated test checks · linear git history · zero merge commits</text>
+    </g>
+
+  </g>
+</svg>

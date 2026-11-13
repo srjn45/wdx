@@ -1,0 +1,198 @@
+---
+title: "Four ways running several AI agents goes wrong, and how wdx fixes each"
+date: 2026-11-13
+excerpt: "Lost terminal tabs, colliding git checkouts, silently blocked agents waiting on prompts, and mystery diffs. Here is how wdx fixes the four classic multi-agent failure modes."
+tags: [agents, multi-agent, workflow, failure-modes, tide, worktrees]
+authors: srajan
+cover:
+  image: ../../../assets/blog/four-failures/cover.png
+  alt: "Four quadrants depicting the failure modes (lost terminal, clashing edits, unanswered prompt, mystery diff) resolving into wdx's unified architecture"
+---
+import { Card, CardGrid, Steps, Tabs, TabItem } from '@astrojs/starlight/components';
+import FourFailuresOverview from '../../../components/blog/FourFailuresOverview.astro';
+
+Running one AI coding agent is exciting; running three or four at once is where the developer experience falls off a cliff. Before you know it, you are juggling disappearing terminal tabs, clashing file edits, silently blocked agents waiting on input, and a chaotic mess of mystery diffs.
+
+Most developers start by opening a handful of terminal tabs or tmux splits, firing up Claude Code, Codex, or Cursor in each, and hoping for the best. Within an hour, concurrency breaks down into confusion:
+
+> *"agent waiting on response while i'm thinking that the work is progressing happened multiple times, and while running multiple agents manually it happened many times that multiple agents started working in main branch and interfered with each other's work, moreover, not able to close terminal or shutdown/restart computer for days event months so that the curren work/context is not lost but with wdx i can resume working from where it left"*
+
+Here are the four classic failure modes of running multiple AI coding agents from plain terminals, why each happens, and the architectural primitives wdx uses to fix each.
+
+<FourFailuresOverview />
+
+## Failure 1: The Disappearing Session (Lost Terminals)
+
+### The problem
+
+When you run an AI agent inside a standard terminal window, tab, or SSH connection, the agent process lives and dies with that pseudo-terminal (PTY) session. If you accidentally close the tab, if your window manager crashes, if an SSH connection times out, or if your laptop forces a reboot, the process terminates abruptly.
+
+Because of this vulnerability, developers develop coping mechanisms:
+
+- Leaving terminal windows open for weeks or months at a time, dreading any reboot or system update.
+- Cluttering the taskbar with dozens of minimized windows out of fear that closing one loses an agent's active conversation state.
+- Losing half-finished refactorings when a laptop battery dies or network connection resets.
+
+### How wdx fixes it: Daemon-Managed PTY Holders
+
+In wdx, agents do not run inside your terminal emulator. They execute inside dedicated background [holder processes](/wdx/docs/architecture/holders/) managed by a local background daemon:
+
+1. **Process decoupling:** The holder owns the PTY, the screen buffer, and the child agent process. When you attach with [`wdx agent attach`](/wdx/docs/guides/terminals/) or view agents in TIDE, you connect to the holder over a Unix socket. Disconnecting (`C-\ d`) or closing your terminal window leaves the agent running unaffected.
+2. **Reboot recovery via `lost` state:** Even if your entire machine restarts or the daemon stops, wdx tracks the agent's identity, directory, worktree, and ACA session in its database. When the daemon restarts, the agent appears in `wdx agent list` as `lost`. Running `wdx agent start --name <name>` re-attaches to the exact ACA session and resumes work with full conversation context intact.
+
+<figure class="blog-video">
+  <video autoplay loop muted playsinline aria-label="A terminal recording: wdx agent list shows notes-worker running; attaching to it with wdx agent attach and detaching safely with C-\ d; a simulated reboot stops the daemon and kills holders; wdx daemon start restores tracking and wdx agent list flags the agent as lost; running wdx agent start resumes the agent in the same session with all context intact">
+    <source src="/wdx/blog/four-failures/lost-terminals.webm" type="video/webm" />
+    <source src="/wdx/blog/four-failures/lost-terminals.mp4" type="video/mp4" />
+  </video>
+  <figcaption>Detached PTY holders outlive terminal windows, crashes, and reboots. Re-launching brings the agent straight back into its session.</figcaption>
+</figure>
+
+## Failure 2: The Stepped-On Source Tree (Clashing Edits)
+
+### The problem
+
+A git repository checkout has exactly one working tree and one staging index (`.git/index`). When you launch multiple agents from the root directory of your project, they all operate on the exact same checkout on `main`.
+
+What follows is an inevitable train wreck:
+- **Overwritten edits:** Agent A modifies `notes.py` while Agent B is analyzing or rewriting the same file. One agent's half-finished logic overwrites the other's.
+- **Corrupted staging index:** Agent A stages files for a commit; Agent B runs `git commit` or stages unrelated changes, bundling both features into an unparseable franken-commit.
+- **Tangled `git status`:** You check the status of your branch and have no idea which modified file belongs to which agent's prompt.
+
+### How wdx fixes it: Isolated Git Worktrees
+
+wdx solves this at the filesystem level using [git worktrees](/wdx/docs/guides/worktrees/). Passing `--worktree <name>` to [`wdx agent create`](/wdx/docs/guides/agents/) automatically creates a dedicated worktree in `.worktrees/<name>` branched from HEAD:
+
+```sh title="Terminal"
+wdx agent create --name notes-delete --worktree notes-delete --aca claude_code \
+  --prompt "Add delete command"
+wdx agent create --name notes-search --worktree notes-search --aca codex \
+  --prompt "Add search command"
+```
+
+Each agent gets:
+- **Its own working directory:** File modifications happen in complete physical isolation under `.worktrees/`.
+- **Its own git index and branch:** Each agent commits to its own dedicated branch. Staging or committing never interferes with other agents.
+- **A pristine main tree:** Your repository's main checkout remains 100% clean while multiple agents work concurrently in the background.
+- **Zero repository lock contention:** wdx commands read worktree state without taking repository locks, allowing background monitoring to run alongside active git operations.
+
+<figure class="blog-video">
+  <video autoplay loop muted playsinline aria-label="A terminal recording: wdx agent list shows notes-delete and notes-search running; wdx worktree list displays independent checkouts for each agent; inspecting .worktrees/ reveals physically isolated directories; wdx worktree diff displays individual feature changes; git status on the main branch verifies that the working tree remains completely clean">
+    <source src="/wdx/blog/four-failures/clashing-edits.webm" type="video/webm" />
+    <source src="/wdx/blog/four-failures/clashing-edits.mp4" type="video/mp4" />
+  </video>
+  <figcaption>Each agent works in an isolated git worktree with its own branch and index. The main branch stays completely clean.</figcaption>
+</figure>
+
+## Failure 3: The Silent Stoppage (Unanswered Prompts)
+
+### The problem
+
+Of all the failure modes in multi-agent workflows, **unanswered prompts** are the single biggest productivity killer.
+
+You prompt three agents with complex tasks, feel a surge of productivity, and switch to a different screen—reviewing architecture docs or attending a meeting. You assume the agents are deep in execution: parsing files, running tests, refactoring modules.
+
+In reality, ninety seconds after you switched windows, Agent 2 paused to ask a routine confirmation question:
+- *"Do you want to run `npm test`? (y/N)"*
+- *"File `schema.prisma` already exists. Overwrite? [Y/n]"*
+- *"Do you trust this folder to execute tools? (yes/no)"*
+
+Because plain terminal tabs have no notification mechanism, the agent sits completely idle. Forty-five minutes later, you check back expecting a finished implementation, only to find the agent blocked on a prompt that required a single keystroke.
+
+Multiply this across three or four agents and your multi-agent concurrency collapses. You spend more time manually babysitting and polling terminal tabs than building software.
+
+### How wdx fixes it: Real-Time VT Screen Parsing & Amber TIDE Badges
+
+wdx turns silent stops into immediate, actionable visual alerts:
+
+1. **Headless Virtual Terminal (VT) screen engine:** wdx runs a headless VT state machine for every agent's PTY. Instead of polling process exit codes or scraping logs after the fact, wdx parses the terminal output stream in real time. It reliably classifies agent activity into three canonical states: `working`, `idle`, or `waiting` on human input.
+2. **Prominent amber badges in TIDE:** In TIDE (`wdx tide`), an agent waiting on a question turns into a bright amber row with a `?` badge in the project navigator. You know the exact second an agent needs attention without hunting across tabs.
+3. **Instant in-place response:** You do not need to switch terminals. In TIDE, navigate to the amber row and press `o` (or Enter) to open the agent's live screen. Press the required key (e.g., `y` or Enter), and the agent immediately transitions from amber `waiting` back to green `working`.
+4. **Safe inbox steering:** If you prefer working from scripts or the CLI, [`wdx agent send`](/wdx/docs/guides/messages/) queues input in an agent inbox. It waits until the agent's terminal is in raw mode and ready to accept input before pasting, preventing garbled or dropped keystrokes. Using `--instant` immediately interrupts or prioritizes your input.
+
+<figure class="blog-video">
+  <video autoplay loop muted playsinline aria-label="A terminal recording: wdx agent list shows notes-search working and notes-tests in state waiting with yes/no activity; launching wdx tide displays the project pane with notes-tests highlighted as an amber row with a '?' badge; opening notes-tests with 'o' reveals the folder trust prompt; confirming with 'Yes, I trust this folder' instantly transitions the agent back to green working; exiting TIDE verifies both agents actively working">
+    <source src="/wdx/blog/four-failures/unanswered-prompts.webm" type="video/webm" />
+    <source src="/wdx/blog/four-failures/unanswered-prompts.mp4" type="video/mp4" />
+  </video>
+  <figcaption>VT screen parsing catches prompts instantly. TIDE flags the agent in amber with a '?' badge, allowing you to answer in seconds.</figcaption>
+</figure>
+
+:::tip[Catching questions before they stall]
+In multi-agent engineering, the fastest agent is the one that never waits. By elevating prompt detection to a first-class state (`waiting`), wdx ensures you never lose hours to an unread confirmation dialog.
+:::
+
+## Failure 4: The Blind Merge (Mystery Diffs)
+
+### The problem
+
+An agent reports: *"I have finished adding the search command and all tests pass."*
+
+What did it actually touch? In a traditional terminal workflow, verifying the agent's work is surprisingly painful:
+- You have to manually run `git diff <branch>..main` in a separate shell.
+- If the agent modified multiple files, you have to scroll through raw terminal diffs or open an external GUI diff tool.
+- If you notice a minor mistake, you have to craft a follow-up prompt, switch back to the agent's tab, and explain line-by-line what needs fixing.
+- When you are ready to integrate, running `git merge` often introduces unwanted merge commits or undetected regressions.
+
+### How wdx fixes it: In-Tab Diff Review & Guarded Landing
+
+wdx integrates diff review and landing directly into the development workflow:
+
+1. **In-tab visual diff (`o`):** In TIDE, selecting a worktree and pressing `o` opens a color-coded unified diff tab right beside your agents. You can inspect additions, deletions, and modified files with zero context switching.
+2. **Inline line commenting (`c` and `s`):** When reviewing an agent's diff, press `c` on any line to leave a comment. Press `s` to batch-dispatch your review comments back to the agent's inbox as concrete revision requests.
+3. **One-key guarded landing (`L`):** When the diff looks good, press `L`. wdx automatically runs your project's configured pre-landing test checks (via `wdx project landing`), rebases the commits onto `main` with a clean linear history, and prompts you to remove the temporary worktree.
+
+<figure class="blog-video">
+  <video autoplay loop muted playsinline aria-label="A terminal recording: wdx worktree list shows notes-count is one commit ahead; launching wdx tide and navigating to notes-count; pressing 'o' opens the visual diff tab in the workspace; pressing 'L' triggers guarded landing which runs tests and rebases cleanly on main; confirming worktree cleanup with 'y'; exiting TIDE and verifying git log shows a clean linear commit on main with no merge commit">
+    <source src="/wdx/blog/four-failures/mystery-diffs.webm" type="video/webm" />
+    <source src="/wdx/blog/four-failures/mystery-diffs.mp4" type="video/mp4" />
+  </video>
+  <figcaption>Review diffs visually in TIDE with 'o', then land with 'L'. wdx runs test checks and rebases linearly onto main with zero merge commits.</figcaption>
+</figure>
+
+## Comparison Matrix: Plain Terminals vs. wdx
+
+| Failure Mode | Plain Terminal Tabs | wdx Architecture |
+| :--- | :--- | :--- |
+| **Lost Terminals** | Window crash or reboot terminates PTY; sessions lost permanently | Daemon-managed PTY holders outlive terminals; resumes via `wdx agent start` |
+| **Clashing Edits** | Agents collide in shared root on `main`; files overwritten & index dirty | Isolated git worktrees (`--worktree`) in `.worktrees/`; clean `main` tree |
+| **Unanswered Prompts** | Agent stalls on prompt silently; hours lost with zero notification | Real-time VT screen parser flags `waiting`; amber row & `?` badge in TIDE |
+| **Mystery Diffs** | Manual `git diff` archaeology; risky merge commits & broken builds | In-tab diff review (`o`), inline comments (`c`), and one-key guarded landing (`L`) |
+
+## Try It
+
+You can run your multi-agent workflow under wdx in four simple steps:
+
+<Steps>
+
+1. **Install wdx:**
+   ```sh title="Terminal"
+   curl -fsSL https://srjn45.github.io/wdx/install.sh | sh
+   ```
+
+2. **Open your project:**
+   ```sh title="Terminal"
+   cd ~/dev/my-project
+   wdx project open
+   ```
+
+3. **Launch agents in isolated worktrees:**
+   ```sh title="Terminal"
+   wdx agent create --name feature-auth --worktree auth --prompt "Implement JWT token validation"
+   wdx agent create --name feature-docs --worktree docs --prompt "Update API documentation in docs/"
+   ```
+
+4. **Open TIDE to steer your fleet:**
+   ```sh title="Terminal"
+   wdx tide
+   ```
+
+</Steps>
+
+Quit TIDE anytime with `C-q q`. Your agents keep executing in the background, their checkouts remain isolated, and any waiting prompt is always flagged before it stalls your day.
+
+<style>{`
+  .blog-video { margin: 1.5rem 0; }
+  .blog-video video { display: block; width: 100%; height: auto; border-radius: 10px; border: 1px solid var(--line); background: var(--win); }
+  .blog-video figcaption { margin-top: .5rem; color: var(--muted); font-size: .9rem; }
+`}</style>
